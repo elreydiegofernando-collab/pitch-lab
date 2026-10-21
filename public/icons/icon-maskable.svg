@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Pitch Lab</title>
+  <!--
+    Maskable variant (manifest icons[].purpose = "maskable", and the source for the
+    opaque apple-touch-icon): the background fills edge-to-edge with NO corner
+    rounding of its own, because the OS applies its own mask shape (circle, squircle,
+    rounded-square or teardrop) on top. Every glyph element is kept inside a safe
+    zone of radius ~40% of the icon size (204.8 of 512) measured from the centre, so
+    nothing meaningful is cropped by any of those mask shapes.
+  -->
+  <rect width="512" height="512" fill="#0E0F13"/>
+  <!-- target bar, "locked" state -->
+  <rect x="120" y="214" width="272" height="92" rx="20" fill="#56B4E9" fill-opacity="0.28" stroke="#56B4E9" stroke-width="7"/>
+  <line x1="120" y1="260" x2="392" y2="260" stroke="#56B4E9" stroke-opacity="0.55" stroke-width="3"/>
+  <!-- pitch trace crossing the target bar and settling dead-centre -->
+  <path d="M104 298 C 160 298, 192 262, 256 260 C 312 258, 348 244, 408 244" fill="none" stroke="#F2EFE8" stroke-opacity="0.16" stroke-width="22" stroke-linecap="round"/>
+  <path d="M104 298 C 160 298, 192 262, 256 260 C 312 258, 348 244, 408 244" fill="none" stroke="#F2EFE8" stroke-width="10" stroke-linecap="round"/>
+  <!-- the amber tally light -->
+  <circle cx="362" cy="150" r="26" fill="#FFB224"/>
+</svg>

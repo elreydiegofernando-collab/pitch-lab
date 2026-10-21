@@ -1,0 +1,154 @@
+/**
+ * Design tokens (docs/DESIGN.md §3-5). Dark is the visual default; explicit
+ * [data-theme] attributes (written by src/state/theme.ts, which resolves the
+ * "system" setting itself) are what actually switch theme at runtime. The
+ * prefers-color-scheme block below only prevents a flash of the wrong theme
+ * before that first write.
+ */
+
+:root {
+  /* Surfaces */
+  --bg-0: #0e0f13;
+  --bg-1: #15171d;
+  --bg-2: #1d2029;
+  --line: #2a2e39;
+  --lane-natural: #13151b;
+  --lane-accidental: #0b0c10;
+
+  /* Text */
+  --text-hi: #f2efe8;
+  --text-mid: #aeb4bf;
+  --text-lo: #858c99;
+
+  /* Accent */
+  --tally: #ffb224;
+  /* Fill color for solid tally shapes (buttons, selected pills, lit dots).
+     Same as --tally in dark theme; brighter than --tally's text color in light
+     theme (docs/DESIGN.md §3: "#B86E00 (text) / #FFB224 (fills, with
+     --tally-ink)"). Always pairs with --tally-ink for the on-fill content. */
+  --tally-fill: #ffb224;
+  --tally-ink: #1a1204;
+
+  /* Accuracy / status (Okabe-Ito, color-blind safe; never used alone) */
+  --on: #56b4e9;
+  --off: #e69f00;
+  --alert: #e8743b;
+  --good: #19c39a;
+  --meh: #f0e442;
+
+  /* World accents (Phase 3+, reserved now so later work doesn't invent new hues) */
+  --world-foundations: var(--tally);
+  --world-vibrato: #56b4e9;
+  --world-inflections: #19c39a;
+  --world-runs: #f0e442;
+  --world-dynamics: #e69f00;
+  --world-song: #f2efe8;
+
+  /* Elevation */
+  --shadow-card: none;
+
+  /* Type */
+  --font-display: 'Big Shoulders Display Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-body: 'Instrument Sans Variable', ui-sans-serif, system-ui, sans-serif;
+
+  /* Spacing scale */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-12: 48px;
+
+  /* Shape */
+  --radius-control: 10px;
+  --radius-card: 16px;
+  --radius-pill: 999px;
+
+  /* Layout */
+  --appbar-h: 52px;
+  --bottombar-h: 88px;
+  --target-min: 48px;
+  --target-primary: 64px;
+
+  /* z-index scale (docs/DESIGN.md §5) */
+  --z-canvas: 0;
+  --z-appbar: 10;
+  --z-bottombar: 20;
+  --z-sheet: 30;
+  --z-toast: 40;
+  --z-modal: 50;
+
+  /* Motion */
+  --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-micro: 180ms;
+  --dur-screen: 200ms;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --bg-0: #f5f2ec;
+    --bg-1: #ffffff;
+    --bg-2: #ece8e0;
+    --line: #ddd8cf;
+    --lane-natural: #fbfaf7;
+    --lane-accidental: #efebe3;
+    --text-hi: #15171c;
+    --text-mid: #4a505b;
+    --text-lo: #646b78;
+    --tally: #b86e00;
+    --tally-fill: #ffb224;
+    --tally-ink: #1a1204;
+    --on: #0072b2;
+    --off: #d55e00;
+    --alert: #c2410c;
+    --good: #00866a;
+    --meh: #8a7a00;
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.06);
+  }
+}
+
+:root[data-theme='light'] {
+  --bg-0: #f5f2ec;
+  --bg-1: #ffffff;
+  --bg-2: #ece8e0;
+  --line: #ddd8cf;
+  --lane-natural: #fbfaf7;
+  --lane-accidental: #efebe3;
+  --text-hi: #15171c;
+  --text-mid: #4a505b;
+  --text-lo: #646b78;
+  --tally: #b86e00;
+  --tally-fill: #ffb224;
+  --tally-ink: #1a1204;
+  --on: #0072b2;
+  --off: #d55e00;
+  --alert: #c2410c;
+  --good: #00866a;
+  --meh: #8a7a00;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.06);
+}
+
+:root[data-theme='dark'] {
+  --bg-0: #0e0f13;
+  --bg-1: #15171d;
+  --bg-2: #1d2029;
+  --line: #2a2e39;
+  --lane-natural: #13151b;
+  --lane-accidental: #0b0c10;
+  --text-hi: #f2efe8;
+  --text-mid: #aeb4bf;
+  --text-lo: #858c99;
+  --tally: #ffb224;
+  --tally-fill: #ffb224;
+  --tally-ink: #1a1204;
+  --on: #56b4e9;
+  --off: #e69f00;
+  --alert: #e8743b;
+  --good: #19c39a;
+  --meh: #f0e442;
+  --shadow-card: none;
+}
+
+/* [data-reduced-motion] is written by src/state/theme.ts from settings.reducedMotion
+   (resolving "system" itself). base.css turns this into near-zero durations. */

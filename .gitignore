@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+e2e/.artifacts/
+# Private real-voice test recordings: never commit (docs/PHASES.md, Phase 2)
+corpus/
+.tmp*/
+*.log
+.DS_Store
+Thumbs.db
+.vite/

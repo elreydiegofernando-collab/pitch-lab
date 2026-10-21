@@ -1,0 +1,160 @@
+/**
+ * Reset + base element styles (docs/DESIGN.md §4-6). Tokens come from
+ * tokens.css, imported before this file. Component styles live in
+ * components.css.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  overscroll-behavior: none;
+  height: 100%;
+}
+
+html {
+  color-scheme: dark light;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--bg-0);
+  color: var(--text-hi);
+  font-family: var(--font-body);
+  font-size: 17px;
+  line-height: 1.5;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  min-height: 100%;
+  overflow-x: hidden;
+}
+
+#app {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+h1,
+h2,
+h3,
+h4,
+p,
+figure {
+  margin: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  color: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Every tappable control: no double-tap zoom, no sticky mobile highlight,
+   our own pressed state instead (docs/DESIGN.md §6). */
+button,
+[role='button'],
+a,
+input,
+select,
+.pl-tap {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: inherit;
+}
+button:disabled {
+  cursor: default;
+}
+
+/* Visible focus ring (docs/DESIGN.md §6). Only for keyboard/AT focus. */
+:focus {
+  outline: none;
+}
+:focus-visible {
+  outline: 2px solid var(--tally);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
+}
+
+/* Safe-area aware full-bleed regions. */
+.pl-safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+.pl-safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.pl-safe-x {
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+}
+
+/* Reduced motion: either the OS setting (media query) or our own
+   data-reduced-motion="on" attribute (src/state/theme.ts resolves "system"
+   itself, so this selector alone is enough once JS has run). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+:root[data-reduced-motion='on'] *,
+:root[data-reduced-motion='on'] *::before,
+:root[data-reduced-motion='on'] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Tabular, non-jittering live numbers (docs/DESIGN.md §4). */
+.pl-tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.pl-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

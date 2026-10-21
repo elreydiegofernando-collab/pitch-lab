@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark light" />
+    <meta
+      name="description"
+      content="Free, open-source, mobile-first singing-technique trainer with real-time pitch feedback. Works offline once installed; your voice never leaves the device."
+    />
+
+    <!-- docs/DESIGN.md §3: bg-0 in each theme, picked by the OS before any stylesheet or script runs. -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F5F2EC" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0E0F13" />
+
+    <!-- iOS Add to Home Screen (docs/SPEC.md §6.7) -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Pitch Lab" />
+    <!-- Chromium's equivalent of apple-mobile-web-app-capable -->
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon-180.png" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
+
+    <!--
+      Prevents a white flash before styles/theme load: match the app background
+      to the OS color scheme immediately. The real design tokens (src/styles/*)
+      take over once they load; this is deliberately minimal.
+    -->
+    <style>
+      html {
+        background: #0e0f13;
+      }
+      @media (prefers-color-scheme: light) {
+        html {
+          background: #f5f2ec;
+        }
+      }
+    </style>
+
+    <title>Pitch Lab</title>
+  </head>
+  <body>
+    <div id="app" data-testid="app-root"></div>
+    <noscript>Pitch Lab needs JavaScript enabled to run.</noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,44 @@
+{
+  "name": "pitch-lab",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Free, open-source, mobile-first singing technique trainer with real-time pitch feedback. Runs entirely in the browser; voice audio never leaves the device.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:host": "vite --host --mode https",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e": "vitest run --config vitest.e2e.config.ts",
+    "icons": "node scripts/make-icons.mjs",
+    "check": "npm run typecheck && npm test && npm run build"
+  },
+  "dependencies": {
+    "@fontsource-variable/big-shoulders-display": "5.3.0",
+    "@fontsource-variable/instrument-sans": "5.3.0",
+    "@preact/signals": "2.11.3",
+    "@tonejs/midi": "2.0.28",
+    "lucide-preact": "1.61.0",
+    "preact": "11.0.1"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "2.10.6",
+    "@resvg/resvg-js": "2.6.2",
+    "@types/node": "22.20.5",
+    "@vitejs/plugin-basic-ssl": "2.3.0",
+    "fake-indexeddb": "6.2.6",
+    "happy-dom": "21.0.4",
+    "pitchy": "4.1.0",
+    "playwright-core": "1.64.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.5",
+    "vite-plugin-pwa": "2.0.0",
+    "vitest": "5.0.5",
+    "workbox-build": "7.4.1",
+    "workbox-window": "7.4.1"
+  }
+}

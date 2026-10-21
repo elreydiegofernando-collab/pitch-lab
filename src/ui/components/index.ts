@@ -1,0 +1,17 @@
+/** Barrel export for the shared component set (docs/ARCHITECTURE.md module map: "ui" owns src/ui/components/*). */
+export * from './icon';
+export * from './AppBar';
+export * from './BottomBar';
+export * from './Button';
+export * from './Card';
+export * from './ListRow';
+export * from './Segmented';
+export * from './Toggle';
+export * from './Slider';
+export * from './Sheet';
+export * from './Toast';
+export * from './Banner';
+export * from './CentsGauge';
+export * from './ReadoutCluster';
+export * from './TallyLights';
+export * from './EmptyState';

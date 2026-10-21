@@ -1,0 +1,338 @@
+/**
+ * Regression coverage for the engine's recovery/robustness paths that need a
+ * (fake) browser to exercise: wake-lock renewal, mic track mute handling, and
+ * the iOS < 16.4 silent-audio ringer unlock. These are deliberately NOT pure
+ * (engine.ts owns the live AudioContext/mic/wake-lock state), so the fakes
+ * below model just enough of the Web Audio / Media Capture / Screen Wake
+ * Lock surface to drive engine.ts through its start-audio recipe
+ * (docs/ARCHITECTURE.md) without a real browser - the same approach
+ * synth.test.ts uses for its fake Web Audio graph.
+ *
+ * Each test imports a fresh copy of engine.ts (`vi.resetModules()` + dynamic
+ * `import()`) so the module-level `getEngine()` singleton never leaks state
+ * between tests.
+ */
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { AudioEngine } from './engine-types';
+
+// ---------------------------------------------------------------------------
+// Fakes
+
+/** Minimal EventTarget: enough for 'ended'/'mute'/'release'/'visibilitychange'. */
+class FakeEventTarget {
+  private readonly listeners = new Map<string, Set<() => void>>();
+  addEventListener(type: string, cb: () => void): void {
+    let set = this.listeners.get(type);
+    if (!set) {
+      set = new Set();
+      this.listeners.set(type, set);
+    }
+    set.add(cb);
+  }
+  removeEventListener(type: string, cb: () => void): void {
+    this.listeners.get(type)?.delete(cb);
+  }
+  /** Test helper: fire every listener registered for `type`. */
+  dispatch(type: string): void {
+    for (const cb of [...(this.listeners.get(type) ?? [])]) cb();
+  }
+}
+
+class FakeAudioNode {
+  connect(): FakeAudioNode {
+    return this;
+  }
+  disconnect(): void {}
+}
+
+class FakeGainNode extends FakeAudioNode {
+  gain = { value: 1 };
+}
+
+class FakeWorkletNode {
+  port = { onmessage: null as ((ev: MessageEvent) => void) | null, postMessage: vi.fn() };
+  onprocessorerror: (() => void) | null = null;
+  constructor(_ctx: unknown, _name: string, _opts: unknown) {}
+  connect(): FakeWorkletNode {
+    return this;
+  }
+  disconnect(): void {}
+}
+
+class FakeAudioContext extends FakeEventTarget {
+  state: 'running' | 'suspended' | 'interrupted' | 'closed' = 'running';
+  sampleRate = 48000;
+  baseLatency = 0.01;
+  outputLatency = 0.02;
+  destination = {};
+  audioWorklet = { addModule: vi.fn(async () => {}) };
+  onstatechange: (() => void) | null = null;
+  constructor(_opts?: unknown) {
+    super();
+  }
+  resume(): Promise<void> {
+    this.state = 'running';
+    return Promise.resolve();
+  }
+  close(): Promise<void> {
+    this.state = 'closed';
+    return Promise.resolve();
+  }
+  createGain(): FakeGainNode {
+    return new FakeGainNode();
+  }
+  createMediaStreamSource(_stream: unknown): FakeAudioNode {
+    return new FakeAudioNode();
+  }
+}
+
+class FakeMediaStreamTrack extends FakeEventTarget {
+  readyState: 'live' | 'ended' = 'live';
+  label = 'Fake Mic';
+  stop(): void {
+    this.readyState = 'ended';
+  }
+  getSettings(): MediaTrackSettings {
+    return {};
+  }
+}
+
+class FakeMediaStream {
+  constructor(private readonly track: FakeMediaStreamTrack) {}
+  getAudioTracks(): FakeMediaStreamTrack[] {
+    return [this.track];
+  }
+  getTracks(): FakeMediaStreamTrack[] {
+    return [this.track];
+  }
+}
+
+/** Mimics the real WakeLockSentinel: `release()` AND the UA's own automatic
+ *  'release' (e.g. on visibilitychange to hidden) both fire the same event. */
+class FakeWakeLockSentinel extends FakeEventTarget {
+  released = false;
+  release(): Promise<void> {
+    this.released = true;
+    this.dispatch('release');
+    return Promise.resolve();
+  }
+}
+
+class FakeAudioElement {
+  loop = false;
+  volume = 1;
+  src: string;
+  constructor(src = '') {
+    this.src = src;
+  }
+  play(): Promise<void> {
+    return Promise.resolve();
+  }
+  pause(): void {}
+}
+
+class FakeDocument extends FakeEventTarget {
+  visibilityState: 'visible' | 'hidden' = 'visible';
+}
+
+// ---------------------------------------------------------------------------
+// Harness
+
+interface Harness {
+  engine: AudioEngine;
+  getUserMedia: ReturnType<typeof vi.fn>;
+  wakeLockRequest: ReturnType<typeof vi.fn>;
+  document: FakeDocument;
+  /** Mutable: refreshed every time the fakes hand out a new track/sentinel/<audio>. */
+  readonly state: {
+    audioConstructs: number;
+    lastTrack: FakeMediaStreamTrack | null;
+    lastSentinel: FakeWakeLockSentinel | null;
+  };
+}
+
+/**
+ * Stubs just enough of window/document/navigator/AudioContext/AudioWorkletNode/Audio
+ * for engine.ts's start-audio recipe to run, then imports a FRESH engine.ts
+ * (so getEngine()'s module-level singleton starts clean) and returns it plus
+ * the fakes, so tests can both drive the engine and inspect/trigger the fakes.
+ *
+ * `iosLessThan164`: true gives an iPhone UA with no `navigator.audioSession`
+ * (platform.isIOS() true, platform.supportsAudioSession() false) - the exact
+ * matrix cell the silent-audio-unlock fix targets.
+ */
+async function setUpHarness(opts: { iosLessThan164?: boolean } = {}): Promise<Harness> {
+  vi.resetModules();
+
+  const state: Harness['state'] = { audioConstructs: 0, lastTrack: null, lastSentinel: null };
+
+  const getUserMedia = vi.fn(async () => {
+    state.lastTrack = new FakeMediaStreamTrack();
+    return new FakeMediaStream(state.lastTrack);
+  });
+  const wakeLockRequest = vi.fn(async () => {
+    state.lastSentinel = new FakeWakeLockSentinel();
+    return state.lastSentinel;
+  });
+
+  const fakeDocument = new FakeDocument();
+  const fakeMediaDevices = {
+    getUserMedia,
+    enumerateDevices: vi.fn(async () => []),
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  };
+  const fakeNavigator = opts.iosLessThan164
+    ? {
+        userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15',
+        platform: 'iPhone',
+        maxTouchPoints: 5,
+        mediaDevices: fakeMediaDevices,
+        wakeLock: { request: wakeLockRequest },
+        // Deliberately no `audioSession`: this is the iOS < 16.4 matrix cell.
+      }
+    : {
+        userAgent: 'test-agent',
+        platform: 'test-platform',
+        maxTouchPoints: 0,
+        mediaDevices: fakeMediaDevices,
+        wakeLock: { request: wakeLockRequest },
+      };
+
+  vi.stubGlobal('window', { isSecureContext: true });
+  vi.stubGlobal('document', fakeDocument);
+  vi.stubGlobal('navigator', fakeNavigator);
+  vi.stubGlobal('AudioContext', FakeAudioContext);
+  vi.stubGlobal('AudioWorkletNode', FakeWorkletNode);
+  vi.stubGlobal(
+    'Audio',
+    class extends FakeAudioElement {
+      constructor(src?: string) {
+        super(src);
+        state.audioConstructs++;
+      }
+    },
+  );
+
+  const { getEngine } = await import('./engine');
+  return { engine: getEngine(), getUserMedia, wakeLockRequest, document: fakeDocument, state };
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+// ---------------------------------------------------------------------------
+// [wake-lock-never-renewed-after-first-release]
+
+describe('wake lock renewal', () => {
+  it('re-requests the wake lock on the next visibilitychange after the UA auto-releases the sentinel', async () => {
+    const h = await setUpHarness();
+    await h.engine.start();
+    expect(h.engine.state).toBe('running');
+    expect(h.wakeLockRequest).toHaveBeenCalledTimes(1);
+
+    const sentinel = h.state.lastSentinel;
+    expect(sentinel).not.toBeNull();
+
+    // The UA releases the lock on its own - e.g. the document went hidden - without the
+    // engine ever calling releaseWakeLock(). Per the Screen Wake Lock spec this still
+    // fires the sentinel's 'release' event.
+    sentinel?.dispatch('release');
+
+    // A background/foreground cycle, same as a phone lock/unlock while singing.
+    h.document.visibilityState = 'hidden';
+    h.document.dispatch('visibilitychange');
+    h.document.visibilityState = 'visible';
+    h.document.dispatch('visibilitychange');
+
+    // Without the fix, wakeLockSentinel still holds the released-but-non-null sentinel,
+    // so the `=== null` re-request guard never fires again and this stays at 1.
+    expect(h.wakeLockRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not re-request on visibilitychange while the held sentinel is still live', async () => {
+    const h = await setUpHarness();
+    await h.engine.start();
+    expect(h.wakeLockRequest).toHaveBeenCalledTimes(1);
+
+    h.document.visibilityState = 'hidden';
+    h.document.dispatch('visibilitychange');
+    h.document.visibilityState = 'visible';
+    h.document.dispatch('visibilitychange');
+
+    expect(h.wakeLockRequest).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// [mic-track-mute-not-handled]
+
+describe('mic track mute', () => {
+  it('treats a mute event the same as ended: interrupted with mic-ended', async () => {
+    const h = await setUpHarness();
+    await h.engine.start();
+    expect(h.engine.state).toBe('running');
+
+    h.state.lastTrack?.dispatch('mute');
+
+    expect(h.engine.state).toBe('interrupted');
+    expect(h.engine.error?.code).toBe('mic-ended');
+  });
+
+  it('stops listening for mute (and ended) once stop() has torn the track down', async () => {
+    const h = await setUpHarness();
+    await h.engine.start();
+    const track = h.state.lastTrack;
+    expect(track).not.toBeNull();
+
+    await h.engine.stop();
+    expect(h.engine.state).toBe('idle');
+
+    track?.dispatch('mute'); // a late event from the now-detached track
+    expect(h.engine.state).toBe('idle'); // must not resurrect 'interrupted'
+  });
+});
+
+// ---------------------------------------------------------------------------
+// [silent-audio-unlock-missing-in-ensureContext-and-reset]
+
+describe('silent-audio ringer unlock (iOS < 16.4)', () => {
+  it('arms it on ensureContext(), and does not needlessly re-arm on a second call', async () => {
+    const h = await setUpHarness({ iosLessThan164: true });
+
+    h.engine.ensureContext();
+    expect(h.state.audioConstructs).toBe(1);
+
+    h.engine.ensureContext();
+    expect(h.state.audioConstructs).toBe(1); // guarded by `!this.silentAudioStop`
+  });
+
+  it('arms it on reset() when reset() is the first mic-opening call of the session', async () => {
+    const h = await setUpHarness({ iosLessThan164: true });
+
+    await h.engine.reset();
+
+    expect(h.engine.state).toBe('running');
+    expect(h.state.audioConstructs).toBe(1);
+  });
+
+  it('does not re-arm on reset() if ensureContext() already armed it this session', async () => {
+    const h = await setUpHarness({ iosLessThan164: true });
+
+    h.engine.ensureContext();
+    expect(h.state.audioConstructs).toBe(1);
+
+    await h.engine.reset();
+    expect(h.state.audioConstructs).toBe(1);
+  });
+
+  it('never arms it off iOS, or where navigator.audioSession is supported', async () => {
+    const h = await setUpHarness(); // default fake navigator: not iOS
+
+    h.engine.ensureContext();
+    await h.engine.reset();
+
+    expect(h.state.audioConstructs).toBe(0);
+  });
+});
