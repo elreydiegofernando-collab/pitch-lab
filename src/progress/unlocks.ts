@@ -244,13 +244,18 @@ export function worldRequirementHint(worldId: WorldId, snapshot: ProgressSnapsho
   return gate ? `Pass ${describeLevel(gate.world, gate.level)} to unlock ${world.title}.` : 'Not available yet.';
 }
 
-/** One line saying how to open a level ("Pass Sustain II to unlock."); null when it is openable or unknown. */
+/**
+ * One line saying how to open a level: the level right before it ("Pass Sustain II to unlock."), because passing level
+ * N is what opens level N+1 (SPEC §11). Every locked node of the map says what opens IT, not the same line nine times.
+ * Null when the level is openable or unknown.
+ */
 export function levelRequirementHint(levelId: string, snapshot: ProgressSnapshot, worlds: readonly WorldDef[]): string | null {
   const found = findLevel(worlds, levelId);
   if (!found || isLevelOpenable(levelId, snapshot)) return null;
   if (!isWorldUnlocked(found.world.id, snapshot)) return worldRequirementHint(found.world.id, snapshot, worlds);
-  const current = orderedLevels(found.world).find((l) => levelStatus(l.id, snapshot) === 'current');
-  return current ? `Pass ${describeLevel(found.world, current)} to unlock.` : 'Pass the earlier levels to unlock.';
+  const ordered = orderedLevels(found.world);
+  const previous = ordered[ordered.findIndex((l) => l.id === levelId) - 1];
+  return previous ? `Pass ${describeLevel(found.world, previous)} to unlock.` : 'Pass the earlier levels to unlock.';
 }
 
 /**

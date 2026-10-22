@@ -1,1 +1,711 @@
-/* Wave 2 styles for the worlds builder (docs/ARCHITECTURE.md "Wave 2" ownership). Tokens only; no new hues. */
+/**
+ * Styles for Home, the world map and the audition screens (docs/DESIGN.md 10, 13.1, 13.2, 13.6). Class prefix `wl-`.
+ * Tokens only (tokens.css): no new hues and no new fonts. The concept is the setlist: numbered entries in Big
+ * Shoulders, one cable joining them, the amber tally light marking where you are. The motion rules (section 9):
+ * transform and opacity only, and every animation is off under reduced motion.
+ */
+
+/* ---------------------------------------------------------------- scope */
+
+.wl-scope {
+  /* --tally as TEXT is under 4.5:1 on the light surfaces; mixing toward the text colour keeps it amber and readable. */
+  --wl-amber-ink: color-mix(in srgb, var(--tally) 72%, var(--text-hi));
+}
+
+/* World hues are graphics (rules, rings, the cable). On light surfaces the pale ones (yellow, sky blue, bluish green,
+   cream) fall under 3:1, so the light theme uses the contrast-adjusted tokens that already exist for the same hues. */
+:root[data-theme='light'] .wl-scope {
+  --world-vibrato: var(--on);
+  --world-inflections: var(--good);
+  --world-runs: var(--meh);
+  --world-dynamics: var(--off);
+  --world-song: var(--text-hi);
+}
+
+.wl-page {
+  gap: var(--sp-6);
+  padding-left: max(var(--sp-4), env(safe-area-inset-left));
+  padding-right: max(var(--sp-4), env(safe-area-inset-right));
+}
+
+.wl-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.wl-section__label {
+  padding-left: var(--sp-1);
+}
+
+.wl-chev {
+  flex: none;
+  color: var(--text-lo);
+}
+
+.wl-display {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 36px;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+
+/* Primary actions on these screens are 64 px tall (docs/DESIGN.md 6). */
+.wl-cta {
+  min-height: var(--target-primary);
+  font-size: 18px;
+}
+
+/* ---------------------------------------------------------------- profile chip */
+
+/* A 48 px target around a 32 px disc; the negative margin lines the disc up with the page padding. */
+.wl-chip {
+  width: var(--target-min);
+  height: var(--target-min);
+  margin-right: calc(var(--sp-2) * -1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border-radius: var(--radius-control);
+}
+.wl-chip__disc {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: var(--text-hi);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  transition: transform var(--dur-micro) var(--ease-standard);
+}
+button.wl-chip:active .wl-chip__disc {
+  transform: scale(0.96);
+}
+
+/* ---------------------------------------------------------------- skeleton (docs/DESIGN.md 9, 13.0) */
+
+.wl-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.wl-skel {
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  animation: wl-pulse 1.6s ease-in-out infinite;
+}
+.wl-skel--continue {
+  height: 256px;
+}
+.wl-skel--list {
+  height: 346px;
+}
+.wl-skel--head {
+  height: 104px;
+}
+.wl-skel--nodes {
+  height: 384px;
+}
+@keyframes wl-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* ---------------------------------------------------------------- Home: the Continue card */
+
+.wl-continue {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-4) var(--sp-4) calc(var(--sp-4) + 4px);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+/* The 4 px rule in the current world's hue. */
+.wl-continue::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--wk, var(--tally));
+}
+.wl-continue__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+.wl-continue__world {
+  color: var(--text-lo);
+  text-align: right;
+}
+.wl-continue__title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 36px;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+.wl-continue__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 24px;
+  margin-top: var(--sp-1);
+}
+.wl-continue .wl-cta {
+  margin-top: var(--sp-2);
+}
+
+/* ---------------------------------------------------------------- Home: the Momentum chip */
+
+.wl-momentum {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  width: 100%;
+  min-height: 64px;
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  text-align: left;
+  transition:
+    background var(--dur-micro) var(--ease-standard),
+    transform var(--dur-micro) var(--ease-standard);
+}
+.wl-momentum:active {
+  background: var(--bg-2);
+  transform: scale(0.99);
+}
+.wl-momentum__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 84px;
+}
+.wl-momentum__value {
+  min-width: 3ch;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 32px;
+  line-height: 1;
+}
+.wl-momentum__bars {
+  flex: 1;
+  height: 40px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 6px;
+}
+/* A bar is the day's momentum (its height). A day sung is bright, a rest day dimmer (rest is healthy, never an empty
+   bar), a day before the first practice a faint tick. Today's bar is amber. */
+.wl-momentum__bar {
+  width: 6px;
+  height: calc(var(--h, 0.06) * 100%);
+  border-radius: 3px;
+  background: var(--text-mid);
+}
+.wl-momentum__bar--rest {
+  background: var(--text-lo);
+  opacity: 0.65;
+}
+.wl-momentum__bar--none {
+  background: var(--text-lo);
+  opacity: 0.3;
+}
+.wl-momentum__bar--today {
+  background: var(--tally);
+}
+
+/* ---------------------------------------------------------------- Home: destinations */
+
+.wl-row--locked {
+  cursor: default;
+}
+.wl-row--locked .pl-row__icon,
+.wl-row--locked .pl-row__title {
+  color: var(--text-lo);
+}
+
+/* ---------------------------------------------------------------- World map: sections */
+
+.wl-worlds {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+}
+.wl-world__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.wl-world__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+.wl-world__title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 36px;
+  line-height: 1.05;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+.wl-world__num {
+  color: var(--text-lo);
+}
+.wl-world__count {
+  flex: none;
+}
+/* The 2 px rule in the world's hue. */
+.wl-world__rule {
+  height: 2px;
+  margin: var(--sp-3) 0;
+  border-radius: 1px;
+  background: var(--wk, var(--line));
+}
+.wl-world--closed .wl-world__title,
+.wl-world--closed .wl-world__summary {
+  color: var(--text-lo);
+}
+.wl-world--closed .wl-world__rule {
+  background: var(--line);
+}
+
+/* A closed world: its level titles as one quiet run of text, then the single Locked line. */
+.wl-titles {
+  margin-bottom: var(--sp-2);
+  color: var(--text-lo);
+  font-size: 15px;
+  line-height: 1.6;
+}
+.wl-titles li {
+  display: inline-block;
+}
+.wl-titles li:not(:last-child)::after {
+  content: '\00b7';
+  margin: 0 var(--sp-2);
+}
+
+/* ---------------------------------------------------------------- World map: the audition and song rows */
+
+.wl-linkrow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: 64px;
+  margin-bottom: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  text-align: left;
+  transition:
+    background var(--dur-micro) var(--ease-standard),
+    transform var(--dur-micro) var(--ease-standard);
+}
+button.wl-linkrow:active {
+  background: var(--bg-2);
+  transform: scale(0.99);
+}
+/* The placement audition is a side path, so its border is dashed and in the world's hue. */
+.wl-linkrow--skip {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--wk, var(--tally)) 55%, var(--line));
+}
+.wl-linkrow--locked {
+  padding-top: var(--sp-1);
+  padding-bottom: var(--sp-1);
+  background: transparent;
+  cursor: default;
+}
+.wl-linkrow__icon {
+  flex: none;
+  color: var(--wk, var(--tally));
+}
+.wl-linkrow__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.wl-linkrow__title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 22px;
+  line-height: 1.1;
+}
+.wl-linkrow__reach {
+  color: var(--text-lo);
+}
+
+/* ---------------------------------------------------------------- World map: the cable and its nodes */
+
+.wl-cable {
+  display: flex;
+  flex-direction: column;
+}
+.wl-node {
+  position: relative;
+}
+/* The cable: a 2 px line through the centre of every ring (a 56 px ring centres at x = 28), in --line, and in the world's
+   hue between the first node and the one the singer is on. Each node draws the half above and the half below its ring. */
+.wl-node::before,
+.wl-node::after {
+  content: '';
+  position: absolute;
+  left: 27px;
+  width: 2px;
+  z-index: 0;
+  background: var(--line);
+  pointer-events: none;
+}
+.wl-node::before {
+  top: 0;
+  height: 50%;
+}
+.wl-node::after {
+  top: 50%;
+  bottom: 0;
+}
+.wl-node:first-child::before,
+.wl-node:last-child::after {
+  display: none;
+}
+.wl-node--lit-above::before,
+.wl-node--lit-below::after {
+  background: var(--wk, var(--tally));
+}
+
+.wl-node__row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  width: 100%;
+  min-height: 80px;
+  padding: var(--sp-2) 0;
+  border-radius: var(--radius-control);
+  text-align: left;
+}
+button.wl-node__row {
+  transition:
+    background var(--dur-micro) var(--ease-standard),
+    transform var(--dur-micro) var(--ease-standard);
+}
+button.wl-node__row:active {
+  background: var(--bg-1);
+  transform: scale(0.99);
+}
+@media (hover: hover) {
+  button.wl-node__row:hover {
+    background: var(--bg-1);
+  }
+}
+
+.wl-node__slot {
+  flex: none;
+  width: 56px;
+  display: flex;
+  justify-content: center;
+}
+.wl-node__ring {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  border-radius: 50%;
+  background: var(--bg-0);
+}
+.wl-node__num {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.wl-node--passed .pl-score-ring {
+  color: var(--wk, var(--tally));
+}
+.wl-node--current .pl-score-ring {
+  color: var(--tally);
+}
+.wl-node--current .pl-score-ring__track {
+  stroke: color-mix(in srgb, var(--tally) 45%, var(--bg-0));
+}
+.wl-node--locked .pl-score-ring__centre {
+  color: var(--text-lo);
+}
+
+/* The current node: an amber ring with a slow 2 s breath, made by fading a pseudo-element ring (no shadow animation). */
+.wl-node--current .wl-node__ring::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid var(--tally);
+  opacity: 0.5;
+  pointer-events: none;
+  animation: wl-breathe 2s ease-in-out infinite;
+}
+@keyframes wl-breathe {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+/* The Boss Recital: a 64 px ring inside a second, thinner one. */
+.wl-node--boss .wl-node__ring::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 1.5px solid var(--wk, var(--tally));
+  opacity: 0.85;
+  pointer-events: none;
+}
+.wl-node--boss.wl-node--locked .wl-node__ring::after {
+  border-color: var(--line);
+}
+/* On a current Boss Recital the outer ring is the one that breathes (the inner pseudo-ring would crowd it). */
+.wl-node--boss.wl-node--current .wl-node__ring::before {
+  display: none;
+}
+.wl-node--boss.wl-node--current .wl-node__ring::after {
+  border-color: var(--tally);
+  opacity: 0.5;
+  animation: wl-breathe 2s ease-in-out infinite;
+}
+
+/* Power-on: a node a take just opened lights up once, a glow ring fading in over 600 ms. */
+.wl-node__glow {
+  position: absolute;
+  inset: -9px;
+  border-radius: 50%;
+  border: 2px solid var(--tally);
+  opacity: 0;
+  pointer-events: none;
+}
+.wl-node--power-on .wl-node__glow {
+  animation: wl-power-glow 600ms var(--ease-standard) 250ms both;
+}
+.wl-node--power-on .pl-score-ring {
+  animation: wl-power-ring 600ms var(--ease-standard) 250ms both;
+}
+@keyframes wl-power-glow {
+  0% {
+    opacity: 0;
+    transform: scale(0.84);
+  }
+  45% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.06);
+  }
+}
+@keyframes wl-power-ring {
+  from {
+    opacity: 0.25;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.wl-node__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.wl-node__kicker {
+  color: var(--text-lo);
+}
+.wl-node__title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 22px;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+.wl-node--locked .wl-node__title {
+  color: var(--text-lo);
+}
+.wl-node__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--text-mid);
+}
+.wl-node__now {
+  color: var(--wl-amber-ink);
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------- Audition */
+
+.wl-tests {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+/* A set-list entry: the number, the title and its state on one line, the caption under both so it has the full width. */
+.wl-test {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-areas:
+    'n title state'
+    'n caption caption';
+  align-items: center;
+  column-gap: var(--sp-3);
+  row-gap: 2px;
+  min-height: 76px;
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--line);
+}
+.wl-test:last-child {
+  border-bottom: none;
+}
+.wl-test__n {
+  grid-area: n;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 32px;
+  line-height: 1;
+  color: var(--text-lo);
+}
+.wl-test__title {
+  grid-area: title;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 22px;
+  line-height: 1.1;
+}
+.wl-test__caption {
+  grid-area: caption;
+}
+.wl-test__state {
+  grid-area: state;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-lo);
+}
+.wl-test--passed .wl-test__n,
+.wl-test--passed .wl-test__state {
+  color: var(--text-mid);
+}
+/* The test to sing next carries the tally light: an amber rule, number and state. */
+.wl-test--next::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--tally);
+}
+.wl-test--next .wl-test__n,
+.wl-test--next .wl-test__state {
+  color: var(--wl-amber-ink);
+}
+
+.wl-opened {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.wl-opened__item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+}
+.wl-opened__icon {
+  flex: none;
+  margin-top: 3px;
+  color: var(--text-mid);
+}
+.wl-opened__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* ---------------------------------------------------------------- the one-action bottom bar */
+
+.wl-actionbar {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--z-bottombar);
+  flex-shrink: 0;
+  padding: var(--sp-2) max(var(--sp-4), env(safe-area-inset-right)) calc(var(--sp-2) + env(safe-area-inset-bottom))
+    max(var(--sp-4), env(safe-area-inset-left));
+  background: var(--bg-1);
+  border-top: 1px solid var(--line);
+}
+.wl-actionbar__inner {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+/* ---------------------------------------------------------------- reduced motion */
+
+/* base.css already shortens every animation; these also drop the delays and the decorative glows, so nothing waits. */
+@media (prefers-reduced-motion: reduce) {
+  .wl-node--current .wl-node__ring::before,
+  .wl-node--boss.wl-node--current .wl-node__ring::after,
+  .wl-node--power-on .wl-node__glow,
+  .wl-node--power-on .pl-score-ring,
+  .wl-skel {
+    animation: none;
+  }
+}
+:root[data-reduced-motion='on'] .wl-node--current .wl-node__ring::before,
+:root[data-reduced-motion='on'] .wl-node--boss.wl-node--current .wl-node__ring::after,
+:root[data-reduced-motion='on'] .wl-node--power-on .wl-node__glow,
+:root[data-reduced-motion='on'] .wl-node--power-on .pl-score-ring,
+:root[data-reduced-motion='on'] .wl-skel {
+  animation: none;
+}

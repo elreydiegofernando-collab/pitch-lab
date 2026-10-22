@@ -8,26 +8,24 @@ import { isIOS, isStandalone } from '../../audio/platform';
 import { getSynth } from '../../state/audio';
 import { engineInfo, engineStats } from '../../state/engine-store';
 import { activePitchView } from '../../state/pitch-view-registry';
+import { appStorage, reconcileReport, storageDurable } from '../../state/session';
 import { deviceSettings, settings } from '../../state/settings';
 import { showToast } from '../../state/toast';
 import { centsOff, noteName, parseNote } from '../../core/music';
 import type { Recording } from '../../audio/engine-types';
 import { getStorageInfo, requestPersistentStorage, type StorageInfo } from '../../pwa/persist';
 import { swStatus } from '../../state/pwa-store';
+import type { StorageUsage } from '../../storage';
 import { AppBar } from '../components/AppBar';
 import { Banner } from '../components/Banner';
 import { Button } from '../components/Button';
 import { ListRow } from '../components/ListRow';
+import { useReleaseMicOnLeave } from '../practice/use-mic-release';
+import { BACKEND_LABEL, describeReconcile } from '../progress/diagnostics-text';
+import { formatBytes } from '../progress/format';
 
 const A3_MIDI = parseNote('A3');
 const TRACK_FLAGS = ['echoCancellation', 'noiseSuppression', 'autoGainControl'] as const;
-
-function formatBytes(n: number | null | undefined): string {
-  if (n === null || n === undefined) return '––';
-  if (n < 1024) return `${n} B`;
-  const mb = n / (1024 * 1024);
-  return `${mb.toFixed(1)} MB`;
-}
 
 function formatMs(seconds: number | null): string {
   return seconds === null ? '––' : `${Math.round(seconds * 1000)} ms`;
@@ -54,9 +52,12 @@ export function Diagnostics(): JSX.Element {
   const stats = engineStats.value;
 
   const [storageInfo, setStorageInfo] = useState<StorageInfo | null>(null);
+  const [usage, setUsage] = useState<StorageUsage | null>(null);
   const [micCheckBusy, setMicCheckBusy] = useState(false);
   const [selfTestBusy, setSelfTestBusy] = useState(false);
   const [selfTestResult, setSelfTestResult] = useState<string | null>(null);
+  const storage = appStorage.value;
+  useReleaseMicOnLeave(getEngine());
 
   useEffect(() => {
     let active = true;
@@ -67,6 +68,20 @@ export function Diagnostics(): JSX.Element {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!storage) return undefined;
+    let active = true;
+    storage
+      .usage()
+      .then((result) => {
+        if (active) setUsage(result);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [storage]);
 
   function handleRequestPersist(): void {
     void requestPersistentStorage()
@@ -127,6 +142,7 @@ export function Diagnostics(): JSX.Element {
       engine: info,
       stats,
       storage: storageInfo,
+      pitchLabData: { durable: storageDurable.value, usage, reconcile: reconcileReport.value },
       serviceWorker: String(swStatus.value),
       device: {
         route: deviceSettings.value.route,
@@ -147,12 +163,13 @@ export function Diagnostics(): JSX.Element {
   }
 
   const calibrations = Object.entries(deviceSettings.value.latency);
+  const reconcile = describeReconcile(reconcileReport.value);
 
   return (
     <div class="pl-screen" data-testid="diagnostics-screen">
       <AppBar title="Diagnostics" routeIcon={Gauge} engineState={info.state} onBack={() => back()} />
       <div class="pl-scroll">
-        <div class="pl-page pl-fade-rise">
+        <div class="pl-page">
           <div class="pl-list">
             <ListRow title="Sample rate" value={info.sampleRate ? `${info.sampleRate} Hz` : '––'} data-testid="diag-samplerate" />
             <ListRow title="Window / hop" value={`${info.windowSize} / ${info.hopSize ?? '––'}`} />
@@ -194,6 +211,23 @@ export function Diagnostics(): JSX.Element {
               Request persistent storage
             </Button>
           ) : null}
+
+          <section class="pl-stack" data-testid="diag-data">
+            <span class="pl-label">Pitch Lab data</span>
+            <div class="pl-list">
+              <ListRow title="Saved on this device" value={storageDurable.value ? 'Yes' : 'No'} data-testid="diag-durable" />
+              <ListRow
+                title="Database"
+                subtitle={usage?.dbFallbackReason ?? undefined}
+                value={usage ? (usage.dbFallbackReason ? 'In memory' : 'IndexedDB') : '––'}
+                data-testid="diag-db"
+              />
+              <ListRow title="Recordings stored in" value={usage ? BACKEND_LABEL[usage.binaryBackend] : '––'} data-testid="diag-binary-backend" />
+              <ListRow title="Attempts / recordings" value={usage ? `${usage.attemptCount} / ${usage.takeCount}` : '––'} />
+              <ListRow title="Recording audio" value={formatBytes(usage?.binaryBytes)} />
+              <ListRow title="Startup check" subtitle={reconcile.detail ?? undefined} value={reconcile.value} data-testid="diag-reconcile" />
+            </div>
+          </section>
 
           <section class="pl-stack">
             <span class="pl-label">Calibrations per route</span>

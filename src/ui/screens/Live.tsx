@@ -1,46 +1,53 @@
-/** Live: the free-sing pitch monitor. AppBar + readouts + the pitch trace + the thumb-zone action bar. */
-import { useEffect, useRef, useState } from 'preact/hooks';
+/**
+ * Live: the free-sing pitch monitor. AppBar + readouts + the pitch trace + the thumb-zone action bar.
+ *
+ * Progressive (SPEC §11.1): a new singer sees note, cents, Hz and dB and nothing else. Crack markers on the trace appear
+ * after Sirens & glides, the settle and scoop readout after Crispness, and vibrato rate, extent and the zone after the
+ * Foundations Boss Recital. Each one is analysed a few times a second on a window of recent frames (practice/
+ * live-analysis.ts), never per frame, and costs nothing at all until it is earned. The More sheet lists the readouts
+ * that are still locked with what unlocks them.
+ */
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import { RotateCcw, SlidersHorizontal, Waves } from 'lucide-preact';
 import { back, navigate } from '../../router';
 import { getEngine } from '../../audio/engine';
-import { isLikelyBluetoothLabel } from '../../audio/platform';
 import { getSynth, resetAudio } from '../../state/audio';
-import { engineError, engineInfo, engineState } from '../../state/engine-store';
+import { engineState } from '../../state/engine-store';
 import { activePitchView } from '../../state/pitch-view-registry';
+import { isUnlocked } from '../../state/session';
 import { settings } from '../../state/settings';
 import { CONFIG } from '../../config';
 import { noteName, octaveOf, parseNote, type Notation } from '../../core/music';
 import type { TargetNote } from '../../core/types';
-import type { EngineError, EngineErrorCode } from '../../audio/engine-types';
+import type { FeatureId } from '../../progress/types';
+import { requirementHint } from '../../progress';
 import { PitchViewHost } from '../pitch-view/PitchViewHost';
+import type { PitchView } from '../pitch-view/types';
 import { AppBar } from '../components/AppBar';
-import { Banner } from '../components/Banner';
 import { BottomBar } from '../components/BottomBar';
 import { Button } from '../components/Button';
 import { ListRow } from '../components/ListRow';
+import { Locked } from '../components/Locked';
 import { ReadoutCluster } from '../components/ReadoutCluster';
 import { Sheet } from '../components/Sheet';
+import { EngineIssue } from '../practice/EngineIssue';
+import { LiveStatus } from '../practice/LiveStatus';
+import { viewReducedMotion } from '../practice/motion';
+import { useLiveAnalysis } from '../practice/use-live-analysis';
+import { useReleaseMicOnLeave } from '../practice/use-mic-release';
+import { viewZone } from '../practice/vibrato-zone';
 
 const NOTE_LOW = parseNote('E2');
 const NOTE_HIGH = parseNote('C6');
 const A3_MIDI = parseNote('A3');
 
-function reasonMessage(error: EngineError | null): string {
-  const byCode: Partial<Record<EngineErrorCode, string>> = {
-    'permission-denied': 'Microphone access was blocked.',
-    'mic-ended': 'The microphone stopped — this can happen after a while in the background on iOS.',
-    'route-changed': 'Your audio route changed (headphones plugged in or out).',
-    'session-interrupted': 'The audio session was interrupted — a call, Siri, or the lock screen.',
-    'no-microphone': 'No microphone was found.',
-    'mic-in-use': 'The microphone is being used by another app.',
-    'insecure-context': 'This page needs HTTPS to use the microphone.',
-    'no-mediadevices': 'This browser cannot access the microphone.',
-    'worklet-unsupported': "This browser doesn't support the audio processing Pitch Lab needs.",
-  };
-  if (!error) return 'The microphone connection was lost.';
-  return byCode[error.code] ?? error.message;
-}
+/** The readouts that are earned one by one, with the name each is listed under in More. */
+const PROGRESSIVE_READOUTS: ReadonlyArray<{ id: FeatureId; title: string }> = [
+  { id: 'live.cracks', title: 'Crack markers' },
+  { id: 'live.onset', title: 'Settle and scoop' },
+  { id: 'live.vibrato', title: 'Vibrato rate, extent and zone' },
+];
 
 interface NotePickerProps {
   value: number | null;
@@ -100,6 +107,8 @@ export function Live(): JSX.Element {
   const [singBusy, setSingBusy] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
   const lastSungMidiRef = useRef<number>(A3_MIDI);
+  const viewRef = useRef<PitchView | null>(null);
+  useReleaseMicOnLeave(engine);
 
   // Track the last voiced pitch purely for the note picker's default position — a ref write, no re-render.
   useEffect(() => {
@@ -107,6 +116,26 @@ export function Live(): JSX.Element {
       if (frame.voiced) lastSungMidiRef.current = Math.round(frame.midi);
     });
   }, [engine]);
+
+  // What has been earned decides what is measured and drawn (SPEC §11.1); an unearned readout costs nothing.
+  const features = { cracks: isUnlocked('live.cracks'), onset: isUnlocked('live.onset'), vibrato: isUnlocked('live.vibrato') };
+  const style = settings.value.vibratoStyle;
+  const readings = useLiveAnalysis({
+    engine,
+    features,
+    vibratoStyle: style,
+    toleranceCents: CONFIG.tolerance.default,
+    targetMidi,
+    hooks: {
+      onCrack: (t) => viewRef.current?.addMarker(t, 'crack', 'crack'),
+      onOnset: (t) => viewRef.current?.addMarker(t, 'onset'),
+    },
+  });
+  const zone = useMemo(() => (features.vibrato ? viewZone(style) : null), [features.vibrato, style]);
+  const motion = viewReducedMotion(settings.value.reducedMotion);
+  const notation = settings.value.notation;
+  const showNoteNames = settings.value.showNoteNames;
+  const viewOptions = useMemo(() => ({ notation, reducedMotion: motion, showNoteNames, autoRange: true }), [notation, motion, showNoteNames]);
 
   function handleListen(): void {
     // Direct call inside the gesture: getSynth() calls engine.ensureContext() as its first statement.
@@ -125,21 +154,16 @@ export function Live(): JSX.Element {
     promise.catch(() => {}).finally(() => setSingBusy(false));
   }
 
-  function handleReconnect(): void {
-    const promise = engineError.value?.code === 'route-changed' ? engine.reset() : engine.resume();
-    promise.catch(() => {});
-  }
-
   function handleResetAudio(): void {
     const promise = resetAudio();
     setResetBusy(true);
     promise.catch(() => {}).finally(() => setResetBusy(false));
   }
 
-  const targets: readonly TargetNote[] | undefined =
-    targetMidi === null ? undefined : [{ midi: targetMidi, start: -1e9, end: 1e9 }];
-
-  const needsReconnect = engineState.value === 'interrupted' || engineState.value === 'error';
+  const targets: readonly TargetNote[] | undefined = useMemo(
+    () => (targetMidi === null ? undefined : [{ midi: targetMidi, start: -1e9, end: 1e9 }]),
+    [targetMidi],
+  );
 
   return (
     <div class="pl-screen" data-testid="live-screen">
@@ -147,26 +171,9 @@ export function Live(): JSX.Element {
 
       <div class="pl-live-body">
         <div class="pl-live-body__readouts pl-safe-x">
-          <ReadoutCluster engine={engine} toleranceCents={CONFIG.tolerance.default} notation={settings.value.notation} />
-
-          {needsReconnect ? (
-            <Banner kind={engineState.value === 'error' ? 'error' : 'warn'} message={reasonMessage(engineError.value)}>
-              {engineError.value?.code === 'permission-denied' ? (
-                <p class="pl-body-s pl-muted">
-                  iPhone: Settings &rsaquo; Safari &rsaquo; Microphone (or the "aA" menu &rsaquo; Website Settings).
-                  <br />
-                  Chrome: tap the site-info icon in the address bar &rsaquo; Site settings &rsaquo; Microphone &rsaquo; Allow.
-                </p>
-              ) : null}
-              <Button variant="primary" block onClick={handleReconnect}>
-                Tap to reconnect
-              </Button>
-            </Banner>
-          ) : null}
-
-          {isLikelyBluetoothLabel(engineInfo.value.inputDeviceLabel ?? '') ? (
-            <Banner kind="warn" message="Bluetooth mic detected: use the phone or laptop mic for accurate pitch." />
-          ) : null}
+          <ReadoutCluster engine={engine} toleranceCents={CONFIG.tolerance.default} notation={notation} />
+          <LiveStatus readings={readings} features={features} />
+          <EngineIssue engine={engine} />
         </div>
 
         <div class="pl-live-body__canvas">
@@ -175,12 +182,10 @@ export function Live(): JSX.Element {
             targets={targets}
             targetOrigin={0}
             toleranceCents={CONFIG.tolerance.default}
-            options={{
-              notation: settings.value.notation,
-              reducedMotion: settings.value.reducedMotion === 'on',
-              showNoteNames: settings.value.showNoteNames,
-            }}
+            vibratoZone={zone}
+            options={viewOptions}
             onView={(v) => {
+              viewRef.current = v;
               activePitchView.value = v;
             }}
           />
@@ -198,12 +203,27 @@ export function Live(): JSX.Element {
       </div>
 
       <Sheet open={moreOpen} title="More" onClose={() => setMoreOpen(false)}>
+        <div class="pl-stack" data-testid="live-readouts">
+          <span class="pl-label">Readouts</span>
+          <div class="pl-list">
+            {PROGRESSIVE_READOUTS.map(({ id, title }) =>
+              isUnlocked(id) ? (
+                <ListRow key={id} title={title} value="On" />
+              ) : (
+                <div key={id} class="pl-row">
+                  <Locked compact title={title} hint={requirementHint(id)} />
+                </div>
+              ),
+            )}
+          </div>
+        </div>
+
         <div class="pl-stack">
           <span class="pl-label">Target note</span>
           <NotePicker
             value={targetMidi}
             defaultNear={lastSungMidiRef.current}
-            notation={settings.value.notation}
+            notation={notation}
             onSelect={setTargetMidi}
           />
           <Button variant="ghost" disabled={targetMidi === null} onClick={() => setTargetMidi(null)}>

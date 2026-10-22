@@ -1,1 +1,829 @@
-/* Wave 2 styles for the progress builder (docs/ARCHITECTURE.md "Wave 2" ownership). Tokens only; no new hues. */
+/* Wave 2 styles for the progress builder (docs/ARCHITECTURE.md "Wave 2" ownership). Tokens only; no new hues.
+   Dashboard (pl-dash-*), Daily workout set list (pl-set-*, pl-workout-*), Profiles (pl-profiles-*), Data & backup (pl-data-*),
+   and the few shared bits those screens need (pl-field, pl-danger-solid, pl-care-list). */
+
+/* ---------------------------------------------------------------- shared */
+
+/* A labelled text input: 17px text so iOS does not zoom the page when it takes focus (DESIGN.md §6). */
+.pl-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.pl-field__input {
+  width: 100%;
+  min-height: var(--target-min);
+  padding: 0 var(--sp-3);
+  border-radius: var(--radius-control);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: var(--text-hi);
+  font-family: var(--font-body);
+  font-size: 17px;
+}
+.pl-field__input::placeholder {
+  color: var(--text-lo);
+}
+.pl-field__input:disabled {
+  opacity: 0.6;
+}
+
+/* The final, irreversible confirm button of a destructive flow: solid alert with the page colour as ink (>= 4.5:1 in both themes). */
+.pl-btn.pl-danger-solid {
+  background: var(--alert);
+  border-color: var(--alert);
+  color: var(--bg-0);
+}
+.pl-btn.pl-danger-solid:disabled {
+  opacity: 0.45;
+}
+
+/* The parked file's Share and Download buttons (iPhone: the share sheet needs a fresh tap). */
+.pl-share-ready {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.pl-care-list {
+  list-style: disc;
+  padding-left: 1.2em;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.pl-credits > summary {
+  cursor: pointer;
+  min-height: var(--target-min);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  list-style: none;
+}
+.pl-credits > summary::-webkit-details-marker {
+  display: none;
+}
+.pl-credits__chev {
+  flex: none;
+  color: var(--text-lo);
+  transition: transform var(--dur-micro) var(--ease-standard);
+}
+.pl-credits[open] .pl-credits__chev {
+  transform: rotate(180deg);
+}
+
+/* ---------------------------------------------------------------- dashboard */
+
+.pl-dash-card {
+  gap: var(--sp-3);
+}
+.pl-dash-heading {
+  margin: 0;
+}
+
+/* Wide screens: two columns of cards that never split across the column break. */
+@media (min-width: 900px) {
+  .pl-page.pl-dash {
+    display: block;
+    max-width: 1040px;
+    column-count: 2;
+    column-gap: var(--sp-6);
+  }
+  .pl-dash > .pl-dash-card {
+    break-inside: avoid;
+    margin-bottom: var(--sp-4);
+  }
+}
+
+/* Momentum */
+.pl-dash-momentum__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-3);
+}
+.pl-dash-change {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Charts: inline SVG, drawn from the same data as the table view */
+.pl-dash-chart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.pl-dash-chart__view {
+  min-height: 112px;
+}
+.pl-dash-toggle {
+  align-self: flex-start;
+  margin-left: calc(var(--sp-2) * -1);
+  padding: 0 var(--sp-2);
+  color: var(--text-mid);
+}
+.pl-dash-bars,
+.pl-dash-range {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.pl-dash-baseline,
+.pl-dash-grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.pl-dash-bar--sung {
+  fill: var(--text-hi);
+}
+.pl-dash-bar--rest {
+  fill: none;
+  stroke: var(--text-lo);
+  stroke-width: 1;
+}
+.pl-dash-bar--none {
+  fill: var(--line);
+}
+.pl-dash-today {
+  fill: var(--tally);
+}
+.pl-dash-pbar--before {
+  fill: var(--text-lo);
+}
+.pl-dash-pbar--recent {
+  fill: var(--text-hi);
+}
+.pl-dash-pbar--none {
+  fill: var(--line);
+}
+.pl-dash-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-4);
+  margin-top: var(--sp-2);
+  font-size: 13px;
+  color: var(--text-mid);
+}
+.pl-dash-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pl-dash-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--sp-1);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-mid);
+}
+
+.pl-dash-table-wrap {
+  max-height: 264px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+}
+.pl-dash-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+.pl-dash-table th,
+.pl-dash-table td {
+  padding: 10px var(--sp-3);
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+.pl-dash-table tbody tr:last-child > * {
+  border-bottom: none;
+}
+.pl-dash-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-2);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-mid);
+}
+.pl-dash-table tbody th {
+  font-weight: 600;
+}
+.pl-dash-table td:last-child,
+.pl-dash-table thead th:last-child {
+  text-align: right;
+}
+
+/* Level map completion */
+.pl-dash-worlds {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.pl-dash-world {
+  --meter-fill: var(--accent, var(--tally));
+  width: calc(100% + var(--sp-4));
+  margin: 0 calc(var(--sp-2) * -1);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--sp-3) var(--sp-2);
+  min-height: var(--target-min);
+  border-radius: var(--radius-control);
+  text-align: left;
+}
+.pl-dash-world:active {
+  background: var(--bg-2);
+}
+.pl-dash-world__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.pl-dash-world__num {
+  min-width: 28px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--text-lo);
+}
+.pl-dash-world__name {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 22px;
+  line-height: 1.1;
+}
+.pl-dash-world__chev {
+  flex: none;
+  color: var(--text-lo);
+}
+.pl-dash-meter {
+  display: block;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--line);
+  overflow: hidden;
+}
+.pl-dash-meter__fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--meter-fill);
+}
+/* The world hues are bright (they are made for the dark theme): darken them on the light track so the bar keeps 3:1.
+   Foundations is the tally colour, which the light theme already deepens, so it is left as it is. */
+:root[data-theme='light'] .pl-dash-world:not([data-world='foundations']) {
+  --meter-fill: color-mix(in srgb, var(--accent, var(--tally)) 55%, #000);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) .pl-dash-world:not([data-world='foundations']) {
+    --meter-fill: color-mix(in srgb, var(--accent, var(--tally)) 55%, #000);
+  }
+}
+
+/* Skills */
+.pl-dash-skills {
+  display: flex;
+  flex-direction: column;
+}
+.pl-dash-skill {
+  border-top: 1px solid var(--line);
+}
+.pl-dash-skill:first-child {
+  border-top: none;
+}
+.pl-dash-skill__head {
+  width: 100%;
+  min-height: 64px;
+  padding: var(--sp-2) 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto 20px;
+  align-items: center;
+  column-gap: var(--sp-3);
+  text-align: left;
+}
+.pl-dash-skill__name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.pl-dash-skill__label {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 21px;
+  line-height: 1.1;
+}
+.pl-dash-skill__value {
+  min-width: 52px;
+  text-align: right;
+}
+.pl-dash-skill__chev {
+  color: var(--text-lo);
+  transition: transform var(--dur-micro) var(--ease-standard);
+}
+.pl-dash-skill__chev--open {
+  transform: rotate(180deg);
+}
+.pl-dash-skill__panel {
+  padding: 0 0 var(--sp-3);
+}
+.pl-dash-spark {
+  display: block;
+  flex: none;
+}
+.pl-dash-spark__line {
+  fill: none;
+  stroke: var(--text-hi);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.pl-dash-spark__dot {
+  fill: var(--tally);
+}
+.pl-dash-spark__empty {
+  stroke: var(--line);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 4;
+}
+@media (max-width: 400px) {
+  .pl-dash-spark {
+    width: 88px;
+    height: auto;
+  }
+}
+
+/* Range */
+.pl-dash-range-now {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-6);
+  margin: 0;
+}
+.pl-dash-range-now dd,
+.pl-dash-weeks dd {
+  margin: 0;
+}
+.pl-dash-tick {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--text-lo);
+  font-variant-numeric: tabular-nums;
+}
+.pl-dash-range__line {
+  fill: none;
+  stroke: var(--text-hi);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.pl-dash-range__dot {
+  fill: var(--text-hi);
+}
+.pl-dash-range__dot--now {
+  fill: var(--tally);
+}
+
+/* Personal bests */
+.pl-dash-bests {
+  display: flex;
+  flex-direction: column;
+}
+.pl-dash-best {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--line);
+}
+.pl-dash-best:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.pl-dash-best__head,
+.pl-dash-best__meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+.pl-dash-best__meta {
+  align-items: center;
+}
+.pl-dash-best__title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 21px;
+  line-height: 1.1;
+}
+
+/* Practice time */
+.pl-dash-weeks {
+  display: flex;
+  gap: var(--sp-6);
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------- daily workout: the set list */
+
+.pl-set {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pl-set > li {
+  position: relative;
+  padding-left: 56px;
+}
+/* The cable: one 2px line joining the entries, lit in amber down to where you are. */
+.pl-set > li::before {
+  content: '';
+  position: absolute;
+  left: 19px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--line);
+}
+.pl-set > li.pl-set__lit::before {
+  background: var(--tally);
+}
+.pl-set__stage {
+  display: flex;
+  align-items: flex-end;
+  min-height: 32px;
+  padding: var(--sp-1) 0 var(--sp-2);
+}
+.pl-set__stage--first::before {
+  display: none;
+}
+.pl-set__item {
+  min-height: 56px;
+  padding-bottom: var(--sp-6);
+}
+.pl-set__item::before {
+  top: 20px;
+}
+.pl-set__item--last {
+  padding-bottom: 0;
+}
+.pl-set__item--last::before {
+  display: none;
+}
+.pl-set__node {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--bg-0);
+  border: 2px solid var(--line);
+  color: var(--text-lo);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 17px;
+}
+.pl-set__item--done .pl-set__node {
+  background: var(--bg-2);
+  border-color: var(--tally);
+  color: var(--tally);
+}
+.pl-set__item--next .pl-set__node {
+  background: var(--tally-fill);
+  border-color: var(--tally-fill);
+  color: var(--tally-ink);
+}
+/* The tally light's slow breath: a ring whose opacity moves (never a box-shadow). Reduced motion freezes it at 0.55. */
+.pl-set__item--next .pl-set__node::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid var(--tally);
+  opacity: 0.55;
+  animation: pl-set-breathe 2s ease-in-out infinite;
+}
+@keyframes pl-set-breathe {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+.pl-set__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 40px;
+  padding-top: 1px;
+}
+.pl-set__title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 22px;
+  line-height: 1.1;
+}
+.pl-set-total {
+  margin-top: var(--sp-2);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line);
+  text-align: right;
+}
+
+/* The thumb-zone action bar of the workout screen: one primary button, 64px tall. */
+.pl-workout-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--z-bottombar);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-shrink: 0;
+  padding: var(--sp-3) var(--sp-4);
+  padding-bottom: calc(var(--sp-3) + env(safe-area-inset-bottom));
+  background: var(--bg-1);
+  border-top: 1px solid var(--line);
+}
+.pl-workout-bar > .pl-btn {
+  width: 100%;
+  max-width: 608px;
+}
+.pl-workout-bar > .pl-btn--primary {
+  min-height: var(--target-primary);
+  font-size: 18px;
+}
+.pl-workout-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
+  margin: 0;
+}
+.pl-workout-tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-4);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+}
+.pl-workout-tile dd {
+  margin: 0;
+}
+.pl-workout-skeleton {
+  height: 220px;
+  border-radius: var(--radius-card);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+}
+
+/* ---------------------------------------------------------------- profiles */
+
+.pl-profiles-item {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--line);
+}
+.pl-profiles-item:last-child {
+  border-bottom: none;
+}
+.pl-profiles-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-2) var(--sp-3) var(--sp-4);
+  text-align: left;
+}
+button.pl-profiles-main:active {
+  background: var(--bg-2);
+}
+button.pl-profiles-main:disabled {
+  opacity: 0.6;
+}
+.pl-profiles-item > .pl-icon-btn {
+  align-self: center;
+  margin-right: var(--sp-2);
+}
+.pl-profiles-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: var(--text-hi);
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+.pl-profiles-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.pl-profiles-name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 22px;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+.pl-profiles-check {
+  flex: none;
+  color: var(--tally);
+}
+.pl-profiles-spinner {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--text-mid);
+}
+.pl-profiles-form {
+  gap: var(--sp-3);
+}
+
+/* ---------------------------------------------------------------- data & backup */
+
+.pl-data-card {
+  gap: var(--sp-3);
+}
+.pl-data-card--danger {
+  border-color: color-mix(in srgb, var(--alert) 40%, var(--line));
+}
+.pl-data-status {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  font-weight: 600;
+  font-size: 17px;
+}
+.pl-data-status--warn {
+  color: var(--alert);
+}
+.pl-data-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3) var(--sp-4);
+  margin: 0;
+}
+.pl-data-stats dd {
+  margin: 0;
+}
+.pl-data-skeleton {
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  animation: pl-data-pulse 1.4s ease-in-out infinite;
+}
+.pl-data-skeleton--storage {
+  height: 188px;
+}
+.pl-data-skeleton--list {
+  height: 120px;
+}
+@keyframes pl-data-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.pl-data-report {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+}
+.pl-data-report--warn {
+  border-color: color-mix(in srgb, var(--off) 45%, var(--line));
+}
+.pl-data-report--error {
+  border-color: color-mix(in srgb, var(--alert) 45%, var(--line));
+}
+.pl-data-report__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  font-weight: 600;
+}
+.pl-data-report__head svg {
+  flex: none;
+}
+.pl-data-report__lines {
+  list-style: disc;
+  padding-left: 1.2em;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pl-data-report__details > summary {
+  cursor: pointer;
+  padding: var(--sp-3) 0;
+}
+.pl-data-report__details ul {
+  list-style: disc;
+  padding-left: 1.2em;
+}
+
+.pl-data-takes {
+  display: flex;
+  flex-direction: column;
+}
+.pl-data-take {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--line);
+}
+.pl-data-take:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.pl-data-take__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+.pl-data-take__title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 21px;
+  line-height: 1.1;
+}
+.pl-data-take__len {
+  font-weight: 600;
+  color: var(--text-mid);
+}
+.pl-data-take__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-3);
+}
+.pl-data-take__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.pl-data-take__actions > .pl-btn {
+  flex: 1 1 auto;
+  padding: 0 var(--sp-3);
+}
+/* The delete trigger is an icon-only 48px button at the end of the row (a confirm step follows, so a tap cannot delete). */
+.pl-data-take__actions > .pl-data-take__trash {
+  flex: 0 0 var(--target-min);
+  width: var(--target-min);
+  margin-left: auto;
+  padding: 0;
+}
+.pl-data-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--radius-pill);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-mid);
+}
+.pl-data-chip--off {
+  color: var(--text-lo);
+}

@@ -1,1 +1,703 @@
-/* Wave 2 styles for the practice builder (docs/ARCHITECTURE.md "Wave 2" ownership). Tokens only; no new hues. */
+/**
+ * Wave 2 styles for the practice screens (docs/ARCHITECTURE.md "Wave 2" ownership): Level, Sing, Report, Vibrato meter and
+ * the Live retrofit, plus the components in src/ui/practice. Tokens only; no new hues and no new fonts (docs/DESIGN.md).
+ * Only transform and opacity animate. The global reduced-motion rule in base.css shortens every duration; the delayed
+ * reveals below also drop their delay.
+ */
+
+/* ---------------------------------------------------------------- shared: chips */
+
+/* A chip is information, not a control: 32 px tall, no pressed state. */
+.pl-pchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--radius-pill);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: var(--text-hi);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.2;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.pl-pchip svg {
+  flex: none;
+}
+.pl-pchip--neutral {
+  color: var(--text-mid);
+}
+.pl-pchip--alert {
+  color: var(--alert);
+  border-color: color-mix(in srgb, var(--alert) 45%, var(--line));
+}
+.pl-pchip--stale {
+  opacity: 0.55;
+}
+
+/* ---------------------------------------------------------------- practice bar (Level, Sing, Vibrato meter) */
+
+/* On a wide screen the action rows follow the reading column (640 px with 16 px gutters) instead of pinning to the window edges. */
+.pl-level > .pl-bottombar,
+.pl-report > .pl-bottombar {
+  padding-left: max(var(--sp-4), calc(50% - 304px));
+  padding-right: max(var(--sp-4), calc(50% - 304px));
+}
+
+/* ---------------------------------------------------------------- Level */
+
+.pl-level__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding-left: var(--sp-4);
+  border-left: 4px solid var(--level-accent, var(--tally));
+}
+.pl-level__label-soft {
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-weight: 500;
+  margin-left: 0.4em;
+}
+/* The Boss Recital's stage: a fixed spotlight from the top centre, no animation. */
+.pl-level__head--boss {
+  border-left: 0;
+  padding: var(--sp-6) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  text-align: center;
+  align-items: center;
+  background: radial-gradient(ellipse at 50% 0%, var(--bg-2) 0%, var(--bg-0) 72%);
+}
+.pl-level__chain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+  text-align: left;
+}
+.pl-level__chain li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+}
+.pl-level__step {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 22px;
+  line-height: 1;
+  min-width: 24px;
+  text-align: right;
+  color: var(--text-hi);
+}
+.pl-level__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.pl-level__pass {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.pl-level__pass li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 28px;
+}
+.pl-level__pass svg {
+  flex: none;
+  color: var(--text-mid);
+}
+.pl-level__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.pl-level__best-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.pl-level__best-row .pl-readout-l {
+  min-width: 3ch;
+}
+.pl-level__records {
+  display: flex;
+  flex-direction: column;
+}
+.pl-level__records li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--sp-3);
+  min-height: 36px;
+  border-bottom: 1px solid var(--line);
+}
+.pl-level__records li:last-child {
+  border-bottom: 0;
+}
+
+/* ---------------------------------------------------------------- Sing: the layers over the canvas */
+
+.pl-sing__preview {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+.pl-sing__canvas {
+  transition: opacity var(--dur-micro) var(--ease-standard);
+}
+.pl-sing--scoring .pl-sing__canvas {
+  opacity: 0.6;
+}
+
+.pl-replay--preview {
+  width: 100%;
+  height: 100%;
+}
+.pl-replay--preview canvas {
+  display: block;
+}
+
+/* The take's progress: a 2 px amber line across the top of the canvas. */
+.pl-hairline {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 2;
+  pointer-events: none;
+}
+.pl-hairline__bar {
+  height: 100%;
+  background: var(--tally);
+  transform: scaleX(0);
+  transform-origin: left center;
+  opacity: 0;
+  will-change: transform;
+}
+
+/* The cue pill (left) and the context chip (right) share one row along the top of the canvas, so a long cue and a long chip
+   squeeze each other instead of overlapping. */
+.pl-sing__top {
+  position: absolute;
+  top: var(--sp-3);
+  /* Clear of the lane names down the left edge. */
+  left: calc(var(--sp-3) + 32px);
+  right: var(--sp-3);
+  z-index: 3;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  pointer-events: none;
+}
+.pl-cue-pill {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 4px var(--sp-3);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg-1) 88%, transparent);
+  color: var(--text-hi);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+/* A longer cue reads as a sentence: sentence case, up to two lines. */
+.pl-cue-pill--sentence {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 14px;
+  border-radius: 12px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.pl-context-chip {
+  flex: none;
+  margin-left: auto;
+  background: color-mix(in srgb, var(--bg-1) 88%, transparent);
+}
+
+.pl-count-in {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.pl-count-in__panel {
+  padding: var(--sp-3) var(--sp-6);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg-0) 76%, transparent);
+}
+.pl-count-in__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+}
+.pl-count-in__beat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  color: var(--text-mid);
+}
+.pl-count-in__beat--gone {
+  color: var(--text-lo);
+}
+.pl-count-in__beat--now .pl-readout-xl {
+  color: var(--tally);
+  display: inline-block;
+  animation: pl-beat var(--dur-micro) var(--ease-standard) both;
+}
+.pl-count-in__dot {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 40px;
+  color: var(--text-lo);
+}
+@keyframes pl-beat {
+  from {
+    transform: scale(0.82);
+    opacity: 0.35;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* ---------------------------------------------------------------- Report */
+
+.pl-verdict {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.pl-verdict__line {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--text-mid);
+}
+.pl-verdict--passed .pl-verdict__line {
+  color: var(--on);
+}
+.pl-verdict__line svg {
+  flex: none;
+}
+.pl-verdict__ladder {
+  color: var(--text-hi);
+  font-weight: 600;
+}
+
+/* The one celebration: the 160 px ring, then three tally lights in sequence. */
+.pl-reveal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-2) 0;
+}
+.pl-reveal--accent .pl-score-ring {
+  color: var(--tally);
+}
+.pl-reveal--neutral .pl-score-ring {
+  color: var(--text-mid);
+}
+.pl-reveal--muted .pl-score-ring {
+  color: var(--text-lo);
+}
+.pl-reveal--muted .pl-readout-l {
+  color: var(--text-mid);
+}
+.pl-reveal__tally {
+  gap: 10px;
+}
+.pl-reveal__tally .pl-tally-lights__dot {
+  width: 14px;
+  height: 14px;
+}
+.pl-reveal__tally .pl-tally-lights__dot--lit {
+  animation: pl-light-on 220ms var(--ease-standard) both;
+}
+@keyframes pl-light-on {
+  from {
+    transform: scale(0.55);
+    opacity: 0.3;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.pl-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2);
+}
+.pl-tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--line);
+  background: var(--bg-1);
+}
+.pl-tile--met {
+  border-color: color-mix(in srgb, var(--on) 40%, var(--line));
+}
+.pl-tile__value {
+  font-size: 22px;
+}
+.pl-tile__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  font-size: 13px;
+  color: var(--text-mid);
+}
+.pl-tile__mark {
+  display: inline-flex;
+  color: var(--text-mid);
+}
+.pl-tile--met .pl-tile__mark {
+  color: var(--on);
+}
+
+/* The replay: lanes and targets on a canvas, the note names beside it as text. */
+.pl-replay__frame {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  background: var(--bg-0);
+}
+.pl-replay__gutter {
+  position: relative;
+  flex: none;
+  background: var(--lane-natural);
+  border-right: 1px solid var(--line);
+}
+.pl-replay__note {
+  position: absolute;
+  left: 6px;
+  height: 16px;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-mid);
+  font-variant-numeric: tabular-nums;
+}
+.pl-replay__note--c {
+  color: var(--text-hi);
+}
+.pl-replay__scroll {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+.pl-replay__scroll canvas {
+  display: block;
+}
+.pl-replay__legend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding-top: var(--sp-2);
+}
+.pl-replay__keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--sp-4);
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--text-mid);
+}
+.pl-replay__keys li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pl-replay__glyph {
+  flex: none;
+}
+.pl-replay__swatch {
+  display: inline-block;
+  width: 18px;
+  height: 3px;
+  border-radius: 2px;
+}
+.pl-replay__swatch--on {
+  background: var(--on);
+}
+.pl-replay__swatch--off {
+  background: var(--off);
+}
+
+.pl-unlocked {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius-card);
+  border: 1px solid color-mix(in srgb, var(--tally) 40%, var(--line));
+  background: var(--bg-1);
+  animation: pl-fade-in 260ms var(--ease-standard) 900ms both;
+}
+.pl-unlocked__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.pl-unlocked__head svg {
+  color: var(--tally);
+}
+.pl-unlocked__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.pl-unlocked__item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+}
+.pl-unlocked__kind {
+  flex: none;
+  min-width: 96px;
+}
+.pl-unlocked__kind--again {
+  opacity: 0;
+}
+.pl-unlocked__text {
+  font-size: 15px;
+  line-height: 1.4;
+}
+@keyframes pl-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pl-unlocked {
+    animation-delay: 0s !important;
+  }
+}
+:root[data-reduced-motion='on'] .pl-unlocked {
+  animation-delay: 0s !important;
+}
+
+.pl-rangecard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--line);
+  background: var(--bg-1);
+}
+.pl-rangecard__lines {
+  display: flex;
+  gap: var(--sp-6);
+  margin: 0;
+}
+.pl-rangecard__lines dt,
+.pl-rangecard__lines dd {
+  margin: 0;
+}
+.pl-rangecard__keys {
+  width: 100%;
+  height: 44px;
+}
+.pl-rangecard__key {
+  fill: var(--bg-2);
+  stroke: var(--line);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.pl-rangecard__key--black {
+  fill: var(--bg-0);
+}
+.pl-rangecard__key--extended {
+  fill: color-mix(in srgb, var(--on) 22%, var(--bg-2));
+}
+.pl-rangecard__key--black.pl-rangecard__key--extended {
+  fill: color-mix(in srgb, var(--on) 22%, var(--bg-0));
+}
+.pl-rangecard__key--comfort {
+  fill: color-mix(in srgb, var(--on) 55%, var(--bg-2));
+}
+.pl-rangecard__key--black.pl-rangecard__key--comfort {
+  fill: color-mix(in srgb, var(--on) 55%, var(--bg-0));
+}
+.pl-rangecard__bar--extended {
+  fill: var(--text-mid);
+}
+.pl-rangecard__bar--comfort {
+  fill: var(--on);
+}
+
+.pl-playback {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.pl-playback__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.pl-playback__row .pl-btn {
+  flex: 1 1 140px;
+}
+.pl-playback__error {
+  color: var(--alert);
+}
+.pl-report__no-audio {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.pl-report__no-audio svg {
+  flex: none;
+}
+
+/* The report's next steps: one amber primary on top, the rest under it. */
+.pl-bottombar.pl-report-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-2);
+}
+.pl-report-bar__primary {
+  min-height: var(--target-primary);
+  font-size: 18px;
+}
+.pl-report-bar__others {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: var(--sp-2);
+}
+
+/* ---------------------------------------------------------------- Vibrato meter and Live status */
+
+.pl-meter__cluster {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-2) 0;
+  transition: opacity var(--dur-micro) var(--ease-standard);
+}
+.pl-meter__cluster--stale .pl-meter__readouts {
+  opacity: 0.55;
+}
+.pl-meter__readouts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-2);
+  transition: opacity var(--dur-micro) var(--ease-standard);
+}
+.pl-meter__readout {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--line);
+  background: var(--bg-1);
+}
+.pl-meter__readout[data-state='in'] {
+  border-color: color-mix(in srgb, var(--on) 45%, var(--line));
+}
+.pl-meter__value {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-1);
+  min-height: 44px;
+}
+.pl-meter__value .pl-readout-l {
+  min-width: 3ch;
+}
+.pl-meter__unit {
+  font-size: 13px;
+  color: var(--text-mid);
+}
+.pl-meter__zone {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-1);
+  min-height: 2.9em;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text-mid);
+}
+.pl-meter__range {
+  white-space: nowrap;
+}
+.pl-meter__glyph {
+  display: inline-flex;
+  flex: none;
+  color: var(--text-lo);
+}
+.pl-meter__glyph--in {
+  color: var(--on);
+}
+.pl-meter__glyph--above,
+.pl-meter__glyph--below {
+  color: var(--off);
+}
+.pl-meter__flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  min-height: 32px;
+}
+/* Three readouts across a phone: "±120" must still fit. */
+@media (max-width: 419px) {
+  .pl-meter__value .pl-readout-l {
+    font-size: 38px;
+  }
+}
+
+.pl-live-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  min-height: 32px;
+}
+.pl-live-status__ok {
+  color: var(--on);
+}

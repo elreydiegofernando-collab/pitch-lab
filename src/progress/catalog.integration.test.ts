@@ -183,7 +183,9 @@ describe('a full playthrough of the real game', () => {
 
   it('says how to unlock a locked tile in the catalog\'s own words', () => {
     const s = snap([]);
-    expect(levelRequirementHint('foundations.03', s, WORLDS)).toBe('Pass Range finder to unlock.');
+    expect(levelRequirementHint('foundations.02', s, WORLDS)).toBe('Pass Range finder to unlock.');
+    expect(levelRequirementHint('foundations.03', s, WORLDS)).toBe('Pass Pitch match to unlock.');
+    expect(levelRequirementHint('foundations.boss', s, WORLDS)).toBe('Pass Legato lines to unlock.');
     expect(levelRequirementHint('vibrato.01', s, WORLDS)).toBe('Pass the Foundations Boss Recital to unlock Vibrato.');
     expect(worldRequirementHint('inflections', s, WORLDS)).toBe('Pass the Vibrato Boss Recital to unlock Inflections.');
     expect(levelRequirementHint('foundations.01', s, WORLDS)).toBeNull();

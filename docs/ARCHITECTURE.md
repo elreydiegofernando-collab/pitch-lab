@@ -90,6 +90,7 @@ Cross-module imports go only through the contract types plus each module's docum
 - Signals: synthesized in `src/dsp/test-signals.ts` (sine, harmonic-rich voice-like tones, vibrato, glides, cracks, noise, silence) at 44.1 and 48 kHz.
 - E2E (`npm run e2e`): build, `vite preview`, then the installed Chrome launched by playwright-core with `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream --use-file-for-fake-audio-capture=<synth.wav>`. It asserts the detected pitch, frame rate, and offline relaunch.
 - E2E, Wave 1 engines (`e2e/wave1-browser.e2e.test.ts`): nothing in the app imports the Wave 1 engines until the Wave 2 runner exists, so the production build cannot reach them. This test bundles them with Vite into `e2e/.artifacts/wave1/`, serves the bundle to the installed Chrome and runs `e2e/browser/wave1-checks.js` in the page: storage on real IndexedDB and OPFS (relaunch, delete, wipe, backup round trip) and every exercise's Listen demo built with the real synth into a real `OfflineAudioContext`, read back through the production framer and detector. The Node unit tests use fake-indexeddb, a fake OPFS and a hand-rolled Web Audio evaluator, so this is the check against the real APIs. Once the runner exists, drive the real UI instead and keep this as the engine-level guard.
+- E2E, Wave 2 (`e2e/wave2-take.e2e.test.ts`): the real UI of the production build, fed a fake mic that holds A2 and B3: the first-run sheets, Home's Continue, the first take of a launch on the Sing screen (its audio must be captured), the report with the saved range and what opened, Back to the level, and a locked deep link refused with its requirement.
 - Manual: docs/MANUAL-TEST-CHECKLIST.md on a real iPhone, **as an installed home-screen app** (standalone mode has its own bugs).
 
 ## Phases 2–7 module map
@@ -145,7 +146,7 @@ Wave 2 rules (on top of the Wave 1 integration rules and must-dos below):
   - The Sing → Report → Retry chain uses `replace` so Back returns to the level.
   - The session installs the guard after boot, and calls `revalidate()` (or `resetTo('home')`) after a profile switch, a backup import or Delete all data.
 - **Session** (`src/state/session.ts`): the single source of the active profile, its log and its snapshot.
-  - Screens read the signals and never call `getStorage()` themselves, except the Data screen (backup, takes, usage) and the song builder (song records), which go through `appStorage.value`.
+  - Screens read the signals and never call `getStorage()` themselves. A few read the open storage through `appStorage.value`: the Data screen (backup, takes, usage), the song builder (song records), Diagnostics (`usage()`: the fallback reason and binary backend) and Profiles (the other singers' logs, for their "Up next" line).
   - Write an attempt only through `recordAttempt`, which recomputes the snapshot.
   - Gate any feature in a component with `isUnlocked(id)` (it reads `snapshot.value`).
 - **Runner** (`src/runtime/runner.ts`): one `createRunner(target)` per Sing screen visit, disposed on unmount.
@@ -153,6 +154,7 @@ Wave 2 rules (on top of the Wave 1 integration rules and must-dos below):
   - The report reads `lastOutcome`, and its buttons come from `afterTakeActions(outcome)`, opened with `replace`.
   - Workout takes go through the same runner (`{ kind: 'workout', itemIndex }`), auditions too (`{ kind: 'audition', worldId }`: the runner sings that world's NEXT test).
 - **Live readouts are progressive**: `live.cracks`, `live.onset` and `live.vibrato` gate what the Live screen draws, and `setting.vibratoStyle` gates the setting.
+- **The mic runs only on the screen that turned it on.** The runner (its own takes), the song session (its own takes) and Live, the Vibrato meter, Setup and Diagnostics (`useReleaseMicOnLeave`, src/ui/practice/use-mic-release.ts) stop the mic they started when they are left, so the recording indicator goes off and `stop()` puts the audio session back to playback for the next screen. The engine reports `'running'` only once the mic graph and its worklet are wired, `start()` is a no-op while it runs, and `stop()` abandons a start still in flight.
 - **Audio stays on the device**: take audio is kept only when `settings.keepTakeAudio` is on, played back locally, and leaves the device only through an explicit WAV export on the Data screen.
 - **Styles**: each builder writes its CSS only in its own stylesheet (all four are imported by `main.tsx`) and uses the tokens in `tokens.css`. No new hues and no new fonts.
 

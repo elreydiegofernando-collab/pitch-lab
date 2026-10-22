@@ -4,10 +4,10 @@
  * Sheet's own Escape handler must stop the keydown from reaching a
  * window-level listener (app.tsx binds router.ts's bindDesktopBackKey there),
  * or closing a sheet with Esc also pops the app's route stack. See the
- * comment on the Escape branch in Sheet.tsx.
+ * comment on the Escape branch in Sheet.tsx. Also: where focus lands on open.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { render } from 'preact';
+import { render, type ComponentChildren } from 'preact';
 import { Sheet } from './Sheet';
 
 /** Preact's useEffect runs after-paint (rAF + a trailing setTimeout), so poll instead of assuming it already ran. */
@@ -49,5 +49,47 @@ describe('Sheet: Escape key', () => {
       render(null, container);
       container.remove();
     }
+  });
+});
+
+describe('Sheet: focus on open', () => {
+  async function openWith(children: ComponentChildren, initialFocus?: 'first' | 'sheet'): Promise<{ sheet: HTMLElement; close: () => void }> {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    render(
+      <Sheet open title="Voice care" onClose={() => {}} initialFocus={initialFocus}>
+        {children}
+      </Sheet>,
+      container,
+    );
+    const sheet = container.querySelector('[role="dialog"]') as HTMLElement;
+    await waitUntil(() => sheet.contains(document.activeElement));
+    return {
+      sheet,
+      close: () => {
+        render(null, container);
+        container.remove();
+      },
+    };
+  }
+
+  it('focuses the first control (the close button) by default', async () => {
+    const { sheet, close } = await openWith(<button type="button">Inside</button>);
+    expect(document.activeElement).toBe(sheet.querySelector('button[aria-label="Close"]'));
+    close();
+  });
+
+  it('focuses the sheet itself for a sheet to read, and Shift+Tab from there stays inside', async () => {
+    const { sheet, close } = await openWith(
+      <>
+        <p>Warm up first.</p>
+        <button type="button">Got it</button>
+      </>,
+      'sheet',
+    );
+    expect(document.activeElement).toBe(sheet);
+    sheet.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }));
+    expect(document.activeElement?.textContent).toBe('Got it');
+    close();
   });
 });

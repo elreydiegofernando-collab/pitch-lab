@@ -52,6 +52,21 @@ export function xToT(x: number, tNow: number, axis: TimeAxis): number {
   return rightWidth > 0 ? tNow + ((x - nowX) / rightWidth) * axis.futureSeconds : tNow;
 }
 
+/** A lane this tall (px) has room for its 13 px note name; thinner lanes are labelled only every few semitones. */
+export const FULL_LABEL_LANE_PX = 14;
+
+/**
+ * Does the lane of `midi` carry its note name when each semitone lane is `lanePx` tall? Every lane when there is
+ * room; on a short canvas only C, E and G (labels at least three lanes apart); on a very short one only C, the
+ * octave lines. The names never overlap, however short the canvas.
+ */
+export function showsLaneLabel(midi: number, lanePx: number): boolean {
+  if (lanePx >= FULL_LABEL_LANE_PX) return true;
+  const pitchClass = ((midi % 12) + 12) % 12;
+  if (lanePx * 3 >= FULL_LABEL_LANE_PX) return pitchClass === 0 || pitchClass === 4 || pitchClass === 7;
+  return pitchClass === 0;
+}
+
 /** One semitone lane of the piano-roll grid (static layer). */
 export interface Lane {
   /** Integer MIDI note this lane represents. */

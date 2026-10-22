@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
-/** Smoke render of Settings with a mocked engine/synth — no real audio graph or IndexedDB needed. */
-import { describe, expect, it, vi } from 'vitest';
+/** Settings with a mocked engine/synth — no real audio graph or IndexedDB needed — and the real unlock registry. */
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act } from 'preact/test-utils';
 import { render } from 'preact';
 import type { AudioEngine, EngineInfo } from '../../audio/engine-types';
 import type { ReferenceSynth } from '../../audio/synth-types';
@@ -77,22 +78,126 @@ vi.mock('../../storage/kv', () => ({ openKV: async () => createFakeKV() }));
 // Static imports are fine: vi.mock() above is hoisted above all imports by
 // Vitest, so Settings.tsx and the real modules it pulls in (state/audio.ts,
 // state/engine-store.ts, state/settings.ts) resolve against the mocks.
-import { settingsReady } from '../../state/settings';
+import { resetRouterForTests, route, routeOf } from '../../router';
+import { activeProfile, snapshot } from '../../state/session';
+import { settings } from '../../state/settings';
+import { DEFAULT_SETTINGS } from '../../state/settings-types';
+import { passWorld, profileRecord, snapshotOf } from '../progress/test-fixtures';
 import { Settings } from './Settings';
+
+let container: HTMLElement;
+
+async function mount(): Promise<void> {
+  container = document.createElement('div');
+  document.body.appendChild(container);
+  await act(() => {
+    render(<Settings />, container);
+  });
+}
+
+const text = (): string => container.textContent ?? '';
+const vibratoStyleControl = (): Element | null => container.querySelector('[role="radiogroup"][aria-label="Vibrato style"]');
+const toggle = (label: string): HTMLButtonElement => container.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${label}"]`)!;
+
+beforeEach(() => {
+  settings.value = { ...DEFAULT_SETTINGS };
+  snapshot.value = snapshotOf([]);
+  activeProfile.value = profileRecord({ id: 'p1', name: 'Daniel' });
+  resetRouterForTests([routeOf('home'), routeOf('settings')]);
+});
+
+afterEach(async () => {
+  await act(() => {
+    render(null, container);
+  });
+  container.remove();
+  snapshot.value = snapshotOf([]);
+  activeProfile.value = null;
+});
 
 describe('Settings screen (smoke)', () => {
   it('renders the root and every settings section', async () => {
-    await settingsReady;
-    const container = document.createElement('div');
-    render(<Settings />, container);
+    await mount();
 
     expect(container.querySelector('[data-testid="settings-screen"]')).not.toBeNull();
-    expect(container.textContent).toContain('Vibrato style');
-    expect(container.textContent).toContain('Pitch detector');
-    expect(container.textContent).toContain('Reference sound');
-    expect(container.textContent).toContain('Notation');
-    expect(container.textContent).toContain('Theme');
-    expect(container.textContent).toContain('Reduced motion');
-    expect(container.textContent).toContain('Note names');
+    expect(text()).toContain('Vibrato style');
+    expect(text()).toContain('Pitch detector');
+    expect(text()).toContain('Reference sound');
+    expect(text()).toContain('Notation');
+    expect(text()).toContain('Theme');
+    expect(text()).toContain('Reduced motion');
+    expect(text()).toContain('Note names');
+    expect(text()).toContain('Keep take audio');
+  });
+});
+
+describe('Settings: the vibrato style is earned', () => {
+  it('is hidden until the Vibrato world is unlocked: a locked line with its requirement, and no control', async () => {
+    await mount();
+    expect(vibratoStyleControl()).toBeNull();
+    expect(text()).toContain('Pass the Foundations Boss Recital to choose a vibrato style.');
+    expect(container.querySelector('.pl-locked')).not.toBeNull();
+    // Nothing about the zones it would set leaks out either.
+    expect(text()).not.toContain('Pop / R&B');
+    expect(text()).not.toContain('Classical');
+  });
+
+  it('appears, working, once the Foundations Boss Recital has been passed', async () => {
+    snapshot.value = snapshotOf(passWorld('foundations'));
+    await mount();
+    expect(vibratoStyleControl()).not.toBeNull();
+    expect(container.querySelector('.pl-locked')).toBeNull();
+    expect(text()).toContain('5-7 Hz');
+    const classical = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="radio"]')).find((b) => b.textContent === 'Classical')!;
+    await act(() => {
+      classical.click();
+    });
+    expect(settings.value.vibratoStyle).toBe('classical');
+  });
+
+  it('stays hidden after only part of Foundations', async () => {
+    snapshot.value = snapshotOf(passWorld('foundations', 'foundations.09'));
+    await mount();
+    expect(vibratoStyleControl()).toBeNull();
+  });
+});
+
+describe('Settings: take audio and its privacy line', () => {
+  it('has a Keep take audio toggle, on by default, that changes the setting', async () => {
+    await mount();
+    expect(toggle('Keep take audio').getAttribute('aria-checked')).toBe('true');
+    await act(() => {
+      toggle('Keep take audio').click();
+    });
+    expect(settings.value.keepTakeAudio).toBe(false);
+    expect(toggle('Keep take audio').getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('says plainly that audio never leaves the device except by an export', async () => {
+    await mount();
+    const privacy = container.querySelector('[data-testid="audio-privacy"]')!.textContent ?? '';
+    expect(privacy).toContain('never leaves this device');
+    expect(privacy).toContain('Export WAV');
+  });
+});
+
+describe('Settings: doors to Profiles and Data & backup', () => {
+  it('opens Profiles, showing who is singing', async () => {
+    await mount();
+    const row = Array.from(container.querySelectorAll<HTMLButtonElement>('button.pl-row')).find((b) => b.textContent?.includes('Profiles'))!;
+    expect(row.textContent).toContain('Daniel');
+    await act(() => {
+      row.click();
+    });
+    expect(route.value.name).toBe('profiles');
+  });
+
+  it('opens Data & backup', async () => {
+    await mount();
+    const row = Array.from(container.querySelectorAll<HTMLButtonElement>('button.pl-row')).find((b) => b.textContent?.includes('Data & backup'))!;
+    await act(() => {
+      row.click();
+    });
+    expect(route.value.name).toBe('data');
   });
 });

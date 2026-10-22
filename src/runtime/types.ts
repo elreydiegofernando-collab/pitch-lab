@@ -68,15 +68,15 @@ export interface PreparedRun {
   realized: RealizedExercise;
   /** The tempo of this take: the current rung of a Runs tempo ladder, else def.tempoBpm. */
   bpm: number;
-  /** A tempo ladder's rungs (slowest first) and this take's rung index; null without a ladder. */
+  /** A tempo ladder's rungs (slowest first) and this take's rung index (0-based); null without a ladder. */
   ladder: { rungs: readonly number[]; index: number } | null;
   /** The pass lines to show before singing ("Pass: 70% in tune, settle < 150 ms"): exercises/evaluate.ts passRequirements. */
   passLines: PassLine[];
   /** True when no range is saved yet and the material uses the voice type's default range. */
   usingDefaultRange: boolean;
-  /** Audition only: this test's place in the run, and the level titles it unlocks (auditionSpans). */
+  /** Audition only: this test's place in the run (index 0-based), and the level titles it unlocks (auditionSpans). */
   audition: { index: number; count: number; unlocksFirst: string; unlocksLast: string } | null;
-  /** Workout only: the item being sung, which take of it this is (1-based), and where it sits in the workout. */
+  /** Workout only: the item being sung, which take of it this is (1-based), and where it sits in the workout (itemIndex 0-based). */
   workout: { item: WorkoutItem; itemIndex: number; itemCount: number; take: number } | null;
 }
 
@@ -100,7 +100,11 @@ export interface TakeOutcome {
   /** Take-relative, latency-compensated track, plus the audio when the profile keeps take audio. */
   take: TakeResult;
   analysis: TakeAnalysis;
-  /** evaluate(def, analysis.metrics, analysis): a folded realization is `notJudged: 'folded'` and never passes. */
+  /**
+   * evaluate(def, analysis.metrics, analysis): a folded realization is `notJudged: 'folded'` and never passes. It is the
+   * pass rule at the tempo SUNG, so a lower rung of a tempo ladder can pass it while the level is not passed: the level
+   * verdict (and the tally) is `attempt.passed` / `attempt.mastery`.
+   */
   evaluation: Evaluation;
   /** 2-4 report tiles: exercises/evaluate.ts reportTiles. */
   tiles: ReportTile[];
@@ -110,6 +114,10 @@ export interface TakeOutcome {
   attempt: AttemptRecord;
   /** The saved take (pitch track, plus audio when kept); null when the save failed (`saveError` says why). */
   savedTake: TakeRecord | null;
+  /**
+   * Why the recording, or (a passed Range finder) the range, was not saved; null when both were. The attempt itself is
+   * written either way: the take counts, and `after` and `unlocked` are real.
+   */
   saveError: string | null;
   /** Ladder: the bpm of the next take (nextTempo); null without a ladder. */
   nextBpm: number | null;
@@ -123,7 +131,7 @@ export interface TakeOutcome {
 
 export interface RunError {
   code:
-    | 'locked' //            the target is not openable for this profile (fail closed)
+    | 'locked' //            the target is not openable for this profile (fail closed), or an audition has nothing left to unlock
     | 'unknown' //           no such level, exercise, audition test or workout item
     | 'mic' //               permission denied, no input, or the engine failed to start (EngineError has the detail)
     | 'interrupted' //       a call, Siri or a route change stopped the take; nothing was written
@@ -158,9 +166,9 @@ export interface ExerciseRunner {
   /** Play (or stop) the Listen demo. Call straight from the click handler: the iOS audio rules need the gesture. */
   listen(): void;
   /**
-   * Start a take: the engine starts inside the gesture, then the count-in, the take (until the material ends plus a
-   * short tail), then analyze, judge, write the attempt, save the take and recompute progress. Call straight from the
-   * click handler. On 'done', `outcome` is set and lastOutcome (runner.ts) holds it for the report.
+   * Start a take: a playing Listen demo stops, the engine starts inside the gesture, then the count-in, the take (until
+   * the material ends plus a short tail), then analyze, judge, write the attempt, save the take and recompute progress.
+   * Call straight from the click handler. On 'done', `outcome` is set and lastOutcome (runner.ts) holds it for the report.
    */
   sing(): void;
   /** During the count-in: cancel (nothing written). While singing: end the take now and judge what was sung. */

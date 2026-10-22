@@ -1,5 +1,35 @@
 import { describe, expect, it } from 'vitest';
-import { computeLanes, decideAutoRange, midiToY, tToX, updateLanes, xToT, yToMidi, type Lane } from './geometry';
+import {
+  FULL_LABEL_LANE_PX,
+  computeLanes,
+  decideAutoRange,
+  midiToY,
+  showsLaneLabel,
+  tToX,
+  updateLanes,
+  xToT,
+  yToMidi,
+  type Lane,
+} from './geometry';
+
+describe('showsLaneLabel', () => {
+  const labelled = (lanePx: number): number[] => Array.from({ length: 25 }, (_, i) => 48 + i).filter((m) => showsLaneLabel(m, lanePx));
+
+  it('names every lane when the lanes are tall enough for a 13 px label', () => {
+    expect(labelled(FULL_LABEL_LANE_PX)).toHaveLength(25);
+    expect(labelled(28)).toHaveLength(25);
+  });
+
+  it('names only C, E and G on a short canvas, so no two names are closer than three lanes', () => {
+    expect(labelled(8)).toEqual([48, 52, 55, 60, 64, 67, 72]);
+    const names = labelled(5);
+    for (let i = 1; i < names.length; i++) expect((names[i] - names[i - 1]) * 5).toBeGreaterThanOrEqual(FULL_LABEL_LANE_PX);
+  });
+
+  it('names only the Cs on a very short canvas', () => {
+    expect(labelled(3)).toEqual([48, 60, 72]);
+  });
+});
 
 describe('midi <-> y', () => {
   it('higher pitch is nearer the top (smaller y)', () => {

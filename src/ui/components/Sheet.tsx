@@ -1,4 +1,9 @@
-/** Sheet: a focus-trapped bottom sheet. Esc and the scrim close it; focus returns to the opener on close. */
+/**
+ * Sheet: a focus-trapped bottom sheet. Esc and the scrim close it; focus returns to the opener on close. On open, focus
+ * goes to the first control, or with `initialFocus="sheet"` to the sheet itself (a sheet to read, like the voice-care
+ * note: a screen reader starts at its title, Tab reaches its controls, and no control is ringed before it is chosen).
+ * Moving focus in never scrolls the page behind the sheet.
+ */
 import { useEffect, useRef } from 'preact/hooks';
 import type { ComponentChildren, JSX } from 'preact';
 import { X } from 'lucide-preact';
@@ -9,6 +14,8 @@ export interface SheetProps {
   onClose: () => void;
   children?: ComponentChildren;
   class?: string;
+  /** Where focus goes on open: the first control (default) or the sheet itself. */
+  initialFocus?: 'first' | 'sheet';
 }
 
 const FOCUSABLE_SELECTOR =
@@ -19,7 +26,7 @@ function focusableIn(container: HTMLElement): HTMLElement[] {
 }
 
 export function Sheet(props: SheetProps): JSX.Element | null {
-  const { open, title, onClose, children, class: className } = props;
+  const { open, title, onClose, children, class: className, initialFocus = 'first' } = props;
   const sheetRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
@@ -27,8 +34,9 @@ export function Sheet(props: SheetProps): JSX.Element | null {
     if (!open) return undefined;
     previouslyFocused.current = document.activeElement as HTMLElement | null;
     const container = sheetRef.current;
-    const first = container ? focusableIn(container)[0] : undefined;
-    (first ?? container)?.focus();
+    const first = container && initialFocus === 'first' ? focusableIn(container)[0] : undefined;
+    // The sheet is still rising when this runs: scrolling to reveal the control would move the page behind it.
+    (first ?? container)?.focus({ preventScroll: true });
 
     function onKeyDown(e: KeyboardEvent): void {
       if (e.key === 'Escape') {
@@ -46,7 +54,7 @@ export function Sheet(props: SheetProps): JSX.Element | null {
       if (items.length === 0) return;
       const firstItem = items[0];
       const lastItem = items[items.length - 1];
-      if (e.shiftKey && document.activeElement === firstItem) {
+      if (e.shiftKey && (document.activeElement === firstItem || document.activeElement === container)) {
         e.preventDefault();
         lastItem.focus();
       } else if (!e.shiftKey && document.activeElement === lastItem) {
@@ -60,7 +68,7 @@ export function Sheet(props: SheetProps): JSX.Element | null {
       document.removeEventListener('keydown', onKeyDown);
       previouslyFocused.current?.focus();
     };
-  }, [open, onClose]);
+  }, [open, onClose, initialFocus]);
 
   if (!open) return null;
 

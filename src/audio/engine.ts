@@ -54,6 +54,11 @@ function unsubscribeFrom<T>(list: T[], item: T): void {
   if (i !== -1) list.splice(i, 1);
 }
 
+/** Releases a mic stream nobody will use (the recording indicator goes off). */
+function stopTracks(stream: MediaStream): void {
+  stream.getTracks().forEach((track) => track.stop());
+}
+
 class AudioEngineImpl implements AudioEngine {
   private _state: EngineState = 'idle';
   private _error: EngineError | null = null;
@@ -68,8 +73,15 @@ class AudioEngineImpl implements AudioEngine {
 
   /** True once the current AudioContext's worklet module has been added (addModule is one-shot per context). */
   private workletLoaded = false;
-  /** True once a mic track is attached and not yet stopped/ended. */
+  /** True once the mic graph is wired (track attached, worklet connected) and not yet stopped/ended. */
   private micOpen = false;
+  /**
+   * Bumped by every operation that opens the mic (start, reset, a mic-ended resume) and by stop(). An opening whose
+   * generation is no longer current was abandoned: it releases the stream it gets and reports nothing.
+   */
+  private micGen = 0;
+  /** True while an opening is in flight (a permission prompt may be up); a second start() waits for it instead. */
+  private opening = false;
   /** False in 'idle' (never started, or stop()ped) and while only ensureContext() has been used (no mic). */
   private expectRunning = false;
   private gestureArmed = false;
@@ -155,11 +167,19 @@ class AudioEngineImpl implements AudioEngine {
   }
 
   async start(): Promise<void> {
-    if (this._state === 'starting') return;
+    if (this.opening) return;
+    if (this.micOpen) {
+      // Already open: one mic stream and one worklet, never two. A paused or interrupted one resumes (still inside
+      // the caller's gesture: resume() has the same synchronous prefix).
+      if (this._state === 'running') return;
+      return this.resume();
+    }
+    const gen = this.beginOpening();
     this.setState('starting', null);
 
     const preflight = this.preflightError();
     if (preflight) {
+      this.endOpening(gen);
       this.setState('error', preflight);
       return;
     }
@@ -169,6 +189,7 @@ class AudioEngineImpl implements AudioEngine {
 
     const ctx = this.getOrCreateContext();
     if (!ctx.audioWorklet) {
+      this.endOpening(gen);
       this.setState('error', { code: 'worklet-unsupported', message: 'This browser has no AudioContext.audioWorklet.' });
       return;
     }
@@ -187,61 +208,50 @@ class AudioEngineImpl implements AudioEngine {
     } catch {
       // ctx.onstatechange drives recovery from here.
     }
-
-    let stream: MediaStream;
-    try {
-      stream = await micPromise;
-    } catch (err) {
-      this.setState('error', this.mapGetUserMediaError(err));
-      return;
-    }
-
-    try {
-      await this.wireGraph(ctx, stream);
-    } catch (err) {
-      this.setState('error', this.mapGetUserMediaError(err));
-    }
+    await this.finishOpening(gen, ctx, micPromise);
   }
 
   async stop(): Promise<void> {
+    // Abandon an opening still in flight: its stream is released the moment it arrives (finishOpening).
+    this.micGen++;
+    this.opening = false;
     this.expectRunning = false;
-    this.micTrack?.removeEventListener('ended', this.handleTrackEnded);
-    this.micTrack?.removeEventListener('mute', this.handleTrackEnded);
-    this.mediaStream?.getTracks().forEach((track) => track.stop());
-    this.teardownNodes(this.sourceNode, this.workletNode, this.zeroGainNode);
-    this.sourceNode = null;
-    this.workletNode = null;
-    this.zeroGainNode = null;
-    this.mediaStream = null;
-    this.micTrack = null;
-    this.micOpen = false;
-    this.trackSettings = null;
-
-    await platform.releaseWakeLock(this.wakeLockSentinel);
-    this.wakeLockSentinel = null;
+    this.releaseMicGraph();
 
     this.silentAudioStop?.();
     this.silentAudioStop = null;
 
+    // Idle at once (synchronously), so a start() right after this call opens a fresh mic instead of seeing 'running'.
     this.applyAudioSessionType('playback');
     this.setState('idle', null);
+
+    const sentinel = this.wakeLockSentinel;
+    this.wakeLockSentinel = null;
+    await platform.releaseWakeLock(sentinel);
   }
 
   async resume(): Promise<void> {
+    if (this.opening) return;
     const reasonCode = this._error?.code;
 
     if (reasonCode === 'route-changed') {
       await this.reset();
       return;
     }
+    // Nothing to resume (the mic never opened, was stopped, or its graph is gone): open it, inside this same gesture.
+    if (!this.micOpen && (reasonCode !== 'mic-ended' || !this.workletNode)) {
+      await this.start();
+      return;
+    }
 
     // ---- synchronous, gesture-sensitive prefix ----
-    this.applyAudioSessionType(this.micOpen ? 'play-and-record' : 'playback');
+    this.applyAudioSessionType('play-and-record');
     const ctx = this.getOrCreateContext();
     this.expectRunning = true;
     const resumePromise = ctx.resume();
 
     if (reasonCode === 'mic-ended') {
+      const gen = this.beginOpening();
       const micPromise = this.openMic();
       // ---- end of the synchronous prefix ----
       try {
@@ -253,10 +263,19 @@ class AudioEngineImpl implements AudioEngine {
       try {
         stream = await micPromise;
       } catch (err) {
-        this.setState('error', this.mapGetUserMediaError(err));
+        if (this.endOpening(gen)) this.setState('error', this.mapGetUserMediaError(err));
         return;
       }
-      this.rewireMic(ctx, stream);
+      if (!this.endOpening(gen)) {
+        stopTracks(stream); // stopped meanwhile
+        return;
+      }
+      try {
+        this.rewireMic(ctx, stream);
+      } catch (err) {
+        stopTracks(stream);
+        this.setState('error', this.mapGetUserMediaError(err));
+      }
       return;
     }
 
@@ -266,13 +285,13 @@ class AudioEngineImpl implements AudioEngine {
       // Left interrupted; the next tap (armResumeOnNextGesture) or statechange handler retries.
       return;
     }
-    if (ctx.state === 'running') {
+    if (ctx.state === 'running' && this.micOpen) {
       this.setState('running', null);
     }
   }
 
   async reset(): Promise<void> {
-    if (this._state === 'starting') return;
+    if (this.opening) return;
 
     const old = {
       ctx: this._context,
@@ -282,6 +301,7 @@ class AudioEngineImpl implements AudioEngine {
       track: this.micTrack,
     };
 
+    const gen = this.beginOpening();
     this.setState('starting', null);
 
     // ---- synchronous, gesture-sensitive prefix: a brand-new context + mic grab ----
@@ -289,6 +309,7 @@ class AudioEngineImpl implements AudioEngine {
     this._context = null; // force createContext() below to build a fresh one
     const ctx = this.createContext();
     if (!ctx.audioWorklet) {
+      this.endOpening(gen);
       this.setState('error', { code: 'worklet-unsupported', message: 'This browser has no AudioContext.audioWorklet.' });
       return;
     }
@@ -325,20 +346,7 @@ class AudioEngineImpl implements AudioEngine {
     } catch {
       // ctx.onstatechange drives recovery from here.
     }
-
-    let stream: MediaStream;
-    try {
-      stream = await micPromise;
-    } catch (err) {
-      this.setState('error', this.mapGetUserMediaError(err));
-      return;
-    }
-
-    try {
-      await this.wireGraph(ctx, stream);
-    } catch (err) {
-      this.setState('error', this.mapGetUserMediaError(err));
-    }
+    await this.finishOpening(gen, ctx, micPromise);
   }
 
   // ---------------------------------------------------------------- listeners
@@ -506,11 +514,68 @@ class AudioEngineImpl implements AudioEngine {
     });
   }
 
-  /** Builds the mic source -> worklet -> zero-gain -> destination graph on a freshly created context. */
-  private async wireGraph(ctx: AudioContext, stream: MediaStream): Promise<void> {
+  /** Starts an opening of the mic (abandoning any older one) and returns its generation. */
+  private beginOpening(): number {
+    this.opening = true;
+    return ++this.micGen;
+  }
+
+  /** Ends the opening `gen`; false when it was abandoned meanwhile (a stop() or a newer opening owns the mic now). */
+  private endOpening(gen: number): boolean {
+    if (gen !== this.micGen) return false;
+    this.opening = false;
+    return true;
+  }
+
+  /** The awaited half of start()/reset(): wire the mic once it opens, unless the opening was abandoned meanwhile. */
+  private async finishOpening(gen: number, ctx: AudioContext, micPromise: Promise<MediaStream>): Promise<void> {
+    let stream: MediaStream;
+    try {
+      stream = await micPromise;
+    } catch (err) {
+      if (this.endOpening(gen)) this.setState('error', this.mapGetUserMediaError(err));
+      return;
+    }
+    if (gen !== this.micGen) {
+      stopTracks(stream); // stop() came first: the mic must not stay open behind it
+      return;
+    }
+    try {
+      await this.wireGraph(ctx, stream, gen);
+    } catch (err) {
+      if (gen === this.micGen) {
+        stopTracks(stream);
+        this.setState('error', this.mapGetUserMediaError(err));
+      }
+    } finally {
+      this.endOpening(gen);
+    }
+  }
+
+  /** Stops the mic's tracks and disconnects its graph (stop(), and before a new graph replaces a dead one). */
+  private releaseMicGraph(): void {
+    this.micTrack?.removeEventListener('ended', this.handleTrackEnded);
+    this.micTrack?.removeEventListener('mute', this.handleTrackEnded);
+    this.mediaStream?.getTracks().forEach((track) => track.stop());
+    this.teardownNodes(this.sourceNode, this.workletNode, this.zeroGainNode);
+    this.sourceNode = null;
+    this.workletNode = null;
+    this.zeroGainNode = null;
+    this.mediaStream = null;
+    this.micTrack = null;
+    this.micOpen = false;
+    this.trackSettings = null;
+  }
+
+  /**
+   * Builds the mic source -> worklet -> zero-gain -> destination graph. The engine reports 'running' only from here
+   * (and from a resume of a graph built here): a 'running' engine always has its worklet, so recording works at once.
+   */
+  private async wireGraph(ctx: AudioContext, stream: MediaStream, gen: number): Promise<void> {
     const track = stream.getAudioTracks()[0];
     if (!track) throw new Error('getUserMedia resolved with no audio track');
 
+    this.releaseMicGraph(); // a dead mic's graph, if any: one stream and one worklet, never two
     this.mediaStream = stream;
     this.micTrack = track;
     this.trackSettings = track.getSettings();
@@ -525,6 +590,7 @@ class AudioEngineImpl implements AudioEngine {
       await ctx.audioWorklet.addModule(workletUrl);
       this.workletLoaded = true;
     }
+    if (gen !== this.micGen) return; // stop() ran meanwhile: it already released this stream and its source node
 
     // WebKit #281978: an un-mixed, explicit-channel node keeps the mic on channel 0 even when
     // echoCancellation is off (otherwise Safari can put the voice on the left channel only).
@@ -557,7 +623,12 @@ class AudioEngineImpl implements AudioEngine {
     this.expectRunning = true;
     this.setState('running', null);
 
-    this.setWakeLock(await platform.requestWakeLock());
+    const sentinel = await platform.requestWakeLock();
+    if (gen !== this.micGen) {
+      void platform.releaseWakeLock(sentinel); // stopped while the lock was being granted
+      return;
+    }
+    this.setWakeLock(sentinel);
     this.scheduleDetectorBenchmark();
   }
 
@@ -652,7 +723,8 @@ class AudioEngineImpl implements AudioEngine {
     if (!ctx || !this.expectRunning) return;
 
     if (ctx.state === 'running') {
-      if (this._state !== 'running') this.setState('running', null);
+      // Only a wired mic graph is 'running': while start() is still opening the mic, the context resuming is not it.
+      if (this._state !== 'running' && this.micOpen) this.setState('running', null);
       return;
     }
 
@@ -662,7 +734,7 @@ class AudioEngineImpl implements AudioEngine {
         // Checked by the timeout below regardless of outcome.
       });
       setTimeout(() => {
-        if (this._context !== ctx) return; // superseded by reset()
+        if (this._context !== ctx || !this.expectRunning) return; // superseded by reset(), or stopped
         if (ctx.state !== 'running') {
           this.setState('interrupted', {
             code: 'session-interrupted',

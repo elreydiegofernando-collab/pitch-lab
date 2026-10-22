@@ -50,9 +50,13 @@ class FakeGainNode extends FakeAudioNode {
 }
 
 class FakeWorkletNode {
+  /** Every node the engine created since the harness was set up. */
+  static instances: FakeWorkletNode[] = [];
   port = { onmessage: null as ((ev: MessageEvent) => void) | null, postMessage: vi.fn() };
   onprocessorerror: (() => void) | null = null;
-  constructor(_ctx: unknown, _name: string, _opts: unknown) {}
+  constructor(_ctx: unknown, _name: string, _opts: unknown) {
+    FakeWorkletNode.instances.push(this);
+  }
   connect(): FakeWorkletNode {
     return this;
   }
@@ -163,6 +167,7 @@ interface Harness {
  */
 async function setUpHarness(opts: { iosLessThan164?: boolean } = {}): Promise<Harness> {
   vi.resetModules();
+  FakeWorkletNode.instances = [];
 
   const state: Harness['state'] = { audioConstructs: 0, lastTrack: null, lastSentinel: null };
 
@@ -220,6 +225,84 @@ async function setUpHarness(opts: { iosLessThan164?: boolean } = {}): Promise<Ha
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+/** A getUserMedia call the test answers by hand (the permission prompt is "up" until then). */
+function deferMic(h: Harness): (track: FakeMediaStreamTrack) => void {
+  let answer: (stream: FakeMediaStream) => void = () => {};
+  h.getUserMedia.mockImplementationOnce(() => new Promise<FakeMediaStream>((resolve) => (answer = resolve)));
+  return (track) => answer(new FakeMediaStream(track));
+}
+
+// ---------------------------------------------------------------------------
+// [running-before-the-worklet-exists]: a take started on 'running' recorded nothing on the first Sing of a page load
+
+describe('the mic opening', () => {
+  it('reports running only once the worklet is wired, so a recording started then is captured', async () => {
+    const h = await setUpHarness();
+    const answer = deferMic(h);
+    const states: string[] = [];
+    h.engine.onState((s) => states.push(s));
+
+    const started = h.engine.start();
+    // The context resumes while the permission prompt is still up: that is not the mic running.
+    (h.engine.context as unknown as FakeAudioContext).onstatechange?.();
+    expect(h.engine.state).toBe('starting');
+
+    answer(new FakeMediaStreamTrack());
+    await started;
+    expect(states).toEqual(['starting', 'running']);
+    const [worklet] = FakeWorkletNode.instances;
+    h.engine.startRecording();
+    expect(worklet.port.postMessage).toHaveBeenCalledWith({ type: 'record-start' });
+  });
+
+  it('opens one stream and one worklet: start() while running does nothing', async () => {
+    const h = await setUpHarness();
+    await h.engine.start();
+    await h.engine.start();
+    expect(h.getUserMedia).toHaveBeenCalledTimes(1);
+    expect(FakeWorkletNode.instances).toHaveLength(1);
+    expect(h.engine.state).toBe('running');
+  });
+
+  it('stop() during a start releases the mic the moment it opens and stays idle', async () => {
+    const h = await setUpHarness();
+    const answer = deferMic(h);
+    const started = h.engine.start();
+    expect(h.engine.state).toBe('starting');
+
+    await h.engine.stop();
+    expect(h.engine.state).toBe('idle');
+
+    const late = new FakeMediaStreamTrack();
+    answer(late);
+    await started;
+    expect(late.readyState).toBe('ended');
+    expect(h.engine.state).toBe('idle');
+    expect(FakeWorkletNode.instances).toHaveLength(0);
+  });
+
+  it('is idle as soon as stop() is called, so a start right after it opens a fresh mic', async () => {
+    const h = await setUpHarness();
+    await h.engine.start();
+    const first = h.state.lastTrack;
+    void h.engine.stop();
+    expect(h.engine.state).toBe('idle');
+    expect(first?.readyState).toBe('ended');
+
+    await h.engine.start();
+    expect(h.getUserMedia).toHaveBeenCalledTimes(2);
+    expect(h.engine.state).toBe('running');
+  });
+
+  it('resume() with no mic open opens it rather than claiming to run', async () => {
+    const h = await setUpHarness();
+    await h.engine.resume();
+    expect(h.getUserMedia).toHaveBeenCalledTimes(1);
+    expect(h.engine.state).toBe('running');
+    expect(FakeWorkletNode.instances).toHaveLength(1);
+  });
 });
 
 // ---------------------------------------------------------------------------

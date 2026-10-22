@@ -33,7 +33,12 @@ export default defineConfig(({ mode }) => ({
   // `npm run dev:host` (mode "https") serves over self-signed HTTPS on the LAN:
   // getUserMedia needs a secure context, so plain http://<lan-ip> fails on an iPhone.
   plugins: [
-    preact(),
+    preact({
+      // The AudioWorklet's modules (src/audio, src/dsp, src/core, config) run in AudioWorkletGlobalScope, where the
+      // dev-only HMR/prefresh code the preset injects (it imports /@vite/client, which needs a window) stops the
+      // module before registerProcessor runs, so `vite` dev could never start the mic. None of them is a component.
+      exclude: [/node_modules/, /\/src\/(audio|dsp|core)\//, /\/src\/config\.ts$/],
+    }),
     ...(mode === 'https' ? [basicSsl()] : []),
     VitePWA({
       strategies: 'generateSW',

@@ -1,12 +1,19 @@
-/** Settings: vibrato style, detector, reference sound, notation, theme, reduced motion, note names. No difficulty/tolerance setting lives here — that comes from the level (docs/DESIGN.md, settings-types.ts). */
+/**
+ * Settings: vibrato style (once the Vibrato world is unlocked), detector, reference sound, notation, theme,
+ * reduced motion, note names, whether to keep take audio, and the doors to Profiles and Data & backup. No
+ * difficulty or tolerance setting lives here: that comes from the level (docs/DESIGN.md, settings-types.ts), and
+ * anything that belongs to a skill the singer has not earned yet is shown locked (SPEC §11.1).
+ */
 import type { JSX } from 'preact';
-import { Settings as SettingsIcon, Volume2 } from 'lucide-preact';
-import { back } from '../../router';
+import { ChevronRight, Database, Settings as SettingsIcon, Users, Volume2 } from 'lucide-preact';
+import { back, navigate } from '../../router';
 import { getEngine } from '../../audio/engine';
 import { getSynth } from '../../state/audio';
 import { refreshEngineInfo } from '../../state/engine-store';
+import { activeProfile, isUnlocked } from '../../state/session';
 import { settings, updateSettings } from '../../state/settings';
 import type { Settings as SettingsShape } from '../../state/settings-types';
+import { requirementHint } from '../../progress';
 import { CONFIG } from '../../config';
 import { parseNote, type Notation } from '../../core/music';
 import type { DetectorKind } from '../../dsp/detector-types';
@@ -15,6 +22,7 @@ import type { VibratoStyle } from '../../core/types';
 import { AppBar } from '../components/AppBar';
 import { Button } from '../components/Button';
 import { ListRow } from '../components/ListRow';
+import { Locked } from '../components/Locked';
 import { Segmented } from '../components/Segmented';
 import { Slider } from '../components/Slider';
 import { Toggle } from '../components/Toggle';
@@ -68,24 +76,31 @@ function playSample(): void {
 export function Settings(): JSX.Element {
   const s = settings.value;
   const vibratoZone = CONFIG.vibrato.styles[s.vibratoStyle];
+  const vibratoOpen = isUnlocked('setting.vibratoStyle');
 
   return (
     <div class="pl-screen" data-testid="settings-screen">
       <AppBar title="Settings" routeIcon={SettingsIcon} onBack={() => back()} />
       <div class="pl-scroll">
-        <div class="pl-page pl-fade-rise">
+        <div class="pl-page">
           <section class="pl-stack">
             <span class="pl-label">Vibrato style</span>
-            <Segmented
-              aria-label="Vibrato style"
-              options={VIBRATO_OPTIONS}
-              value={s.vibratoStyle}
-              onChange={(v: VibratoStyle) => updateSettings({ vibratoStyle: v })}
-            />
-            <p class="pl-body-s pl-muted pl-tabular">
-              {vibratoZone.rateHz[0]}-{vibratoZone.rateHz[1]} Hz, extent &plusmn;{vibratoZone.extentCents[0]}-
-              {vibratoZone.extentCents[1]}&cent;
-            </p>
+            {vibratoOpen ? (
+              <>
+                <Segmented
+                  aria-label="Vibrato style"
+                  options={VIBRATO_OPTIONS}
+                  value={s.vibratoStyle}
+                  onChange={(v: VibratoStyle) => updateSettings({ vibratoStyle: v })}
+                />
+                <p class="pl-body-s pl-muted pl-tabular">
+                  {vibratoZone.rateHz[0]}-{vibratoZone.rateHz[1]} Hz, extent &plusmn;{vibratoZone.extentCents[0]}-
+                  {vibratoZone.extentCents[1]}&cent;
+                </p>
+              </>
+            ) : (
+              <Locked hint={requirementHint('setting.vibratoStyle')} />
+            )}
           </section>
 
           <section class="pl-stack">
@@ -141,19 +156,56 @@ export function Settings(): JSX.Element {
             />
           </section>
 
-          <div class="pl-list">
-            <ListRow
-              title="Note names"
-              subtitle="Show note names on the pitch trace"
-              trailing={
-                <Toggle
-                  checked={s.showNoteNames}
-                  onChange={(v) => updateSettings({ showNoteNames: v })}
-                  aria-label="Show note names"
-                />
-              }
-            />
-          </div>
+          <section class="pl-stack">
+            <div class="pl-list">
+              <ListRow
+                title="Note names"
+                subtitle="Show note names on the pitch trace"
+                trailing={
+                  <Toggle
+                    checked={s.showNoteNames}
+                    onChange={(v) => updateSettings({ showNoteNames: v })}
+                    aria-label="Show note names"
+                  />
+                }
+              />
+              <ListRow
+                title="Keep take audio"
+                subtitle="Save the sound of each take on this device, so you can play it back and slow it down"
+                trailing={
+                  <Toggle
+                    checked={s.keepTakeAudio}
+                    onChange={(v) => updateSettings({ keepTakeAudio: v })}
+                    aria-label="Keep take audio"
+                  />
+                }
+              />
+            </div>
+            <p class="pl-body-s pl-muted pl-prose" data-testid="audio-privacy">
+              Your voice audio never leaves this device. The only way it gets out is an Export WAV that you tap in Data &amp; backup.
+            </p>
+          </section>
+
+          <section class="pl-stack">
+            <span class="pl-label">Singers and data</span>
+            <div class="pl-list">
+              <ListRow
+                icon={Users}
+                title="Profiles"
+                subtitle="Switch singer, rename or delete"
+                value={activeProfile.value?.name}
+                trailing={<ChevronRight class="pl-row__icon" size={20} aria-hidden="true" />}
+                onClick={() => navigate('profiles')}
+              />
+              <ListRow
+                icon={Database}
+                title="Data & backup"
+                subtitle="Backup, recordings, delete all data"
+                trailing={<ChevronRight class="pl-row__icon" size={20} aria-hidden="true" />}
+                onClick={() => navigate('data')}
+              />
+            </div>
+          </section>
         </div>
       </div>
     </div>

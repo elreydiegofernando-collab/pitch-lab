@@ -1,1 +1,852 @@
-/* Wave 2 styles for the song builder (docs/ARCHITECTURE.md "Wave 2" ownership). Tokens only; no new hues. */
+/*
+ * Song Stage (docs/DESIGN.md §13.7-13.9): the library, the import steps and the player. Tokens only (tokens.css),
+ * no new hues, no new fonts. The setlist concept: numbered entries in Big Shoulders, one cable joining the import
+ * steps, the tally amber reserved for the one primary action and the walking lyric underline.
+ */
+
+/* ---------------------------------------------------------------- shared */
+
+.pl-song-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--text-mid);
+  white-space: nowrap;
+}
+.pl-song-chip__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.pl-song-skeleton {
+  min-height: 104px;
+  border-radius: var(--radius-card);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  animation: pl-song-pulse 1.4s ease-in-out infinite alternate;
+}
+.pl-song-skeleton--player {
+  min-height: 320px;
+}
+@keyframes pl-song-pulse {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.pl-song-appbar-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--target-min);
+  padding: 0 var(--sp-3);
+  border-radius: var(--radius-control);
+  color: var(--tally);
+  font-weight: 600;
+  font-size: 15px;
+  flex-shrink: 0;
+  transition:
+    background var(--dur-micro) var(--ease-standard),
+    transform var(--dur-micro) var(--ease-standard);
+}
+.pl-song-appbar-action:active {
+  background: var(--bg-2);
+  transform: scale(0.98);
+}
+
+/* ---------------------------------------------------------------- library (§13.7) */
+
+.pl-song-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.pl-song-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: 72px;
+  padding: 14px var(--sp-4);
+  text-align: left;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  transition:
+    background var(--dur-micro) var(--ease-standard),
+    transform var(--dur-micro) var(--ease-standard);
+}
+button.pl-song-row:active {
+  background: var(--bg-2);
+  transform: scale(0.99);
+}
+.pl-song-row--locked {
+  background: transparent;
+  border-style: dashed;
+  box-shadow: none;
+  cursor: default;
+}
+.pl-song-row__num {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 28px;
+  line-height: 1;
+  color: var(--text-mid);
+}
+.pl-song-row--locked .pl-song-row__num {
+  color: var(--text-lo);
+}
+.pl-song-row__main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.pl-song-row__title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 22px;
+  line-height: 1.1;
+  color: var(--text-hi);
+  overflow-wrap: anywhere;
+}
+.pl-song-row--locked .pl-song-row__title {
+  color: var(--text-mid);
+}
+.pl-song-row__artist {
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--text-mid);
+}
+.pl-song-row__facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px var(--sp-2);
+  font-size: 14px;
+  color: var(--text-mid);
+}
+.pl-song-row__caption {
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text-lo);
+}
+/* The rater's detail is a phrase ("a 16-note melisma near 0:05"); on its own line it reads as a sentence. */
+.pl-song-row__caption::first-letter {
+  text-transform: uppercase;
+}
+.pl-song-row__locked {
+  margin-top: 2px;
+}
+.pl-song-row__chevron {
+  align-self: center;
+  color: var(--text-lo);
+}
+
+.pl-song-errors {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text-mid);
+  overflow-wrap: anywhere;
+}
+.pl-song-errors__id {
+  font-weight: 600;
+  color: var(--text-hi);
+}
+
+/* ---------------------------------------------------------------- import (§13.8) */
+
+/* The steps hang on one cable, like the map's levels. */
+.pl-song-steps {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+.pl-song-steps::before {
+  content: '';
+  position: absolute;
+  left: 19px;
+  top: 28px;
+  bottom: 12px;
+  width: 2px;
+  background: var(--line);
+}
+/* One step has nothing to join. */
+.pl-song-steps--single::before {
+  display: none;
+}
+.pl-song-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: var(--sp-3);
+}
+.pl-song-step__num {
+  position: relative;
+  align-self: start;
+  padding: 2px 0 6px;
+  background: var(--bg-0);
+  text-align: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 28px;
+  line-height: 1;
+  color: var(--text-mid);
+}
+.pl-song-step__body {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+.pl-song-step__body > .pl-btn {
+  align-self: flex-start;
+}
+.pl-song-step__title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 24px;
+  line-height: 1.1;
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+.pl-song-file {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: var(--sp-3);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+}
+.pl-song-file__name {
+  font-weight: 600;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.pl-song-warnings {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text-mid);
+  padding-left: var(--sp-3);
+  border-left: 2px solid var(--line);
+}
+
+.pl-song-tracks {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.pl-song-track {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) var(--target-min);
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 56px;
+  padding: 0 4px 0 var(--sp-3);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  transition: border-color var(--dur-micro) var(--ease-standard);
+}
+.pl-song-track--selected {
+  border-color: var(--tally);
+}
+.pl-song-track__radio {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--tally-fill);
+  cursor: pointer;
+}
+.pl-song-track__label {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-height: var(--target-min);
+  padding: var(--sp-2) 0;
+  cursor: pointer;
+  min-width: 0;
+}
+.pl-song-track__name {
+  font-weight: 600;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+.pl-song-track__facts {
+  font-size: 14px;
+  color: var(--text-mid);
+}
+.pl-song-track__radio:disabled,
+.pl-song-track__radio:disabled + .pl-song-track__label {
+  cursor: default;
+}
+.pl-song-track__radio:disabled + .pl-song-track__label .pl-song-track__name {
+  color: var(--text-mid);
+}
+.pl-song-track .pl-icon-btn:disabled {
+  opacity: 0.4;
+}
+
+.pl-song-offset {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+}
+.pl-song-offset > .pl-btn {
+  align-self: flex-start;
+}
+.pl-song-offset__value {
+  min-width: 80px;
+  text-align: right;
+}
+
+.pl-song-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pl-song-input {
+  width: 100%;
+  min-height: var(--target-min);
+  padding: 0 var(--sp-3);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  font-size: 17px; /* >= 16 px: iOS does not zoom into the field */
+  color: var(--text-hi);
+}
+.pl-song-input:focus-visible {
+  outline-offset: 0;
+}
+
+.pl-song-rating {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+}
+.pl-song-rating__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.pl-song-rating__reasons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 15px;
+  line-height: 1.45;
+}
+.pl-song-rating__world {
+  font-weight: 600;
+  color: var(--text-mid);
+}
+.pl-song-rating__open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--on);
+}
+
+.pl-song-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--z-bottombar);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  padding-bottom: calc(var(--sp-3) + env(safe-area-inset-bottom));
+  background: var(--bg-1);
+  border-top: 1px solid var(--line);
+}
+.pl-song-footer > * {
+  width: 100%;
+  max-width: 608px;
+  margin: 0 auto;
+}
+.pl-song-footer .pl-btn {
+  min-height: 56px;
+}
+
+/* ---------------------------------------------------------------- player (§13.9) */
+
+.pl-song-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(180px, 1fr) auto auto auto;
+  grid-template-areas: 'head' 'canvas' 'lyrics' 'scrubber' 'bar';
+}
+.pl-song-body__head {
+  grid-area: head;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding-top: var(--sp-2);
+  padding-bottom: var(--sp-2);
+}
+.pl-song-body__canvas {
+  grid-area: canvas;
+  position: relative;
+  min-height: 180px;
+  background: var(--bg-0);
+}
+.pl-song-body__lyrics {
+  grid-area: lyrics;
+  padding-top: var(--sp-3);
+}
+.pl-song-body__scrubber {
+  grid-area: scrubber;
+  min-width: 0;
+}
+/* The thumb zone stays on screen: on a short phone (the calibration banner showing) the page scrolls under it. */
+.pl-song-body__bar {
+  grid-area: bar;
+  position: sticky;
+  bottom: 0;
+  z-index: var(--z-bottombar);
+}
+
+.pl-song-status {
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text-mid);
+}
+
+.pl-song-transport {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.pl-song-transport__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.pl-song-tbtn {
+  width: var(--target-min);
+  height: var(--target-min);
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-control);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: var(--text-hi);
+  transition:
+    background var(--dur-micro) var(--ease-standard),
+    transform var(--dur-micro) var(--ease-standard);
+}
+.pl-song-tbtn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+/* A pressed toggle is outlined, not filled: the one filled amber stays the bar's primary action. */
+.pl-song-tbtn[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--tally) 16%, var(--bg-2));
+  border-color: var(--tally);
+  color: var(--tally);
+}
+.pl-song-tbtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.pl-song-speed {
+  flex: 1 1 168px;
+  min-width: 168px;
+}
+/* The chosen speed is outlined, not filled, like the loop toggle: Sing keeps the screen's one amber fill. */
+.pl-song-speed .pl-segmented__opt[aria-checked='true'] {
+  background: var(--bg-1);
+  color: var(--text-hi);
+  box-shadow: inset 0 0 0 2px var(--tally);
+}
+.pl-song-transport:disabled .pl-segmented {
+  opacity: 0.5;
+}
+
+.pl-song-key .pl-label {
+  min-width: 32px;
+}
+.pl-song-key__value {
+  min-width: 52px;
+  text-align: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 26px;
+  line-height: 1;
+}
+.pl-song-key__fit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--on);
+}
+.pl-song-key__suggest {
+  min-height: var(--target-min);
+  padding: 0 var(--sp-2);
+  border-radius: var(--radius-control);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--tally);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.pl-song-key__suggest:active {
+  background: var(--bg-2);
+}
+.pl-song-key__note {
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text-mid);
+}
+.pl-song-key__note--warn {
+  color: var(--text-hi);
+  font-weight: 600;
+}
+
+.pl-song-canvas {
+  position: absolute;
+  inset: 0;
+}
+.pl-song-canvas__progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--tally);
+  transform: scaleX(0);
+  transform-origin: left center;
+  opacity: 0;
+  pointer-events: none;
+}
+.pl-song-canvas__countin {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.pl-song-canvas__countin span {
+  min-width: 96px;
+  padding: var(--sp-2) var(--sp-4);
+  text-align: center;
+  color: var(--text-hi);
+  background: color-mix(in srgb, var(--bg-0) 72%, transparent);
+  border-radius: var(--radius-card);
+}
+
+/* The lyric line: the memorable thing. One tally bar walks the syllables. */
+.pl-song-lyrics {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 84px;
+}
+.pl-song-lyrics__now {
+  position: relative;
+  font-size: 20px;
+  line-height: 1.5;
+  color: var(--text-hi);
+  padding-bottom: 6px;
+  overflow-wrap: anywhere;
+}
+.pl-song-syl {
+  transition: color var(--dur-micro) var(--ease-standard);
+}
+.pl-song-syl--next {
+  color: var(--text-mid);
+}
+.pl-song-lyrics__bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100px;
+  height: 3px;
+  margin-top: 1px;
+  border-radius: var(--radius-pill);
+  background: var(--tally);
+  transform-origin: 0 0;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform 160ms var(--ease-standard),
+    opacity 160ms var(--ease-standard);
+}
+.pl-song-lyrics__next {
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--text-lo);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pl-song-scrubber {
+  display: flex;
+  gap: var(--sp-2);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: var(--sp-2) max(16px, env(safe-area-inset-right)) var(--sp-3) max(16px, env(safe-area-inset-left));
+  scroll-padding-inline: 16px;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+.pl-song-pill {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--target-min);
+  height: var(--target-min);
+  padding: 0 10px;
+  border-radius: var(--radius-control);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  color: var(--text-hi);
+  line-height: 1.1;
+  transition:
+    background var(--dur-micro) var(--ease-standard),
+    transform var(--dur-micro) var(--ease-standard);
+}
+.pl-song-pill:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.pl-song-pill[aria-pressed='true'] {
+  border-color: var(--tally);
+  box-shadow: inset 0 0 0 1px var(--tally);
+}
+.pl-song-pill:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.pl-song-pill--all {
+  padding: 0 var(--sp-3);
+  font-size: 14px;
+  font-weight: 600;
+}
+.pl-song-pill__num {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-mid);
+}
+.pl-song-pill__score {
+  font-size: 15px;
+  font-weight: 700;
+}
+.pl-song-pill--on {
+  background: color-mix(in srgb, var(--on) 16%, var(--bg-1));
+  border-color: color-mix(in srgb, var(--on) 45%, var(--line));
+}
+.pl-song-pill--off {
+  background: color-mix(in srgb, var(--off) 14%, var(--bg-1));
+  border-color: color-mix(in srgb, var(--off) 45%, var(--line));
+}
+.pl-song-pill__now {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tally);
+}
+
+/* ---------------------------------------------------------------- take result (sheet) */
+
+.pl-song-result {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+.pl-song-result__ring--on {
+  color: var(--on);
+}
+.pl-song-result__ring--off {
+  color: var(--text-mid);
+}
+.pl-song-result__summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.pl-song-result__verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-mid);
+}
+.pl-song-result__verdict--on {
+  color: var(--on);
+}
+.pl-song-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.pl-song-breakdown__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'text text' 'bar value' 'tol tol';
+  align-items: center;
+  gap: 4px var(--sp-3);
+}
+.pl-song-breakdown__text {
+  grid-area: text;
+  font-size: 15px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pl-song-breakdown__num {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--text-lo);
+  margin-right: var(--sp-2);
+}
+.pl-song-breakdown__bar {
+  grid-area: bar;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-2);
+  overflow: hidden;
+}
+.pl-song-breakdown__fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--on);
+  transform-origin: left center;
+}
+.pl-song-breakdown__value {
+  grid-area: value;
+  min-width: 52px;
+  text-align: right;
+}
+.pl-song-breakdown__tol {
+  grid-area: tol;
+}
+.pl-song-result__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+
+.pl-song-delete {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid color-mix(in srgb, var(--alert) 45%, var(--line));
+  border-radius: var(--radius-control);
+}
+
+/* ---------------------------------------------------------------- wide (>= 900 px, DESIGN.md §7) */
+
+@media (min-width: 900px) {
+  .pl-song-body {
+    max-width: 1180px;
+    width: 100%;
+    margin: 0 auto;
+    padding: var(--sp-4);
+    column-gap: var(--sp-6);
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    grid-template-rows: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      'canvas head'
+      'lyrics head'
+      'scrubber bar';
+  }
+  .pl-song-body__head {
+    padding: 0;
+    overflow-y: auto;
+    gap: var(--sp-4);
+  }
+  .pl-song-body__lyrics,
+  .pl-song-body__head.pl-safe-x,
+  .pl-song-body__lyrics.pl-safe-x {
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .pl-song-body__canvas {
+    border-radius: var(--radius-card);
+    overflow: hidden;
+    border: 1px solid var(--line);
+  }
+  .pl-song-scrubber {
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .pl-song-body__bar {
+    position: static;
+    align-self: end;
+  }
+  .pl-song-body__bar .pl-bottombar {
+    position: static;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    padding-bottom: var(--sp-2);
+    min-height: var(--bottombar-h);
+  }
+}

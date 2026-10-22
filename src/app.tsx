@@ -1,8 +1,10 @@
 /**
- * App: applies the theme, boots the session (storage, active profile, progress, the route guard), switches screens
- * on route change (200ms fade/rise, none under reduced motion — see styles/base.css), mounts the global toast
- * region (service-worker updates, refused navigations), requests persistent storage after the first successful
- * engine start, and shows a break reminder after CONFIG.health.breakReminderMin of actual singing time.
+ * App: applies the theme, boots the session (storage, active profile, progress, the route guard) without holding
+ * anything up (Home shows the boot and failed states; utilities work throughout), switches screens on route change
+ * (200ms fade/rise, none under reduced motion — see styles/base.css; each screen opens at its top), mounts the global toast region
+ * (service-worker updates, refused navigations), writes pending settings when the page is hidden, requests
+ * persistent storage after the first successful engine start, and shows a break reminder after
+ * CONFIG.health.breakReminderMin of actual singing time.
  *
  * Wave 2: the route switch below is the contract's screen table (docs/ARCHITECTURE.md "Wave 2"); the runtime
  * builder owns the rest of this file.
@@ -12,6 +14,7 @@ import type { JSX } from 'preact';
 import { bindDesktopBackKey, refusal, route } from './router';
 import { initTheme } from './state/theme';
 import { bootSession, storageDurable } from './state/session';
+import { flushSettings } from './state/settings';
 import { engineState } from './state/engine-store';
 import { showToast } from './state/toast';
 import { registerServiceWorker } from './pwa/register-sw';
@@ -93,6 +96,15 @@ function screenKey(): string {
   return `${r.name}:${JSON.stringify(r.params)}`;
 }
 
+/**
+ * A new screen opens at its top. The document is what scrolls, so without this a screen would open at the scroll
+ * offset of the one before it (tap Settings at the bottom of Home, land halfway down Settings). It runs as the screen's
+ * wrapper mounts, before any effect of the screen, so a screen that scrolls itself on open (the map) still does.
+ */
+function openAtTop(el: HTMLDivElement | null): void {
+  if (el && typeof window !== 'undefined') window.scrollTo(0, 0);
+}
+
 /** Module-scope, not component state: the request must fire exactly once per app lifetime, not once per mount. */
 let persistentStorageRequested = false;
 
@@ -108,6 +120,13 @@ export function App(): JSX.Element {
     initTheme();
     bindDesktopBackKey();
     void bootSession();
+    // iOS can kill a backgrounded home-screen app: a setting changed just before leaving is written on the way out.
+    const flushWhenHidden = (): void => {
+      if (document.visibilityState === 'hidden') void flushSettings();
+    };
+    const flushOnPageHide = (): void => void flushSettings();
+    document.addEventListener('visibilitychange', flushWhenHidden);
+    window.addEventListener('pagehide', flushOnPageHide);
     registerServiceWorker({
       onNeedRefresh: (update) => {
         showToast('Update ready.', { actionLabel: 'Reload', onAction: () => void update() });
@@ -116,6 +135,10 @@ export function App(): JSX.Element {
         showToast('Pitch Lab is ready to work offline.', { durationMs: 3000 });
       },
     });
+    return () => {
+      document.removeEventListener('visibilitychange', flushWhenHidden);
+      window.removeEventListener('pagehide', flushOnPageHide);
+    };
   }, []);
 
   // A refused navigation (a locked item, SPEC §11.1): say what unlocks it.
@@ -174,7 +197,7 @@ export function App(): JSX.Element {
         />
       ) : null}
 
-      <div key={screenKey()} class="pl-fade-rise" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div key={screenKey()} ref={openAtTop} class="pl-fade-rise" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         <CurrentScreen />
       </div>
 

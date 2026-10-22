@@ -430,10 +430,11 @@ describe('isRecordAttemptAllowed', () => {
 });
 
 describe('requirement lines for locked tiles', () => {
-  it('says which level to pass first inside an open world', () => {
+  it('names the level right before a locked one inside an open world: passing it is what opens it', () => {
     const s = upTo('foundations.03'); // current: Sustain II
-    expect(levelRequirementHint('foundations.06', s, worlds)).toBe('Pass Sustain II to unlock.');
-    expect(levelRequirementHint('foundations.boss', s, worlds)).toBe('Pass Sustain II to unlock.');
+    expect(levelRequirementHint('foundations.05', s, worlds)).toBe('Pass Sustain II to unlock.');
+    expect(levelRequirementHint('foundations.06', s, worlds)).toBe('Pass Sirens & glides to unlock.');
+    expect(levelRequirementHint('foundations.boss', s, worlds)).toBe('Pass Legato lines to unlock.');
     const atBoss = upTo('foundations.09');
     expect(levelRequirementHint('vibrato.01', atBoss, worlds)).toBe('Pass the Foundations Boss Recital to unlock Vibrato.');
   });

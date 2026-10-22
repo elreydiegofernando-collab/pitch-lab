@@ -24,6 +24,8 @@ export const ARTIFACTS_DIR = path.join(HERE, '.artifacts');
 
 export const TONE_WAV_PATH = path.join(ARTIFACTS_DIR, 'tone-a3-220hz.wav');
 export const VIBRATO_WAV_PATH = path.join(ARTIFACTS_DIR, 'vibrato-330hz.wav');
+/** A2 held, a siren up, D4 held, a siren down, a breath (looped by Chrome): a 17-semitone Range finder that passes from any start (e2e/range-signal.ts). */
+export const RANGE_WAV_PATH = path.join(ARTIFACTS_DIR, 'range-finder-loop.wav');
 
 /** Fallback path when the `chrome` channel isn't resolvable (e.g. a fresh machine image). */
 export const CHROME_EXECUTABLE_WIN = 'C:/Program Files/Google/Chrome/Application/chrome.exe';

@@ -5,8 +5,10 @@
  * serves the bundle to the installed Chrome, and drives them through the real thing:
  *
  *  - storage: IndexedDB + OPFS, a relaunch, deletes that must really delete, a wipe, and a backup round trip;
- *  - the Listen demos: every exercise's demo built with the real synth into a real OfflineAudioContext and read back
- *    through the production framer and pitch detector.
+ *  - the Listen demos: every exercise's demo built with the real synth into a real OfflineAudioContext (stepped in lock
+ *    step with the synth's metronome timers, so it sounds as it does in a live context and renders the same every
+ *    time), read back through the production framer and pitch detector, and checked for clipping at the app's
+ *    default reference volume.
  *
  * The page-side code is plain JavaScript in e2e/browser/wave1-checks.js (served as-is, never serialized from TypeScript).
  */
@@ -38,6 +40,7 @@ function entrySource(): string {
     `export { Framer } from '${src('audio/framer.ts')}';`,
     `export { createDetector } from '${src('dsp/detector.ts')}';`,
     `export { CONFIG, hopSizeFor } from '${src('config.ts')}';`,
+    `export { DEFAULT_SETTINGS } from '${src('state/settings-types.ts')}';`,
   ].join('\n');
 }
 
@@ -54,7 +57,7 @@ async function launchChrome(): Promise<Browser> {
  * the page, so it must not contain a literal `import()`: vitest rewrites that into a helper the page does not have.
  * `new Function` keeps the page's own dynamic import out of that transform.
  */
-function inPage<T>(page: Page, check: 'storageSmoke' | 'demosSmoke', args: unknown[] = []): Promise<T> {
+function inPage<T>(page: Page, check: 'storageSmoke' | 'demosSmoke' | 'clipScan', args: unknown[] = []): Promise<T> {
   return page.evaluate(
     async ({ check, args, bundle, checks }) => {
       const load = new Function('url', 'return import(url)') as (url: string) => Promise<Record<string, (...a: unknown[]) => unknown>>;
@@ -154,7 +157,7 @@ describe('the Wave 1 engines in a real Chrome', () => {
     }
   });
 
-  it('demos: every Listen demo renders in Chrome\'s Web Audio, audible and unclipped, with every sustained note at its pitch', async () => {
+  it('demos: every Listen demo renders in Chrome\'s Web Audio, audible, with every sustained note at its pitch', async () => {
     const context = await browser.newContext();
     try {
       const page = await context.newPage();
@@ -164,6 +167,23 @@ describe('the Wave 1 engines in a real Chrome', () => {
       expect(r.exercises).toBeGreaterThanOrEqual(60);
       expect(r.variants).toBeGreaterThan(r.exercises); // plus the classical-style and the slow-first demos
       expect(r.pitchChecks).toBeGreaterThanOrEqual(100);
+    } finally {
+      await context.close();
+    }
+  }, 180_000);
+
+  it('demos: no Listen demo clips at the reference volume the app starts with', async () => {
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      await page.goto(baseUrl);
+      const r = await inPage<{ gain: number; rendered: number; clipped: Array<{ id: string; variant: string; peak: number }> }>(page, 'clipScan');
+      expect(r.rendered).toBeGreaterThanOrEqual(60);
+      expect(r.gain).toBeGreaterThan(0);
+      // The metronome clicks, the reference tone's tail and the next note's attack add up past full scale, so the
+      // speaker (or the iPhone's output stage) hard-clips them. The message names the worst few.
+      const worst = r.clipped.slice(0, 8).map((c) => `${c.id} [${c.variant}] ${c.peak}`);
+      expect(r.clipped.length, `${r.clipped.length} of ${r.rendered} demos go past full scale at volume ${r.gain}; worst: ${worst.join('; ')}`).toBe(0);
     } finally {
       await context.close();
     }

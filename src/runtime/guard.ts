@@ -42,6 +42,11 @@ function isKnownWorld(worlds: readonly WorldDef[], worldId: string): worldId is 
   return worlds.some((w) => w.id === worldId);
 }
 
+/** "Sustain II", or "the Foundations Boss Recital" (every boss level is titled "Boss Recital"). */
+function describeLevel(world: WorldDef, level: LevelDef): string {
+  return level.kind === 'boss' ? `the ${world.title} Boss Recital` : level.title;
+}
+
 /** The map, scrolled to the level's world (or to the current level when the level is unknown). */
 function mapAtLevel(worlds: readonly WorldDef[], levelId: string): Route {
   const found = findLevel(worlds, levelId);
@@ -69,10 +74,10 @@ function singVerdict(route: Extract<Route, { name: 'sing' }>, ctx: GuardContext)
       if (!found) return refuse(routeOf('map'), 'Not available.');
       if (isFeatureUnlocked('records', ctx.snapshot) && isRecordAttemptAllowed(found.level.exerciseId, ctx.snapshot, ctx.worlds)) return OK;
       const back = isLevelOpenable(found.level.id, ctx.snapshot) ? routeOf('level', { levelId: found.level.id }) : mapAtLevel(ctx.worlds, found.level.id);
-      return refuse(back, `Pass ${found.level.title} to chase personal records on it.`);
+      return refuse(back, `Pass ${describeLevel(found.world, found.level)} to chase personal records on it.`);
     }
     case 'audition': {
-      if (!isKnownWorld(ctx.worlds, target.worldId)) return refuse(routeOf('map'), 'Not available.');
+      if (!ctx.worlds.find((w) => w.id === target.worldId)?.audition) return refuse(routeOf('map'), 'Not available.');
       if (isAuditionAvailable(target.worldId, ctx.snapshot, ctx.worlds)) return OK;
       const hint = auditionRequirementHint(target.worldId, ctx.snapshot, ctx.worlds) ?? 'This audition has nothing left to unlock.';
       return refuse(routeOf('map', { worldId: target.worldId }), hint);

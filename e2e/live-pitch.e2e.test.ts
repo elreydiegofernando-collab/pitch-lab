@@ -4,11 +4,12 @@
  * URL writes" / "Test offline" items that fixture can drive.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Browser, Page } from 'playwright-core';
+import type { Browser } from 'playwright-core';
 import { PREVIEW_URL, TONE_WAV_PATH } from './config';
 import { launchWithFakeMic } from './chrome';
 import { getEngineInfo, getFrames, getRenderFps, waitForFrames } from './debug-hook';
 import { centsFromReference, frameRateOverWindow, median, voicedFrames } from './pitch-math';
+import { dismissFirstRun, waitForServiceWorkerControl } from './ui';
 
 describe('live pitch — A3 220 Hz tone', () => {
   let browser: Browser;
@@ -88,17 +89,14 @@ describe('live pitch — A3 220 Hz tone', () => {
       await page.getByTestId('home-screen').waitFor({ state: 'visible', timeout: 10_000 });
 
       // A fresh profile (this test's isolated browser context has no prior IndexedDB
-      // settings) always shows Home's first-run "Before you start" sheet, which — by
-      // design (src/ui/components/Sheet.tsx's scrim) — blocks taps on the page behind
-      // it. Dismiss it the way a real first-time user would before exercising the
-      // in-app navigation this test actually targets.
-      const dismissFirstRun = page.getByRole('button', { name: 'Later' });
-      if (await dismissFirstRun.isVisible().catch(() => false)) {
-        await dismissFirstRun.click();
-      }
+      // settings) first shows Home's voice-care sheet ("Got it"), then the "Before you
+      // start" headphone sheet ("Later"). Each sheet's scrim (src/ui/components/Sheet.tsx)
+      // blocks taps on the page behind it by design, so dismiss both the way a real
+      // first-time user would before exercising the in-app navigation this test targets.
+      await dismissFirstRun(page);
 
       const before = page.url();
-      await page.getByTestId('home-screen').locator('a, button', { hasText: /live/i }).first().click();
+      await page.getByTestId('dest-live').click();
       await page.getByTestId('live-screen').waitFor({ state: 'visible', timeout: 10_000 });
 
       expect(page.url()).toBe(before);
@@ -150,15 +148,3 @@ describe('live pitch — A3 220 Hz tone', () => {
     }
   }, 40_000);
 });
-
-async function waitForServiceWorkerControl(page: Page): Promise<boolean> {
-  try {
-    return await page.evaluate(async () => {
-      if (!('serviceWorker' in navigator)) return false;
-      await navigator.serviceWorker.ready;
-      return navigator.serviceWorker.controller != null;
-    });
-  } catch {
-    return false;
-  }
-}

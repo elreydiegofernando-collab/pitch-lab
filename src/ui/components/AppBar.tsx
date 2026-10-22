@@ -11,6 +11,8 @@ export interface AppBarProps {
   onBack?: () => void;
   trailing?: ComponentChildren;
   class?: string;
+  /** The app's root screen (Home): no back button, so no room is kept for one and the title starts on the content edge. */
+  root?: boolean;
 }
 
 const STATE_LABEL: Record<EngineState, string> = {
@@ -36,14 +38,14 @@ function StatusGlyph({ state }: { state: EngineState }): JSX.Element {
 }
 
 export function AppBar(props: AppBarProps): JSX.Element {
-  const { title, routeIcon: RouteIcon, engineState, onBack, trailing, class: className } = props;
+  const { title, routeIcon: RouteIcon, engineState, onBack, trailing, class: className, root = false } = props;
   return (
-    <header class={['pl-appbar', className ?? ''].filter(Boolean).join(' ')}>
+    <header class={['pl-appbar', root ? 'pl-appbar--root' : '', className ?? ''].filter(Boolean).join(' ')}>
       {onBack ? (
         <button type="button" class="pl-appbar__back" onClick={onBack} aria-label="Back">
           <ChevronLeft size={24} strokeWidth={2} aria-hidden="true" />
         </button>
-      ) : (
+      ) : root ? null : (
         <span style={{ width: 'var(--target-min)', flexShrink: 0 }} aria-hidden="true" />
       )}
       {RouteIcon ? <RouteIcon size={20} strokeWidth={2} class="pl-muted" aria-hidden="true" /> : null}

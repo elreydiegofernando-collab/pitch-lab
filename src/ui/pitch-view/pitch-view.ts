@@ -12,7 +12,7 @@ import type { MarkerKind, PitchView, PitchViewOptions } from './types';
 import { createSmoother, type Smoother } from './smoother';
 import { createTrackRing, defaultTrackRingCapacity, type TrackRing } from './track-ring';
 import { createScrollClock, type ScrollClock } from './clock';
-import { decideAutoRange, midiToY, tToX, updateLanes, type Lane, type TimeAxis } from './geometry';
+import { decideAutoRange, midiToY, showsLaneLabel, tToX, updateLanes, type Lane, type TimeAxis } from './geometry';
 
 // ---------------------------------------------------------------- tunables local to the view
 
@@ -402,6 +402,7 @@ export function createPitchView(container: HTMLElement, opts: PitchViewOptions =
       ctx.textAlign = 'left';
       for (let i = 0; i < laneCount; i++) {
         const lane = laneBuf[i];
+        if (!showsLaneLabel(lane.midi, lane.yBottom - lane.yTop)) continue;
         ctx.fillStyle = lane.isC ? colors.textHi : colors.textMid;
         ctx.fillText(lane.label, LABEL_PAD_X, (lane.yTop + lane.yBottom) / 2);
       }

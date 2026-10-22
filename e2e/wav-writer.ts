@@ -69,6 +69,81 @@ export function generateHarmonicTone(opts: HarmonicToneOptions): Float32Array {
   return out;
 }
 
+/** One stretch of a voiced path: a held note, a siren (a glide at constant cents per second), or a breath. */
+export type PathSegment =
+  | { kind: 'hold'; hz: number; sec: number }
+  | { kind: 'siren'; fromHz: number; toHz: number; sec: number }
+  | { kind: 'breath'; sec: number };
+
+export interface VoicedPathOptions {
+  sampleRate?: number;
+  harmonicAmplitudes?: readonly number[];
+  /** Peak sample amplitude after mixing (0..1). */
+  peakAmplitude?: number;
+  /** Linear fade at each end of a voiced stretch that borders a breath (or the ends of the signal), seconds. */
+  fadeSec?: number;
+}
+
+/** Total length of a path, seconds. */
+export function pathDurationSec(path: readonly PathSegment[]): number {
+  return path.reduce((sum, s) => sum + s.sec, 0);
+}
+
+/**
+ * A voice-like signal that follows a path of holds, sirens and breaths. The same harmonic mix as
+ * generateHarmonicTone, with each harmonic's phase integrated across the whole path, so a hold joins its siren
+ * without a click. Voiced neighbours run into each other; a breath (digital silence) fades the voice out and in.
+ */
+export function generateVoicedPath(path: readonly PathSegment[], opts: VoicedPathOptions = {}): Float32Array {
+  const sampleRate = opts.sampleRate ?? 48000;
+  const harmonics = opts.harmonicAmplitudes ?? DEFAULT_HARMONIC_AMPLITUDES;
+  const ampSum = harmonics.reduce((a, b) => a + b, 0);
+  const peak = opts.peakAmplitude ?? 0.3;
+  const fadeSamples = Math.max(1, Math.round((opts.fadeSec ?? 0.02) * sampleRate));
+
+  const lengths = path.map((s) => Math.round(s.sec * sampleRate));
+  const out = new Float32Array(lengths.reduce((a, b) => a + b, 0));
+  const phase = new Float64Array(harmonics.length);
+
+  // First pass: the voice itself, and a mask of which samples are voiced.
+  const voiced = new Uint8Array(out.length);
+  let at = 0;
+  path.forEach((seg, k) => {
+    const n = lengths[k];
+    for (let i = 0; i < n; i++) {
+      if (seg.kind === 'breath') continue;
+      const f0 = seg.kind === 'hold' ? seg.hz : seg.fromHz * Math.pow(seg.toHz / seg.fromHz, i / n);
+      let mix = 0;
+      for (let h = 0; h < harmonics.length; h++) {
+        phase[h] = (phase[h] + (TWO_PI * f0 * (h + 1)) / sampleRate) % TWO_PI;
+        mix += harmonics[h] * Math.sin(phase[h]);
+      }
+      // |mix / ampSum| <= 1 by the triangle inequality, so this is clip-safe.
+      out[at + i] = (mix / ampSum) * peak;
+      voiced[at + i] = 1;
+    }
+    at += n;
+  });
+
+  // Second pass: fade each voiced run in and out over fadeSamples (a run is a stretch of voiced samples between breaths).
+  for (let i = 0; i < out.length; ) {
+    if (voiced[i] === 0) {
+      i++;
+      continue;
+    }
+    let end = i;
+    while (end < out.length && voiced[end] === 1) end++;
+    const edge = Math.min(fadeSamples, (end - i) >> 1);
+    for (let k = 0; k < edge; k++) {
+      const g = k / edge;
+      out[i + k] *= g;
+      out[end - 1 - k] *= g;
+    }
+    i = end;
+  }
+  return out;
+}
+
 /** Encodes mono float samples (-1..1) as a canonical 16-bit PCM WAV file buffer. */
 export function encodeWavPCM16Mono(samples: Float32Array, sampleRate: number): Buffer {
   const bytesPerSample = 2;

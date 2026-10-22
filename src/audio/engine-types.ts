@@ -91,8 +91,16 @@ export interface AudioEngine {
    * inside a gesture handler; returns the context.
    */
   ensureContext(): AudioContext;
+  /**
+   * Open the mic. The state reads 'running' only once the mic graph (and its worklet) is wired, so recording works from
+   * that moment. One stream and one worklet at a time: a no-op while running or while a start is in flight; a
+   * suspended or interrupted engine resumes instead.
+   */
   start(): Promise<void>;
-  /** Stop the mic (stop tracks, disconnect graph). The context stays alive. */
+  /**
+   * Stop the mic (stop tracks, disconnect graph); the state is 'idle' as soon as this is called. A start still in
+   * flight is abandoned: its stream is released the moment it arrives. The context stays alive.
+   */
   stop(): Promise<void>;
   /** Resume after 'suspended' / 'interrupted'. Call from a gesture. */
   resume(): Promise<void>;

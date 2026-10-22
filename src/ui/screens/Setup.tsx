@@ -12,7 +12,7 @@ import {
   TriangleAlert,
   Volume2,
 } from 'lucide-preact';
-import { back, navigate } from '../../router';
+import { back } from '../../router';
 import { getEngine } from '../../audio/engine';
 import { isIOS, isLikelyBluetoothLabel, isStandalone, isWindows } from '../../audio/platform';
 import { startCalibration } from '../../audio/latency';
@@ -33,6 +33,7 @@ import { Button } from '../components/Button';
 import { EmptyState } from '../components/EmptyState';
 import { ListRow } from '../components/ListRow';
 import { Segmented } from '../components/Segmented';
+import { useReleaseMicOnLeave } from '../practice/use-mic-release';
 
 const A3_MIDI = parseNote('A3');
 const STEP_NAMES = ['Headphones & route', 'Microphone', 'Audio check', 'Latency calibration', 'Tips'] as const;
@@ -318,12 +319,13 @@ function StepTips(): JSX.Element {
 
 export function Setup(): JSX.Element {
   const [step, setStep] = useState(1);
+  useReleaseMicOnLeave(getEngine());
 
   return (
     <div class="pl-screen" data-testid="setup-screen">
       <AppBar title="Setup" routeIcon={SlidersHorizontal} onBack={() => back()} />
       <div class="pl-scroll">
-        <div class="pl-page pl-fade-rise">
+        <div class="pl-page">
           <span class="pl-label">
             Step {step} of {STEP_NAMES.length}: {STEP_NAMES[step - 1]}
           </span>
@@ -343,7 +345,7 @@ export function Setup(): JSX.Element {
                 Next
               </Button>
             ) : (
-              <Button variant="primary" onClick={() => navigate('home')}>
+              <Button variant="primary" onClick={() => back()}>
                 Done
               </Button>
             )}

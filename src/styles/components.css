@@ -94,8 +94,11 @@
   margin: 0 auto;
 }
 
+/* The screen change (docs/DESIGN.md 9). Fill `backwards` and end on `transform: none`: a screen that finished rising
+   keeps no transform, because any transform makes it the containing block of its position: fixed descendants (a
+   Sheet's scrim would then cover the whole tall page instead of the viewport, and the sheet would sit off screen). */
 .pl-fade-rise {
-  animation: pl-fade-rise var(--dur-screen) var(--ease-standard) both;
+  animation: pl-fade-rise var(--dur-screen) var(--ease-standard) backwards;
 }
 @keyframes pl-fade-rise {
   from {
@@ -104,7 +107,7 @@
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }
 
@@ -124,6 +127,11 @@
   background: var(--bg-1);
   border-bottom: 1px solid var(--line);
   flex-shrink: 0;
+}
+
+/* The root screen (Home) keeps no room for a back button: its title starts on the content edge. */
+.pl-appbar--root {
+  padding-left: max(var(--sp-4), env(safe-area-inset-left));
 }
 
 .pl-appbar__back {
@@ -242,9 +250,13 @@
   opacity: 0.4;
 }
 
+/* A circle for a short label (Sing, Stop); it grows into a pill for a long one ("Sing again", "Scoring…", "Calibrate"). */
 .pl-bottombar__primary {
   justify-self: center;
-  width: var(--target-primary);
+  width: auto;
+  min-width: var(--target-primary);
+  padding: 0 var(--sp-4);
+  white-space: nowrap;
   height: var(--target-primary);
   border-radius: var(--radius-pill);
   background: var(--tally-fill);
@@ -261,6 +273,10 @@
 .pl-bottombar__primary svg {
   width: 26px;
   height: 26px;
+}
+.pl-bottombar__primary .pl-btn__spinner {
+  width: 22px;
+  height: 22px;
 }
 .pl-bottombar__primary span {
   font-size: 11px;
@@ -631,6 +647,10 @@ button.pl-row:active {
   flex-direction: column;
   padding-bottom: env(safe-area-inset-bottom);
   animation: pl-sheet-rise var(--dur-screen) var(--ease-standard) both;
+}
+/* A sheet opened with focus on itself (Sheet initialFocus="sheet") is the modal: no ring around all of it. */
+.pl-sheet:focus-visible {
+  outline: none;
 }
 @keyframes pl-sheet-rise {
   from {
@@ -1167,5 +1187,23 @@ button.pl-row:active {
 .pl-locked__hint {
   font-size: 15px;
   line-height: 1.45;
+  color: var(--text-mid);
+}
+
+/* ---------------------------------------------------------------- the voice-care note (Home's first run, About) */
+
+.pl-care {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.pl-care__item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+}
+.pl-care__icon {
+  flex: none;
+  margin-top: 3px;
   color: var(--text-mid);
 }
