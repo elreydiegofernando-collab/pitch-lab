@@ -55,14 +55,19 @@ const fake = vi.hoisted(() => {
     cancel: vi.fn(),
     onProgress: () => () => undefined,
   };
-  return { order, engine, calibration };
+  const synth = {
+    playNote: vi.fn(() => {
+      order.push(`playNote while ${engine.state}`);
+    }),
+  };
+  return { order, engine, calibration, synth };
 });
 
 vi.mock('../../audio/engine', () => ({ getEngine: () => fake.engine }));
 vi.mock('../../state/audio', () => ({
   getSynth: vi.fn(() => {
     fake.order.push(`getSynth while ${fake.engine.state}`);
-    return {};
+    return fake.synth;
   }),
   resetAudio: vi.fn(async () => undefined),
 }));
@@ -105,11 +110,19 @@ async function toLatencyStep(): Promise<void> {
   expect(container.textContent).toContain('Step 4 of 5: Latency calibration');
 }
 
+async function toAudioCheckStep(): Promise<void> {
+  for (let i = 0; i < 2; i++) await click(button('Next'));
+  expect(container.textContent).toContain('Step 3 of 5: Audio check');
+}
+
 beforeEach(() => {
   fake.order.length = 0;
-  fake.engine.state = 'idle';
-  fake.engine.error = null;
+  // Through set(), so the engine-store signal the screen renders from is reset too (not only the engine field).
+  fake.engine.set('idle');
   fake.engine.startsTo = 'running';
+  fake.engine.start.mockClear();
+  fake.engine.resume.mockClear();
+  fake.synth.playNote.mockClear();
   vi.mocked(startCalibration).mockClear();
   deviceSettings.value = { ...DEFAULT_DEVICE_SETTINGS };
 });
@@ -198,5 +211,45 @@ describe('Setup: latency calibration opens the mic itself', () => {
       render(null, container);
     });
     expect(fake.calibration.cancel).toHaveBeenCalled();
+  });
+});
+
+describe('Setup: the audio check plays its tone with the mic on', () => {
+  it('with the mic off the button is usable: the tap opens the mic first, and the tone plays once it runs', async () => {
+    await mount();
+    await toAudioCheckStep();
+    const tone = button('Play test tone (2s)');
+    expect(tone.disabled).toBe(false);
+    expect(container.querySelector('[data-testid="tone-mic-note"]')).not.toBeNull();
+    await click(tone);
+    expect(fake.engine.start).toHaveBeenCalledTimes(1);
+    expect(fake.order).toEqual(['engine.start', 'getSynth while running', 'playNote while running']);
+  });
+
+  it('a mic that will not open says why and plays nothing', async () => {
+    fake.engine.startsTo = 'permission-denied';
+    await mount();
+    await toAudioCheckStep();
+    await click(button('Play test tone (2s)'));
+    expect(fake.synth.playNote).not.toHaveBeenCalled();
+    expect(container.querySelector('.pl-banner--error')?.textContent).toMatch(/^Microphone blocked\..*tap Play test tone again\.$/);
+  });
+
+  it('an interrupted mic (a call) is resumed inside the tap', async () => {
+    fake.engine.set('interrupted', { code: 'mic-ended', message: 'call' } satisfies EngineError);
+    await mount();
+    await toAudioCheckStep();
+    await click(button('Play test tone (2s)'));
+    expect(fake.order).toEqual(['engine.resume', 'getSynth while running', 'playNote while running']);
+  });
+
+  it('a running mic plays the tone at once', async () => {
+    fake.engine.set('running');
+    await mount();
+    await toAudioCheckStep();
+    expect(container.querySelector('[data-testid="tone-mic-note"]')).toBeNull();
+    await click(button('Play test tone (2s)'));
+    expect(fake.engine.start).not.toHaveBeenCalled();
+    expect(fake.synth.playNote).toHaveBeenCalledTimes(1);
   });
 });

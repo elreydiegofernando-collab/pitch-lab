@@ -142,10 +142,43 @@ function StepMicrophone(): JSX.Element {
 function StepAudioCheck(): JSX.Element {
   const check = deviceSettings.value.sessionCheck;
   const [resetBusy, setResetBusy] = useState(false);
+  const [toneBusy, setToneBusy] = useState(false);
+  const [toneError, setToneError] = useState<string | null>(null);
+  const pending = useRef<(() => void) | null>(null);
 
-  function playTestTone(): void {
-    const synth = getSynth();
-    synth.playNote({ midi: A3_MIDI, duration: 2, timbre: settings.value.referenceTimbre, gain: settings.value.referenceVolume });
+  // Leaving the step (or Setup) while the mic is still opening: stop waiting for it.
+  useEffect(() => () => pending.current?.(), []);
+
+  function playTone(): void {
+    try {
+      getSynth().playNote({ midi: A3_MIDI, duration: 2, timbre: settings.value.referenceTimbre, gain: settings.value.referenceVolume });
+    } catch {
+      setToneError('Audio could not start. Tap Play test tone again; if it keeps failing, use Reset audio.');
+    }
+  }
+
+  /**
+   * iOS only sends audio to the earpiece, or ducks it, while the mic is on, so the tone is played with the mic running.
+   * A mic that is off opens first thing in this tap (the iOS gesture rule); the tone plays once it runs.
+   */
+  function handlePlayTestTone(): void {
+    pending.current?.();
+    pending.current = null;
+    setToneError(null);
+    setToneBusy(true);
+    pending.current = openMicThen(
+      getEngine(),
+      () => {
+        pending.current = null;
+        setToneBusy(false);
+        playTone();
+      },
+      (code) => {
+        pending.current = null;
+        setToneBusy(false);
+        setToneError(micProblem(code, 'Play test tone'));
+      },
+    );
   }
 
   function recordCheck(result: 'normal' | 'earpiece' | 'quiet'): void {
@@ -171,15 +204,18 @@ function StepAudioCheck(): JSX.Element {
   return (
     <div class="pl-stack">
       <p class="pl-body">
-        With the mic running, play a short tone and tell us where you actually heard it. This catches iOS
-        routing audio to the earpiece or ducking its volume.
+        Play a short tone and tell us where you actually heard it. This catches iOS routing audio to the
+        earpiece or ducking its volume, which only happens while the mic is on.
       </p>
       {engineState.value !== 'running' ? (
-        <Banner kind="info" message="Start the mic first (Microphone step, or the Sing button on Live) so the audio session is active." />
+        <p class="pl-body-s pl-muted" data-testid="tone-mic-note">
+          Play test tone turns the microphone on first.
+        </p>
       ) : null}
-      <Button variant="secondary" icon={Volume2} onClick={playTestTone} disabled={engineState.value !== 'running'}>
+      <Button variant="secondary" icon={Volume2} loading={toneBusy} onClick={handlePlayTestTone}>
         Play test tone (2s)
       </Button>
+      {toneError ? <Banner kind="error" message={toneError} /> : null}
       <span class="pl-label">Where did you hear it?</span>
       <div class="pl-stack">
         <Button variant="secondary" block onClick={() => recordCheck('normal')}>
@@ -205,17 +241,17 @@ function StepAudioCheck(): JSX.Element {
   );
 }
 
-/** The mic's state in a sentence, for a calibration that could not open it. */
-function micProblem(code: string | undefined): string {
+/** The mic's state in a sentence, for a step that could not open it; `retry` names the button to tap again. */
+function micProblem(code: string | undefined, retry: string): string {
   switch (code) {
     case 'permission-denied':
-      return 'Microphone blocked. On iPhone open Settings › Safari › Microphone and choose Allow; in Chrome or Edge allow it from the site icon in the address bar. Then tap Run again.';
+      return `Microphone blocked. On iPhone open Settings › Safari › Microphone and choose Allow; in Chrome or Edge allow it from the site icon in the address bar. Then tap ${retry} again.`;
     case 'no-microphone':
-      return 'No microphone was found. Connect one or pick another input in the Microphone step, then tap Run again.';
+      return `No microphone was found. Connect one or pick another input in the Microphone step, then tap ${retry} again.`;
     case 'mic-in-use':
-      return 'Another app is using the microphone. Close it, then tap Run again.';
+      return `Another app is using the microphone. Close it, then tap ${retry} again.`;
     default:
-      return 'The microphone did not start, so the clicks could not be heard. Tap Run again; if it keeps failing, use Reset audio in the Audio check step.';
+      return `The microphone did not start. Tap ${retry} again; if it keeps failing, use Reset audio in the Audio check step.`;
   }
 }
 
@@ -328,7 +364,7 @@ function StepLatency(): JSX.Element {
       (code) => {
         pending.current = null;
         setRunning(false);
-        setMicError(micProblem(code));
+        setMicError(micProblem(code, 'Run'));
       },
     );
   }
