@@ -1102,3 +1102,70 @@ button.pl-row:active {
     overflow-y: auto;
   }
 }
+
+/* ---------------------------------------------------------------- score ring (Wave 2 contract) */
+
+.pl-score-ring {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  color: var(--tally);
+}
+.pl-score-ring svg {
+  position: absolute;
+  inset: 0;
+}
+.pl-score-ring__track {
+  stroke: var(--line);
+}
+.pl-score-ring__arc {
+  stroke: currentColor;
+}
+.pl-score-ring__centre {
+  position: relative;
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-hi);
+  line-height: 1;
+}
+
+/* ---------------------------------------------------------------- locked item (Wave 2 contract, SPEC §11.1) */
+
+.pl-locked {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 0;
+  color: var(--text-mid);
+  cursor: default;
+}
+.pl-locked--compact {
+  padding: 0;
+  align-items: center;
+}
+.pl-locked__icon {
+  flex: none;
+  margin-top: 3px;
+  color: var(--text-lo);
+}
+.pl-locked--compact .pl-locked__icon {
+  margin-top: 0;
+}
+.pl-locked__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.pl-locked__title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-lo);
+}
+.pl-locked__hint {
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--text-mid);
+}

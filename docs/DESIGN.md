@@ -120,7 +120,7 @@ Progression is **linear and earned, like a video game**. There's no picking "beg
 - **Locked:** dim (`--text-lo`), a lock glyph, and an explicit requirement ("Pass *Sustain II* to unlock"). **Current:** amber ring with a slow 2 s breathing glow (disabled under reduced motion). **Passed:** a solid ring.
 - Each world has a quiet hue accent used only on its header rule and node rings. Foundations `--tally`, Vibrato `#56B4E9`, Inflections `#19C39A`, Runs `#F0E442`, Dynamics `#E69F00`, Song Stage `#F2EFE8`.
 - **Level screen:** goal in one sentence → **Listen** (demo) → **Sing** → take report. Pass thresholds are shown before singing ("Pass: 70% in tune, settle < 150 ms").
-- **Take report:** a big score in a ring (`readout-l`), pass/fail as text plus a glyph, 2–4 metric tiles (label, value, target), the trace replayed with markers, and **one** coaching tip. Buttons: Retry (primary) and Next (when unlocked).
+- **Take report:** a big score in a ring (`readout-l`), pass/fail as text plus a glyph, 2–4 metric tiles (label, value, target), the trace replayed with markers, and **one** coaching tip. Buttons: after a pass, Next (primary) and Retry; after a miss, Retry (primary) and Back to level (§13.5).
 
 ## 11. Voice & copy
 
@@ -137,3 +137,181 @@ Coach-like, specific, brief. Use numbers over adjectives, and no exclamation spa
 - [ ] No horizontal scroll at 375 px; safe areas respected (notch and home indicator)
 - [ ] Live numbers are tabular and fixed-width (no jitter)
 - [ ] Animations use transform/opacity only
+
+## 13. Wave 2 screens (Phases 3–7)
+
+From the `ui-ux-pro-max` rules (accessibility and touch first, then performance, layout, type and colour, motion, charts) and the `frontend-design` stance: one deliberate concept, executed with restraint. **The concept for every Wave 2 screen is the setlist**: a singer's night laid out like a set list taped to a monitor. Numbered entries in Big Shoulders, one cable-like line joining them, the amber tally light marking where you are. Each screen has at most ONE memorable thing (named below), and everything else stays quiet.
+
+### 13.0 Rules for every Wave 2 screen
+- **App bar:** a back button when `canGoBack`, the title, and a trailing slot. Hub screens (Home, Map) show the **profile chip** in the slot: the singer's initials in a 32 px `--bg-2` circle inside a 48 px target, which opens Profiles. Screens that use the mic (Sing, Live, Vibrato meter, Song player) show the mic status pill instead.
+- **Locked items** (SPEC §11.1) use `<Locked hint=… />`: dimmed, a lucide `Lock` glyph and the one requirement line. They are static text, never a button, and have no pressed state. Screen readers hear "Locked." before the line. A locked item is never hidden, and never shows a tap that "does nothing".
+- **The thumb zone:** the screen's primary action sits in the bottom action bar. Only one amber button is visible at a time.
+- **Async content:** skeleton blocks in `--bg-1` sized to the final content, so nothing jumps when a score, a list or a chart arrives. Buttons doing async work disable and show inline progress, and never fire twice.
+- **Errors:** next to the cause, in plain words, with the fix and a retry. Delete flows report the real result: a rejected delete says it failed and keeps the item.
+- **Numbers:** tabular-nums in fixed-width boxes. Scores read "86%", cents "+12¢", tempo "96 bpm", durations "1:05".
+- **Charts:** inline SVG, no chart library. Every chart has a "Show as table" toggle (the accessible alternative), axis labels in `label` style, and is never colour-only.
+- **Copy:** §11. Coach-like and specific. A miss is "Not yet", never red alarm copy.
+
+### 13.1 Home (the hub)
+- **Purpose:** one tap to keep going.
+- **Top: the Continue card.**
+  - A 4 px left rule in the current world's hue.
+  - The label `NEXT UP · 04`, the level title (`display-l`), and the goal sentence (`body-s`, max 65 ch).
+  - The level's tally lights, and a full-width 64 px amber **Continue** button that opens the Level screen.
+  - When every level is passed: "Every level passed" and a Dashboard link.
+- **Momentum chip:** the number and a 7-day mini bar row. Shown only once the dashboard is unlocked.
+- **Training destinations:** World map, Daily workout, Song Stage, Vibrato meter, Live pitch, Progress dashboard, as `ListRow`s. A locked one shows `<Locked compact>` with its line in place of the chevron.
+- **Utilities:** Setup & calibration, Settings, Profiles, Data & backup, Diagnostics, About & voice care.
+- **First run, per profile:**
+  1. The **voice-care sheet**: warm up, hydrate, never sing through pain or hoarseness, rest, don't strain for range, plus "This is not medical advice." and a "Got it" button that sets `voiceCareSeen`.
+  2. Then the existing headphone/Setup prompt.
+- **Memorable thing:** the Continue card reads like the next number on the set list.
+
+### 13.2 World map (the setlist path)
+- **Layout:** one vertical scroll.
+- **World section headers:** the world number and title in `display-l` ("02 VIBRATO"), its summary (`body-s`), and a 2 px rule in the world hue.
+- **Audition row:** an open world with an audition that can be taken gets the row "Placement audition · Sing N short tests to skip ahead".
+  - When the audition can't be taken yet, the row is `<Locked>` with `auditionRequirementHint`.
+  - When nothing is left to unlock, the row is hidden.
+- **Level nodes:** levels sit on one continuous 2 px line (the cable) down the left third, in `--line`, or in the world hue up to the current level.
+  - Each node is a 56 px `ScoreRing` (best score) with the level number in the centre (Big Shoulders 20).
+  - To its right: the title (`display-m` 22) and a status line (`body-s`).
+    - **Passed:** "Best 86% · Solid" plus `TallyLights`.
+    - **Current:** "Up next" in `--tally`.
+    - **Locked:** `<Locked compact hint=…>`.
+  - Only openable nodes are buttons; they open the Level screen.
+- **Current node:** amber ring, with a 2 s breathing glow made by animating the opacity of a pseudo-element ring (no box-shadow animation). It is off under reduced motion. On open, the map scrolls so this node sits about 40% down the viewport (instant under reduced motion), or to the world in `params.worldId`.
+- **Boss Recital node:** 64 px, a double ring, the label `BOSS RECITAL` above its title.
+- **A locked world:** the dimmed header, a compact list of its level titles (no row of locked nodes), and one `<Locked>` line ("Pass the Foundations Boss Recital to unlock Vibrato.").
+- **Song Stage section (last):** no nodes. A row to the Songs screen with "N songs open · M locked", or `<Locked>` until Song Stage unlocks.
+- **Power-on:** after a take opened something (`lastOutcome.unlocked`), the newly opened node powers on once, with an amber glow fade-in over 600 ms.
+- **Memorable thing:** the cable. One line from the first note you sang to the Boss Recital, lit up to where you are.
+
+### 13.3 Level screen
+- **Header:** the label `LEVEL 04` (or `BOSS RECITAL`), the title (`display-l`), the goal (`body`, max 65 ch).
+- **Pass lines:** a compact list with a lucide `Target` glyph ("70% in tune", "Settle under 150 ms").
+- **Chips:**
+  - tolerance ("±25¢");
+  - tempo: "72 bpm", or for a Runs ladder "Tempo climbs 72 → 96 bpm as you pass";
+  - the best score and tally lights once attempted.
+- **Bottom bar:** Listen (left), **Sing** (centre, primary, 64 px), More (right): Setup & calibration and the demo options.
+- **No saved range** (and this is not the Range finder): an info Banner, "Using a default range until you pass the Range finder."
+- **Boss Recital variant:** a stage treatment.
+  - The header area has a static radial spotlight (`radial-gradient` from `--bg-2` at top centre to `--bg-0`, no animation).
+  - The label reads `BOSS RECITAL · one continuous take`, with the skills it chains as a list.
+- **Passed levels** offer "Sing again" for mastery, plus "Chase a record" once Personal records unlock.
+
+### 13.4 Sing screen (the take)
+- **Layout:** the Live layout (§7): app bar (level title, mic pill), readout cluster, the canvas with target bars and tolerance band, and the bottom bar.
+- **States:**
+  - **ready**
+  - **demo:** Listen reads "Stop".
+  - **count-in:** a big beat counter (`readout-xl` "3 · 2 · 1") centred over the canvas while the starting pitch sounds.
+  - **singing:**
+    - the cue pill at the canvas's top-left (`label` style: STRAIGHT, BLOOM, VIBRATO ON, or the syllable "ah");
+    - a 2 px `--tally` progress hairline across the top of the canvas;
+    - Sing becomes **Stop**.
+  - **analyzing:** the canvas freezes and the button shows "Scoring…" with an inline spinner.
+- **Context chips** (top-right of the canvas, one at a time): "96 bpm · rung 3 of 4" for a ladder, "Test 2 of 4" for an audition, "Workout · 3 of 6" for a workout.
+- **Errors:** a mic block or interruption shows an inline Banner with the fix and "Try again". Nothing is written.
+- **Desktop keys:** Space = Sing/Stop, L = Listen, Esc = back (it stops the take first).
+- **Memorable thing:** the target bar "locks" while you're inside the band (§1). Nothing else competes with it.
+
+### 13.5 Take report
+Top to bottom:
+1. **Verdict line with a glyph.** Passed: `CircleCheck`, "Passed", in `--on`. Missed: `RotateCcw`, "Not yet", in `--text-mid`.
+2. **ScoreRing:** 160 px, score count-up to `readout-l` (600 ms).
+3. **The three tally lights.**
+4. **Metric tiles:** 2–4 in a two-column grid. Each tile has a `label`, the value in `data` style, the target ("≥ 70%"), and a met/unmet glyph (`Check` / `Minus`). It is never colour-only.
+5. **Trace replay:** a static canvas with the targets, the trace, crack ticks and per-note run verdict glyphs (§3). It spans the full width and is 160 px tall.
+6. **The one coaching tip:** a Card with a `Lightbulb` glyph.
+7. **Playback:** "Play take", "Slow (0.5×)", and for runs "Slow + target".
+
+**Actions** come from `afterTakeActions`: exactly one primary, in the bottom bar.
+
+**Special cases:**
+- **Celebration (pass only, §9):** the ring count-up, the tally lights in a 120 ms stagger, and an **Unlocked** strip listing what opened (`LockOpen` glyph and the unlock event titles). Reduced motion makes it instant.
+- **Folded take:** "Not judged: this exercise doesn't fit your saved range", the score greyed, and the unfit-range tip.
+- **Range finder pass:** a range card showing comfortable C3–A4 and extended A2–C5 on a mini keyboard strip.
+- **Ladder:** "Next take at 104 bpm" under the verdict when the tempo climbed.
+- **Memorable thing:** the ring and the three lights lighting in sequence, the app's one celebration.
+
+### 13.6 Auditions
+- **Intro screen:**
+  - The world title and "Placement audition".
+  - One paragraph: "Sing N short tests. Each pass unlocks the levels it covers. The run stops at the first miss. Nothing you've earned is ever locked again."
+  - The tests as a numbered list. Each has an "unlocks Pitch match – Crispness" caption and a status: passed (`Check`), next (`--tally`), or not reached.
+  - Primary button: "Start test 1" (or "Retake test 2").
+  - When the audition can't be taken: `<Locked>` with its line and no Start button.
+- **Results (after a miss or the last test):** "You placed at *Sirens & glides*", what opened, and a primary button "Go to Sirens & glides".
+
+### 13.7 Song Stage: library
+- **Layout:** the open songs first, then the locked ones, which are dimmed with `<Locked hint="Pass the Vibrato Boss Recital to unlock this song.">`.
+- **Each row:**
+  - the title (`display-m` 22) and composer/artist (`body-s`);
+  - the range "F3–A4" and the length "1:40";
+  - a world chip (an accent dot plus the world name);
+  - the top difficulty reason's `detail` as the caption.
+- **Chips:** bundled charts carry a "Public domain" chip; imported songs carry "Yours".
+- **Import:** a trailing app-bar button once import unlocks. Before that, the list ends with the `<Locked>` import line.
+
+### 13.8 Song import
+One screen, in steps:
+1. **Choose a file:** UltraStar `.txt` or `.mid`/`.midi`.
+2. **MIDI only: pick the melody track.** The candidates show name, note count and range, each with a 6 s preview button. The best one is preselected.
+3. **Optional backing track (MP3/WAV) and offset:** a slider of ±2000 ms in 10 ms steps, plus a "Play with click" check.
+4. **The rating:** the required world, the reason details, and **Save**.
+
+The line "Your files stay on this device." sits under the picker. Parser errors appear next to the picker in plain words. Purchased karaoke MIDI often has several tracks and a drum channel, and the track step is where that gets resolved.
+
+### 13.9 Song player
+- **App bar:** the song title and the mic pill.
+- **Transport row:** play/pause, loop-phrase toggle, speed segmented (50 / 75 / 100%), and a transpose stepper (± semitones, with the suggested key marked "fits your range").
+- **Canvas:** the piano roll (PitchView: song notes as target bars, the live trace).
+- **Lyrics strip under the canvas:**
+  - the current phrase in `body` 20 px, with the current syllable underlined in `--tally`;
+  - the next phrase in `--text-lo`.
+- **Phrase scrubber:** one pill per phrase, showing its last score as a number with an on/off tint. It scrolls horizontally inside its own row, so the page itself never scrolls sideways.
+- **Bottom bar:** Listen (the melody or backing for the selected phrase), **Sing** (the phrase, or the whole song), More (offset, backing volume, metronome).
+- **After a take:** a sheet with the phrase-by-phrase breakdown (phrase text, score bar and %, in-tolerance %), the overall score, and the actions "Retry phrase" / "Next phrase".
+- **No latency calibration for this route:** a Banner, "Calibrate latency first so your takes line up.", linking to Setup.
+- **Memorable thing:** the lyric line with the tally underline walking the syllables.
+
+### 13.10 Progress dashboard
+- **Momentum:** the number in `readout-l`, one sentence ("Rest days keep it. It never drops to zero."), and 30 daily bars.
+- **Level map completion:** per open world, "5 of 8 levels · Boss Recital next" and a 4 px bar in the world hue.
+- **Skills:** one row per UNLOCKED skill. Each row has the name, the latest value, and a 30-day sparkline (120×32, `--text-hi` stroke, last point dotted in `--tally`). Tapping a row expands a table of the last 10 values.
+- **Range over time:** a band chart (x = date, y = note) between the lowest and highest clean notes, with note names on the y axis, plus a table toggle.
+- **Personal bests:** a list, shown once Personal records unlock.
+- **Practice minutes:** this week against last week.
+- Locked skills do not appear at all (SPEC §12).
+
+### 13.11 Daily workout
+- **Before:** a 5 / 10 / 20 min segmented control (saved as `workoutMinutes`), then the plan, grouped by stage: Warm-up, From *World*, Review, Cool-down.
+  - Each item shows its title and its reason caption ("Your weakest skill: Crispness").
+  - Takes ×N and an estimated duration.
+  - The total sits at the bottom.
+  - Primary button: **Start workout**.
+- **During:** the Sing and Report screens carry "Workout · 3 of 6".
+- **End:** a summary of items done, minutes sung, and Momentum before → after.
+
+### 13.12 Profiles
+- **Rows:** an initials avatar, the name, the voice type, the range ("C3–A4", or "Range not measured"), and the current world. The active profile has a `Check`.
+- **Tap to switch.**
+- **Actions:**
+  - **New profile:** a name, and a voice type (Tenor, Baritone, Other, Not sure).
+  - **Rename.**
+  - **Delete:** a Sheet with typed-name confirmation and an "Also delete recordings" toggle, on by default. Errors are shown, and it never claims "Deleted" falsely.
+
+### 13.13 Data & backup
+- **Storage card:** durable ✓, or the warning. Attempts, takes, audio MB, and the origin quota when the browser reports it.
+- **Backup:**
+  - "Export backup" downloads `pitch-lab-backup-YYYY-MM-DD.json`.
+  - "Import backup" opens a file picker and shows the ImportReport in plain words.
+- **Recordings:** saved takes, newest first. Each row has the exercise title, date, length and an audio badge, with Play, **Export WAV**, and Delete. The note above the list: "Exporting is the only way audio leaves this device."
+- **Danger zone:** Delete all data, through a Sheet where you type DELETE.
+
+### 13.14 Vibrato meter (tool)
+- **Layout:** the Live layout, with the vibrato zone band on the trace (§8).
+- **Readouts:** three big readouts: rate (Hz), extent (±¢), centring (¢). Each shows the style's zone ("Pop 5–7 Hz") and an in-zone glyph.
+- **Flags:** wobble, bleat and straight appear as chips. Straight tone is neutral (`--text-mid`, `Info` glyph). Wobble and bleat use `--alert` with a glyph.

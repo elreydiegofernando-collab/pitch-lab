@@ -307,6 +307,9 @@ const SETTING_CLEANERS: { [K in Exclude<keyof Settings, 'schemaVersion'>]: (valu
   theme: oneOf<Settings['theme']>({ system: true, dark: true, light: true }),
   reducedMotion: oneOf<Settings['reducedMotion']>({ system: true, on: true, off: true }),
   showNoteNames: (value) => (typeof value === 'boolean' ? value : undefined),
+  workoutMinutes: (value) => (value === 5 || value === 10 || value === 20 ? value : undefined),
+  keepTakeAudio: (value) => (typeof value === 'boolean' ? value : undefined),
+  voiceCareSeen: (value) => (typeof value === 'boolean' ? value : undefined),
 };
 
 /**

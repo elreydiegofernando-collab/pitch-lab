@@ -1,15 +1,17 @@
 /**
- * App: applies the theme, switches screens on route change (200ms fade/rise,
- * none under reduced motion — see styles/base.css), mounts the global toast
- * region for service-worker updates, requests persistent storage after the
- * first successful engine start, and shows a break reminder after
- * CONFIG.health.breakReminderMin of actual singing time.
+ * App: applies the theme, boots the session (storage, active profile, progress, the route guard), switches screens
+ * on route change (200ms fade/rise, none under reduced motion — see styles/base.css), mounts the global toast
+ * region (service-worker updates, refused navigations), requests persistent storage after the first successful
+ * engine start, and shows a break reminder after CONFIG.health.breakReminderMin of actual singing time.
+ *
+ * Wave 2: the route switch below is the contract's screen table (docs/ARCHITECTURE.md "Wave 2"); the runtime
+ * builder owns the rest of this file.
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import { bindDesktopBackKey, route } from './router';
+import { bindDesktopBackKey, refusal, route } from './router';
 import { initTheme } from './state/theme';
-import { settingsReady, storagePersistent } from './state/settings';
+import { bootSession, storageDurable } from './state/session';
 import { engineState } from './state/engine-store';
 import { showToast } from './state/toast';
 import { registerServiceWorker } from './pwa/register-sw';
@@ -18,11 +20,24 @@ import { CONFIG } from './config';
 import { Banner } from './ui/components/Banner';
 import { ToastRegion } from './ui/components/Toast';
 import { About } from './ui/screens/About';
+import { Audition } from './ui/screens/Audition';
+import { Dashboard } from './ui/screens/Dashboard';
+import { Data } from './ui/screens/Data';
 import { Diagnostics } from './ui/screens/Diagnostics';
 import { Home } from './ui/screens/Home';
+import { Level } from './ui/screens/Level';
 import { Live } from './ui/screens/Live';
+import { Map } from './ui/screens/Map';
+import { Profiles } from './ui/screens/Profiles';
+import { Report } from './ui/screens/Report';
 import { Settings } from './ui/screens/Settings';
 import { Setup } from './ui/screens/Setup';
+import { Sing } from './ui/screens/Sing';
+import { SongImport } from './ui/screens/SongImport';
+import { SongPlayer } from './ui/screens/SongPlayer';
+import { Songs } from './ui/screens/Songs';
+import { VibratoMeter } from './ui/screens/VibratoMeter';
+import { Workout } from './ui/screens/Workout';
 
 function CurrentScreen(): JSX.Element {
   const name = route.value.name;
@@ -39,11 +54,43 @@ function CurrentScreen(): JSX.Element {
       return <Diagnostics />;
     case 'about':
       return <About />;
+    case 'profiles':
+      return <Profiles />;
+    case 'data':
+      return <Data />;
+    case 'map':
+      return <Map />;
+    case 'level':
+      return <Level />;
+    case 'sing':
+      return <Sing />;
+    case 'report':
+      return <Report />;
+    case 'audition':
+      return <Audition />;
+    case 'vibrato-meter':
+      return <VibratoMeter />;
+    case 'dashboard':
+      return <Dashboard />;
+    case 'workout':
+      return <Workout />;
+    case 'songs':
+      return <Songs />;
+    case 'song-import':
+      return <SongImport />;
+    case 'song':
+      return <SongPlayer />;
     default: {
       const exhaustive: never = name;
       throw new Error(`Unknown route: ${String(exhaustive)}`);
     }
   }
+}
+
+/** A stable key per screen instance: a new level, target or song remounts the screen. */
+function screenKey(): string {
+  const r = route.value;
+  return `${r.name}:${JSON.stringify(r.params)}`;
 }
 
 /** Module-scope, not component state: the request must fire exactly once per app lifetime, not once per mount. */
@@ -52,8 +99,6 @@ let persistentStorageRequested = false;
 const BREAK_REMINDER_MS = CONFIG.health.breakReminderMin * 60 * 1000;
 
 export function App(): JSX.Element {
-  const [settingsAreReady, setSettingsAreReady] = useState(false);
-  const [storageWarningDismissed, setStorageWarningDismissed] = useState(false);
   const [showBreakReminder, setShowBreakReminder] = useState(false);
 
   const runningSince = useRef<number | null>(null);
@@ -62,6 +107,7 @@ export function App(): JSX.Element {
   useEffect(() => {
     initTheme();
     bindDesktopBackKey();
+    void bootSession();
     registerServiceWorker({
       onNeedRefresh: (update) => {
         showToast('Update ready.', { actionLabel: 'Reload', onAction: () => void update() });
@@ -72,15 +118,11 @@ export function App(): JSX.Element {
     });
   }, []);
 
+  // A refused navigation (a locked item, SPEC §11.1): say what unlocks it.
   useEffect(() => {
-    let active = true;
-    void settingsReady.then(() => {
-      if (active) setSettingsAreReady(true);
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
+    const r = refusal.value;
+    if (r) showToast(r.hint, { durationMs: 4000 });
+  }, [refusal.value]);
 
   // Persistent storage: once, right after the first successful engine start (a real user gesture already happened).
   useEffect(() => {
@@ -118,13 +160,9 @@ export function App(): JSX.Element {
 
   return (
     <>
-      {settingsAreReady && !storagePersistent.value && !storageWarningDismissed ? (
-        <Banner
-          kind="warn"
-          message="This browser would not grant persistent storage — your settings and calibration may not survive."
-          actionLabel="Dismiss"
-          onAction={() => setStorageWarningDismissed(true)}
-        />
+      {!storageDurable.value ? (
+        // Not dismissable (ARCHITECTURE "Wave 2 must-dos"): on this launch nothing will survive a reload.
+        <Banner kind="warn" message="This browser is not saving your data on this visit. Progress and takes will be lost when you close Pitch Lab." />
       ) : null}
 
       {showBreakReminder ? (
@@ -136,7 +174,7 @@ export function App(): JSX.Element {
         />
       ) : null}
 
-      <div key={route.value.name} class="pl-fade-rise" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div key={screenKey()} class="pl-fade-rise" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         <CurrentScreen />
       </div>
 

@@ -5,9 +5,11 @@ import type { LatencyCalibration } from '../audio/latency-types';
 import type { Timbre } from '../audio/synth-types';
 
 /**
- * Per-profile preferences. Stored at `profile:<id>:settings` (Phase 1 uses id
- * "default"; Phase 3 adds a profile switcher). Difficulty/tolerance is NOT a
- * setting - it comes from the level the singer has reached.
+ * Per-profile preferences. Stored at `profile:<id>:settings` (storage/keys.ts
+ * profileSettingsKey) for the active profile and validated on read with the
+ * storage `sanitizeSettings` (a new field needs a cleaner there too).
+ * Difficulty/tolerance is NOT a setting - it comes from the level the singer
+ * has reached.
  */
 export interface Settings {
   schemaVersion: 1;
@@ -20,6 +22,12 @@ export interface Settings {
   theme: 'system' | 'dark' | 'light';
   reducedMotion: 'system' | 'on' | 'off';
   showNoteNames: boolean;
+  /** Daily-workout length last chosen (SPEC §12: 5, 10 or 20 minutes). */
+  workoutMinutes: 5 | 10 | 20;
+  /** Keep each take's audio on this device for playback, slow-down and WAV export. Audio never leaves the device unless exported. */
+  keepTakeAudio: boolean;
+  /** This singer has seen the voice-care note (first run, SPEC §12). */
+  voiceCareSeen: boolean;
 }
 
 /**
@@ -53,6 +61,9 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   reducedMotion: 'system',
   showNoteNames: true,
+  workoutMinutes: 10,
+  keepTakeAudio: true,
+  voiceCareSeen: false,
 };
 
 export const DEFAULT_DEVICE_SETTINGS: DeviceSettings = {

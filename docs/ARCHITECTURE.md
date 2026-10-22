@@ -48,7 +48,9 @@ Recovery:
 
 ## Routing (UI)
 
-**Memory router: the URL never changes after load.** On iOS home-screen apps, a URL or hash change while the mic is open can re-trigger the permission prompt (WebKit #215884). The initial hash is read **once** at boot (deep links / e2e: `#/live`, `#/diagnostics`, …) and never written. Back is an in-app button plus `Esc`.
+**Memory router: the URL never changes after load.** On iOS home-screen apps, a URL or hash change while the mic is open can re-trigger the permission prompt (WebKit #215884). The initial hash is read **once** at boot and never written. Deep links (and the e2e suite) use `#/live`, `#/diagnostics`, `#/map/<worldId>`, `#/level/<levelId>`, `#/audition/<worldId>`, `#/song/<songId>`, …; `sing` and `report` are never deep-linkable. Back is an in-app button plus `Esc`.
+
+Every gated route passes the route guard (SPEC §11.1; see "Wave 2" below). A gated deep link waits until the session installs the guard and is then opened or redirected to its requirement.
 
 ## Performance rules (hot paths)
 
@@ -116,6 +118,44 @@ Contract files owned by the orchestrator (read-only for builders):
 ### Wave 2: experience (UI and runtime)
 Exercise runner, world map, take report, per-world views, song mode, dashboard, workout, profiles, export, auditions and recitals.
 
+Contract files for Wave 2, owned by the orchestrator (builders report needed changes, never edit them): `src/router.ts`, `src/runtime/types.ts`, `src/runtime/targets.ts`, `src/state/settings-types.ts`, `src/ui/components/ScoreRing.tsx`, `src/ui/components/Locked.tsx`, the route switch in `src/app.tsx`, `docs/DESIGN.md`.
+Every Wave 1 contract file stays read-only too.
+
+Contract STUBS: these files export the agreed names and signatures, and their owner replaces the bodies but keeps the signatures:
+- `src/state/session.ts`, `src/runtime/runner.ts`, `src/runtime/flow.ts`, `src/runtime/workout.ts` (runtime);
+- `src/state/songs.ts` (song).
+
+`src/runtime/guard.ts` is written; the runtime builder owns its tests and fixes.
+The 13 new screen files start as placeholders.
+
+| Agent | Owns (creates/edits only these) |
+|---|---|
+| runtime | `src/state/session.ts`, `src/state/settings.ts`, `src/runtime/{runner,flow,workout,guard}.ts` + tests, `src/app.tsx` (except the route switch), `src/main.tsx` (except the stylesheet list) |
+| ui-practice | `src/ui/screens/{Level,Sing,Report,VibratoMeter,Live}.tsx`, `src/ui/practice/**`, `src/ui/pitch-view/**` (additive changes to its `types.ts` only), `src/styles/practice.css` |
+| ui-worlds | `src/ui/screens/{Home,Map,Audition}.tsx`, `src/ui/worlds/**`, `src/styles/worlds.css` |
+| ui-song | `src/ui/screens/{Songs,SongImport,SongPlayer}.tsx`, `src/ui/song/**`, `src/state/songs.ts`, `src/runtime/song-session.ts` + tests, `src/styles/song.css` |
+| ui-progress | `src/ui/screens/{Dashboard,Workout,Profiles,Data,Settings,Diagnostics,About}.tsx`, `src/ui/progress/**`, `src/styles/progress.css` |
+| qa | `e2e/**`, `vitest.e2e.config.ts`, `docs/MANUAL-TEST-CHECKLIST.md`, `README.md` |
+
+Each builder's tests sit next to its files. `src/ui/components/*` and `src/styles/components.css` stay as they are: a builder that needs a shared component builds it in its own folder, and the orchestrator promotes it later.
+
+Wave 2 rules (on top of the Wave 1 integration rules and must-dos below):
+- **Routes and the guard** (`src/router.ts`): `navigate`, `replace`, `back` and `resetTo` take typed params. A gated route goes through the installed guard, and a refusal opens the guard's redirect and publishes the requirement line (`refusal`). The guard is `src/runtime/guard.ts`: pure, fail closed, its input is the `GuardContext` the session builds.
+  - Locked items are still SHOWN (`<Locked hint=... />`), dimmed, as static text and never as a control.
+  - The Sing → Report → Retry chain uses `replace` so Back returns to the level.
+  - The session installs the guard after boot, and calls `revalidate()` (or `resetTo('home')`) after a profile switch, a backup import or Delete all data.
+- **Session** (`src/state/session.ts`): the single source of the active profile, its log and its snapshot.
+  - Screens read the signals and never call `getStorage()` themselves, except the Data screen (backup, takes, usage) and the song builder (song records), which go through `appStorage.value`.
+  - Write an attempt only through `recordAttempt`, which recomputes the snapshot.
+  - Gate any feature in a component with `isUnlocked(id)` (it reads `snapshot.value`).
+- **Runner** (`src/runtime/runner.ts`): one `createRunner(target)` per Sing screen visit, disposed on unmount.
+  - `listen()` and `sing()` are called straight from click handlers (the iOS gesture rule).
+  - The report reads `lastOutcome`, and its buttons come from `afterTakeActions(outcome)`, opened with `replace`.
+  - Workout takes go through the same runner (`{ kind: 'workout', itemIndex }`), auditions too (`{ kind: 'audition', worldId }`: the runner sings that world's NEXT test).
+- **Live readouts are progressive**: `live.cracks`, `live.onset` and `live.vibrato` gate what the Live screen draws, and `setting.vibratoStyle` gates the setting.
+- **Audio stays on the device**: take audio is kept only when `settings.keepTakeAudio` is on, played back locally, and leaves the device only through an explicit WAV export on the Data screen.
+- **Styles**: each builder writes its CSS only in its own stylesheet (all four are imported by `main.tsx`) and uses the tokens in `tokens.css`. No new hues and no new fonts.
+
 ### Wave 3: integration, review, e2e, deploy
 
 ## Wave 1 integration: how one sung take flows (2026-10-21)
@@ -153,4 +193,4 @@ Wave 2 must-dos found while integrating:
 - Pass `opts.gain = settings.referenceVolume` to `buildDemo` (its custom voices bypass the synth's master volume).
 - Device checks to add to the manual checklist when the UI exists: sing, force-quit right after the report, relaunch (attempt present, progress intact, saved take replays); real-voice corpus regression for every PROVISIONAL threshold. They live in `src/config.ts` (comments say PROVISIONAL) or in named local constants at the top of the analyzer that uses them (each with a PROVISIONAL comment). The first ones to check on real voices: `CONFIG.transitions.vibratoMisfit*` (how irregular a real vibrato may be before its stalls on a siren count as stairs), `CONFIG.runs.definition*` (the smeared/defined verdict at 3-12 notes/s), `CONFIG.accuracy.lateStartAllowanceSec` (against real beginners' reaction time), `CONFIG.range.*`, `CONFIG.dynamics.endDownShare`/`minShapeScore`, and the vibrato zone edges (a 5.0 or 7.0 Hz vibrato measures 4.99 or 7.01, and 8 c of jitter inflates a small extent, so `vibrato.inZone` can flip at an edge; the catalog's gates sit half way up the inZone band, or a quarter of the way on bloom and switching, so a flip alone never decides a pass).
 - `npm run e2e` builds with `NODE_ENV=production` (e2e/preview-server.ts); under vitest's inherited `NODE_ENV=test` the build ships Preact's debug code and is a different app from the one that deploys.
-- `.gitattributes` pins `public/songs/**` to LF: the bundled charts are hashed, snapshotted and served byte-exact, and a Windows checkout with `core.autocrlf=true` would otherwise rewrite them to CRLF and fail `src/song/bundled.test.ts`.
+- `.gitattributes` (`* text=auto eol=lf`) keeps `public/songs/**` LF: the bundled charts are hashed, snapshotted and served byte-exact, and a Windows checkout with `core.autocrlf=true` would otherwise rewrite them to CRLF and fail `src/song/bundled.test.ts`.

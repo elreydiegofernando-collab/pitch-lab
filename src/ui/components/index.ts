@@ -15,3 +15,5 @@ export * from './CentsGauge';
 export * from './ReadoutCluster';
 export * from './TallyLights';
 export * from './EmptyState';
+export * from './ScoreRing';
+export * from './Locked';
