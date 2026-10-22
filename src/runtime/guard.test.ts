@@ -98,9 +98,9 @@ describe('guardRoute: sing', () => {
   });
 
   it('records: only on a passed level, once personal records are open', () => {
-    const before = refused(guardRoute(routeOf('sing', { target: 'record', levelId: 'foundations.01' }), ctx()));
-    expect(before).toEqual({ redirect: routeOf('level', { levelId: 'foundations.01' }), hint: 'Pass Range finder to chase personal records on it.' });
-    expect(guardRoute(routeOf('sing', { target: 'record', levelId: 'foundations.01' }), ctx(firstPass()))).toEqual({ ok: true });
+    const before = refused(guardRoute(routeOf('sing', { target: 'record', levelId: 'foundations.02' }), ctx(firstPass())));
+    expect(before).toEqual({ redirect: routeOf('level', { levelId: 'foundations.02' }), hint: 'Pass Pitch match to chase personal records on it.' });
+    expect(guardRoute(routeOf('sing', { target: 'record', levelId: 'foundations.02' }), ctx(passThrough(WORLDS, 'foundations.02')))).toEqual({ ok: true });
     // Not openable at all: back to the map at its world. A boss is named with its world.
     expect(refused(guardRoute(routeOf('sing', { target: 'record', levelId: 'foundations.boss' }), ctx(firstPass())))).toEqual({
       redirect: routeOf('map', { worldId: 'foundations' }),
@@ -111,6 +111,16 @@ describe('guardRoute: sing', () => {
       routeOf('level', { levelId: 'foundations.02' }),
     );
     expect(refused(guardRoute(routeOf('sing', { target: 'record', levelId: 'nope.01' }), ctx(firstPass())))).toEqual({ redirect: routeOf('map'), hint: 'Not available.' });
+  });
+
+  it('records: never on the Range finder, passed or not, and the refusal says why (not "Pass Range finder")', () => {
+    const hint = 'The Range finder measures your range: it has no personal records to chase.';
+    for (const attempts of [[], firstPass(), foundationsDone()]) {
+      expect(refused(guardRoute(routeOf('sing', { target: 'record', levelId: 'foundations.01' }), ctx(attempts)))).toEqual({
+        redirect: routeOf('level', { levelId: 'foundations.01' }),
+        hint,
+      });
+    }
   });
 
   it('auditions: the Range finder comes first, a shut world says how to open it, a finished audition says so', () => {

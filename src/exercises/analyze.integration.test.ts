@@ -11,10 +11,11 @@ import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../config';
 import type { PitchFrame, TargetNote } from '../core/types';
 import { makeTrack } from '../analysis/fixtures';
+import { cleanOctaveSpikes } from '../analysis/track';
 import type { InflectionKind } from '../analysis/types';
 import { EXERCISES, getExercise } from './catalog';
-import { analyzeTake } from './analyze';
-import { evaluate } from './evaluate';
+import { analyzeTake, noteReach } from './analyze';
+import { evaluate, reachHolds } from './evaluate';
 import { nextTempo, startTempo } from './ladder';
 import { planAnalysis } from './plan';
 import { NO_VOICE_TIP, UNFIT_RANGE_TIP, pickTip } from './tips';
@@ -234,6 +235,72 @@ describe('lazy singers: a hold or a figure that was not sung does not pass (nega
     expect(figures.reduce((a, b) => a + b, 0) / figures.length).toBeGreaterThan(gate.value); // so a plain mean would have passed it
     expect(o.a.metrics['inflection.score']!).toBeLessThan(gate.value);
     expect(o.e.passed).toBe(false);
+  });
+
+  describe('a take sung only part way never passes (the analyzers measure what WAS sung, so the reach rule refuses the rest)', () => {
+    const judged = EXERCISES.filter((d) => d.kind !== 'range-finder');
+    const saved = rangeFromMeasurement(45, 72, 'now');
+
+    it('going quiet from 20%, 40% or 60% of the take fails every level, Boss Recital and audition test, in the default and a saved range', () => {
+      const passedOnMetricsAlone: string[] = [];
+      for (const def of judged) {
+        for (const range of [null, saved]) {
+          const realized = realize(def, range, 'tenor');
+          const take = singTake(realized, good(def));
+          expect(judge(def, realized, take).e.passed, `${def.id} clean`).toBe(true);
+          for (const share of [0.2, 0.4, 0.6]) {
+            const quiet = unvoiced(take, share * realized.totalSec, realized.totalSec + 1);
+            const { a, e } = judge(def, realized, quiet);
+            expect(e.passed, `${def.id} quiet from ${share * 100}% of the take (${range ? 'saved' : 'default'} range)`).toBe(false);
+            expect(e.mastery).toBe(0);
+            if (evaluate(def, a.metrics).passed) {
+              passedOnMetricsAlone.push(`${def.id}@${share}`);
+              expect(e.unsung, `${def.id}@${share}: refused for its unsung notes`).toBeDefined();
+              expect(pickTip(a.metrics, def, a.tipContext).id).toBe('general.unsung');
+            }
+          }
+        }
+      }
+      // The hole this closes: the metrics of the part that was sung pass these on their own (sirens at 20%, a Boss at 60%).
+      expect(passedOnMetricsAlone).toEqual(expect.arrayContaining(['foundations.siren.1@0.2', 'foundations.legato.1@0.4', 'dynamics.boss-recital@0.6']));
+    });
+
+    it('a take stopped part way is practice: not judged, whatever its metrics say', () => {
+      const def = ex('foundations.siren.1');
+      const realized = realize(def, saved, 'tenor');
+      const take = singTake(realized, good(def));
+      const stoppedAt = 0.3 * realized.totalSec;
+      const sung = take.filter((f) => f.t < stoppedAt);
+      const a = analyzeTake(def, realized, sung, { vibratoStyle: 'pop' });
+      expect(evaluate(def, a.metrics).passed).toBe(true); // what was sung is clean...
+      expect(evaluate(def, a.metrics, { ...a, complete: false })).toMatchObject({ passed: false, mastery: 0, notJudged: 'stopped' });
+      // ...and a whole take is unaffected by the flag.
+      const whole = analyzeTake(def, realized, take, { vibratoStyle: 'pop' });
+      expect(evaluate(def, whole.metrics, { ...whole, complete: true }).passed).toBe(true);
+      // A ladder never climbs on a stopped take.
+      const run = ex('runs.run.1');
+      const rung = startTempo(run);
+      const r = realize(run, saved, 'tenor', { bpm: rung });
+      const ra = analyzeTake(run, r, singTake(r, GOOD_SINGER).filter((f) => f.t < 0.6 * r.totalSec), { vibratoStyle: 'pop' });
+      expect(nextTempo(run, rung, ra.metrics, { ...ra, complete: false })).toBe(rung);
+    });
+
+    it('a Boss Recital needs every note; a level forgives one note in ten; the Range finder measures, so it is exempt', () => {
+      expect(reachHolds(ex('foundations.boss-recital'), { reached: 19, total: 20 })).toBe(false);
+      expect(reachHolds(ex('foundations.boss-recital'), { reached: 20, total: 20 })).toBe(true);
+      expect(reachHolds(ex('foundations.legato.1'), { reached: 18, total: 20 })).toBe(true);
+      expect(reachHolds(ex('foundations.legato.1'), { reached: 17, total: 20 })).toBe(false);
+      expect(reachHolds(ex('foundations.sustain.1'), { reached: 2, total: 3 })).toBe(false);
+      expect(reachHolds(ex('foundations.range-finder.1'), { reached: 0, total: 6 })).toBe(true);
+      // The one-hold case: a single swell sung for half of it is not sung.
+      const def = ex('dynamics.audition.3');
+      const realized = realize(def, saved, 'tenor');
+      const take = singTake(realized, GOOD_SINGER);
+      const longest = [...realized.notes].sort((x, y) => y.end - y.start - (x.end - x.start))[0];
+      const half = unvoiced(take, longest.start + 0.55 * (longest.end - longest.start), longest.end);
+      expect(noteReach(cleanOctaveSpikes(half), [longest]).reached).toBe(0);
+      expect(noteReach(cleanOctaveSpikes(take), [longest]).reached).toBe(1);
+    });
   });
 
   it('plain notes everywhere fail every inflection exercise, whatever its tier', () => {

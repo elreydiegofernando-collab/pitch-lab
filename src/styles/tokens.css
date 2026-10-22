@@ -36,6 +36,18 @@
   --good: #19c39a;
   --meh: #f0e442;
 
+  /* Text-safe variants of the hues, for TEXT (and small glyphs) only: the same hue in the dark theme, a deeper one in
+     the light theme, where the base hues sit under 4.5:1 on the light surfaces. Fills, rings and graphics keep the base
+     tokens. */
+  --tally-text: var(--tally);
+  --on-text: var(--on);
+  --off-text: var(--off);
+  --alert-text: var(--alert);
+
+  /* The band under the iPhone status bar. index.html asks for 'black-translucent' (the page runs under the status bar,
+     whose glyphs are then always white): the app bar's own colour in the dark theme, a dark band in the light theme. */
+  --status-strip: var(--bg-1);
+
   /* World accents (Phase 3+, reserved now so later work doesn't invent new hues) */
   --world-foundations: var(--tally);
   --world-vibrato: #56b4e9;
@@ -104,6 +116,18 @@
     --alert: #c2410c;
     --good: #00866a;
     --meh: #8a7a00;
+    --tally-text: #8a5300;
+    --on-text: #006aa3;
+    --off-text: #a84600;
+    --alert-text: #b53a08;
+    /* The world hues are made for the dark theme: on the light surfaces the pale ones fall under 3:1 even as graphics,
+       so every screen (Level's header rule, the Songs chips, the dashboard) uses the contrast-adjusted hues. */
+    --world-vibrato: var(--on);
+    --world-inflections: var(--good);
+    --world-runs: var(--meh);
+    --world-dynamics: var(--off);
+    --world-song: var(--text-hi);
+    --status-strip: var(--text-hi);
     --shadow-card: 0 1px 2px rgb(0 0 0 / 0.06);
   }
 }
@@ -126,6 +150,16 @@
   --alert: #c2410c;
   --good: #00866a;
   --meh: #8a7a00;
+  --tally-text: #8a5300;
+  --on-text: #006aa3;
+  --off-text: #a84600;
+  --alert-text: #b53a08;
+  --world-vibrato: var(--on);
+  --world-inflections: var(--good);
+  --world-runs: var(--meh);
+  --world-dynamics: var(--off);
+  --world-song: var(--text-hi);
+  --status-strip: var(--text-hi);
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.06);
 }
 
@@ -147,6 +181,16 @@
   --alert: #e8743b;
   --good: #19c39a;
   --meh: #f0e442;
+  --tally-text: var(--tally);
+  --on-text: var(--on);
+  --off-text: var(--off);
+  --alert-text: var(--alert);
+  --world-vibrato: #56b4e9;
+  --world-inflections: #19c39a;
+  --world-runs: #f0e442;
+  --world-dynamics: #e69f00;
+  --world-song: #f2efe8;
+  --status-strip: var(--bg-1);
   --shadow-card: none;
 }
 

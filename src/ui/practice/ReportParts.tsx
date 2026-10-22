@@ -5,35 +5,48 @@
  */
 import type { JSX } from 'preact';
 import { Check, CircleCheck, Info, Lightbulb, Minus, RotateCcw } from 'lucide-preact';
-import type { ReportTile } from '../../exercises/evaluate';
+import type { NotJudgedReason, ReportTile } from '../../exercises/evaluate';
 import type { PickedTip } from '../../exercises/tips';
 import { Card } from '../components/Card';
 
-export type Verdict = 'passed' | 'not-yet' | 'not-judged';
+export type Verdict = 'passed' | 'not-yet' | 'not-judged' | 'done';
+
+/** Why a take was not judged, in a sentence (DESIGN §11: plain, never alarm copy). */
+export function notJudgedLine(reason: NotJudgedReason | undefined, audition = false): string {
+  if (reason === 'stopped') return audition ? 'Stopped early: practice only, not judged as a test.' : 'Stopped early: practice only, not judged for the level.';
+  return 'Not judged: this exercise doesn’t fit your saved range.';
+}
 
 export interface VerdictLineProps {
   verdict: Verdict;
-  /** The words next to the glyph: "Passed", "Passed at 45 bpm" (a lower rung of a tempo ladder), "Not yet", "Not judged". */
+  /** The words next to the glyph: "Passed", "Passed at 45 bpm" (a lower rung of a tempo ladder), "Not yet", "Not judged", "Done". */
   word: string;
   /** What was sung, e.g. "Sustain I", with the tempo when it matters ("Run 3 · sung at 72 bpm"). */
   caption: string;
   /** Ladder: "Next take at 104 bpm", shown when the tempo climbed. */
   ladderLine: string | null;
+  /** Why a 'not-judged' take was not judged (notJudgedLine); the folded-range sentence when omitted. */
+  reasonLine?: string | null;
 }
 
 export function VerdictLine(props: VerdictLineProps): JSX.Element {
   const { verdict } = props;
-  const Glyph = verdict === 'passed' ? CircleCheck : verdict === 'not-yet' ? RotateCcw : Info;
+  const Glyph = verdict === 'passed' ? CircleCheck : verdict === 'not-yet' ? RotateCcw : verdict === 'done' ? Check : Info;
+  const reason = props.reasonLine ?? (verdict === 'not-judged' ? notJudgedLine(undefined) : null);
   return (
     <header class={`pl-verdict pl-verdict--${verdict}`}>
-      <div class="pl-verdict__line" role="status">
+      <div class="pl-verdict__line">
         <Glyph size={28} strokeWidth={2} aria-hidden="true" />
-        <h2 class="pl-display-m" data-testid="verdict">
+        <h2 class="pl-display-m" data-testid="verdict" tabIndex={-1}>
           {props.word}
         </h2>
       </div>
       <p class="pl-body-s pl-muted">{props.caption}</p>
-      {verdict === 'not-judged' ? <p class="pl-body-s">Not judged: this exercise doesn’t fit your saved range.</p> : null}
+      {reason ? (
+        <p class="pl-body-s" data-testid="verdict-reason">
+          {reason}
+        </p>
+      ) : null}
       {props.ladderLine ? (
         <p class="pl-body-s pl-verdict__ladder" data-testid="ladder-line">
           {props.ladderLine}

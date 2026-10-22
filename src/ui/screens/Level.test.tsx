@@ -97,10 +97,20 @@ describe('Level: the current level', () => {
     expect(buttonNamed('Chase a record')).toBeUndefined();
   });
 
-  it('names the first requirement when no level has been passed at all', async () => {
+  it('offers no personal records on the Range finder at all, passed or not (it measures; a wider span is a strained one)', async () => {
     resetSession([]);
     await mount('foundations.01');
-    expect(container.querySelector('.pl-locked')!.textContent).toContain('Pass an exercise to start chasing personal records on it.');
+    expect(text()).not.toContain('Chase a record');
+    expect(q('[data-testid="chase-record"]')).toBeNull();
+    await act(() => {
+      render(null, container);
+    });
+    container.remove();
+    resetSession(['foundations.01', 'foundations.02']);
+    await mount('foundations.01');
+    expect(q('[data-testid="sing-button"]')!.textContent).toContain('Sing again');
+    expect(text()).not.toContain('Chase a record');
+    expect(text()).not.toContain('Personal bests');
   });
 });
 
@@ -153,6 +163,16 @@ describe('Level: a passed level', () => {
     expect(text()).toContain('96%');
     expect(text()).toContain('8¢');
     expect(text()).not.toContain('not.a.metric');
+  });
+
+  it('never shows a lower rung\'s score as the level\'s best: a Runs level sung only on its lower rungs is not sung at its tempo yet', async () => {
+    const snap = snapshotAfter(['foundations.01', 'foundations.02', 'foundations.03']);
+    // What the engine reports for a Runs level with takes on its lower rungs only: attempts, but no best at its tempo.
+    snap.levels['runs.03'] = { ...snap.levels['runs.03'], status: 'current', attempts: 2, bestScore: 0, mastery: 0 };
+    session.snapshot.value = snap;
+    await mount('runs.03');
+    const tempo = getExercise(getLevel('runs.03')!.exerciseId)!.tempoBpm;
+    expect(q('[data-testid="best-score"]')?.textContent).toBe(`Not sung at ${tempo} bpm yet`);
   });
 
   it('says a level passed by audition has no score yet', async () => {

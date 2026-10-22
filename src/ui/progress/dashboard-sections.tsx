@@ -137,11 +137,12 @@ export function LevelsCard(props: { completion: readonly WorldCompletion[]; lock
 
 function SkillRow(props: { trend: SkillTrend; todayIndex: number }): JSX.Element {
   const { trend, todayIndex } = props;
-  const { skill, points, latest } = trend;
+  const { skill, points, latest, tier } = trend;
   const [open, setOpen] = useState(false);
   const info = METRIC_INFO[skill.metric];
   const latestText = latest ? formatMetric(skill.metric, latest.value) : 'No takes yet';
-  const caption = latest ? `${info.label}${isLowerBetter(skill) ? ', lower is better' : ''}` : 'No takes in 30 days';
+  // A tier-judged skill names the tolerance its line follows ("Clean transitions at ±10¢").
+  const caption = latest ? `${info.label}${tier ? ` ${tier.label}` : ''}${isLowerBetter(skill) ? ', lower is better' : ''}` : 'No takes in 30 days';
   const panelId = `dash-skill-${skill.id}`;
   const recent = points.slice(-10).reverse();
   return (

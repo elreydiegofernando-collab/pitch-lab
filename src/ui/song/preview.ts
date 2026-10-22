@@ -5,6 +5,7 @@
  * getSynth() creates and resumes the AudioContext inside the gesture (iOS). Nothing is recorded.
  */
 import { getEngine } from '../../audio/engine';
+import { musicalClickGain } from '../../audio/synth';
 import { backingSchedule, metronomeBpm, PHRASE_LEAD_SEC } from '../../runtime/song-session';
 import { getSynth } from '../../state/audio';
 import { settings } from '../../state/settings';
@@ -67,7 +68,8 @@ export function previewBacking(song: Song, buffer: AudioBuffer, seconds: number,
   const melody = synth.playSequence(opening(song.notes, from, seconds), { startAt, timbre: prefs.referenceTimbre, gain: prefs.referenceVolume });
   if (withClick) {
     const beat = 60 / metronomeBpm(song);
-    for (let k = Math.ceil(from / beat); k * beat < from + seconds; k++) synth.click(startAt + (k * beat - from), false);
+    const clickGain = musicalClickGain(prefs.referenceVolume);
+    for (let k = Math.ceil(from / beat); k * beat < from + seconds; k++) synth.click(startAt + (k * beat - from), false, clickGain);
   }
   const endAt = startAt + seconds;
   return {

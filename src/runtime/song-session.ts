@@ -29,6 +29,7 @@ import type { AnalyzeContext, PhraseScore } from '../analysis/types';
 import { getEngine } from '../audio/engine';
 import type { AudioEngine, EngineError } from '../audio/engine-types';
 import type { LatencyCalibration } from '../audio/latency-types';
+import { musicalClickGain } from '../audio/synth';
 import type { ReferenceSynth, ScheduledHandle } from '../audio/synth-types';
 import { TakeRecorder, encodeTake, roundTripSeconds, toInputTime, type TakeAudio } from '../audio/take-recorder';
 import { CONFIG } from '../config';
@@ -38,6 +39,7 @@ import { effectiveRange } from '../exercises/transpose';
 import { buildSongAttempt, songExerciseId, type AttemptFields } from '../progress/attempt';
 import { getSynth } from '../state/audio';
 import { activeProfile, appStorage, recordAttempt } from '../state/session';
+import { TAKE_AUDIO_NOT_KEPT } from './messages';
 import { deviceSettings, settings } from '../state/settings';
 import type { Settings } from '../state/settings-types';
 import { isPitchedNote, pitchedView, type PitchedView } from '../song/pitched';
@@ -599,6 +601,8 @@ export function createSongSession(original: Song, opts: { recordId?: string | nu
   /** The phrase Play started from (0 for the whole song): pausing never selects one before it. */
   let playFrom = 0;
   let micStartedHere = false;
+  /** Whether the mic was already on when the player opened (dispose leaves such a mic alone). */
+  const micWasOn = engine.state !== 'idle' && engine.state !== 'error';
   const stretched = new Map<SongSpeed, Promise<AudioBuffer | null>>();
   let takeSource: AudioBufferSourceNode | null = null;
   let offsetTimer: ReturnType<typeof setTimeout> | null = null;
@@ -754,7 +758,7 @@ export function createSongSession(original: Song, opts: { recordId?: string | nu
           const e = events[schedIndex++];
           const at = passStart + e.at;
           if (at < now) continue; // a stalled tab: never schedule into the past
-          if (e.kind === 'click') synth.click(at, false);
+          if (e.kind === 'click') synth.click(at, false, musicalClickGain(prefs.referenceVolume));
           else pb.voices.push(synth.playNote({ midi: e.midi, startAt: at, duration: e.duration, gain: prefs.referenceVolume, timbre: prefs.referenceTimbre }));
         }
         if (schedIndex < events.length || !tl.repeat) break;
@@ -774,6 +778,7 @@ export function createSongSession(original: Song, opts: { recordId?: string | nu
 
   function startListening(kind: 'listen' | 'play'): void {
     if (disposed || busyTaking()) return;
+    stopTakePlayback();
     const current = phase.value;
     if ((kind === 'listen' && current === 'listening') || (kind === 'play' && current === 'playing')) {
       stop();
@@ -886,6 +891,7 @@ export function createSongSession(original: Song, opts: { recordId?: string | nu
     }
     listenToken++;
     stopPlayback();
+    stopTakePlayback(); // the last take must not sound into this one
     // The gesture-sensitive prefix: the mic and the AudioContext start here, before any await (iOS).
     const ready = startMic();
     const token = ++takeToken;
@@ -950,7 +956,7 @@ export function createSongSession(original: Song, opts: { recordId?: string | nu
     const tl: SongTimeline = { kind: 'take', startAt, window: w, speed: s, passSec, repeat: false, notes: windowNotes(song.value, w) };
     // The guide sings every note in tune: on a speaker the mic would score it as the singer, so it plays in headphones only.
     startPlayback(tl, synth, passEvents(w, s, guide.value && isHeadphoneRoute(calibration), metronome.value), backingBuffer, () => stopPlayback());
-    for (let k = COUNT_IN_BEATS; k >= 1; k--) synth.click(firstNoteAt - k * beat, k === COUNT_IN_BEATS);
+    for (let k = COUNT_IN_BEATS; k >= 1; k--) synth.click(firstNoteAt - k * beat, k === COUNT_IN_BEATS, musicalClickGain(prefs.referenceVolume));
     batch(() => {
       phase.value = 'count-in';
       countIn.value = COUNT_IN_BEATS;
@@ -1038,6 +1044,8 @@ export function createSongSession(original: Song, opts: { recordId?: string | nu
       try {
         if (!storage) throw new Error('storage is not open');
         savedTake = await storage.takes.save({ id: takeId, profileId: profile.id, exerciseId: songExerciseId(original.id), ...encodeTake(recorded) });
+        // The store keeps the take but drops its sound when the audio will not write (no space left to free): say so.
+        if (recorded.audio && savedTake.audioRef === null) saveError = TAKE_AUDIO_NOT_KEPT;
       } catch (err) {
         saveError = `The take's recording was not kept (${messageOf(err)}). The score is saved.`;
       }
@@ -1098,9 +1106,29 @@ export function createSongSession(original: Song, opts: { recordId?: string | nu
     }
   }
 
+  /**
+   * Stop the last take's playback ('Play take'), at once and synchronously (it runs inside a gesture, before the mic
+   * opens). Called before anything else sounds or records: on the speaker the mic would otherwise record the old take
+   * into the new one, and in headphones it would play over the guide.
+   */
+  function stopTakePlayback(): void {
+    const src = takeSource;
+    if (!src) return;
+    takeSource = null;
+    src.onended = null;
+    try {
+      src.stop();
+    } catch {
+      // already stopped
+    }
+    src.disconnect();
+    takePlaying.value = false;
+  }
+
   /** A change of key, speed, loop or phrase: whatever plays was set up for the old one. */
   function settle(): boolean {
     if (disposed || busyTaking()) return false;
+    stopTakePlayback();
     if (phase.value === 'listening' || phase.value === 'playing') stop();
     if (phase.value === 'error') {
       batch(() => {
@@ -1113,7 +1141,7 @@ export function createSongSession(original: Song, opts: { recordId?: string | nu
 
   function playTake(): void {
     if (takeSource) {
-      takeSource.stop();
+      stopTakePlayback();
       return;
     }
     const audio = result.value?.audio;
@@ -1230,7 +1258,7 @@ export function createSongSession(original: Song, opts: { recordId?: string | nu
       if (disposed) return;
       cancelTake();
       stopPlayback();
-      takeSource?.stop();
+      stopTakePlayback();
       disposed = true;
       if (offsetTimer !== null) {
         clearTimeout(offsetTimer);
@@ -1238,7 +1266,9 @@ export function createSongSession(original: Song, opts: { recordId?: string | nu
         const storage = deps.storage();
         if (recordId !== null && storage) void storage.songs.setOffset(recordId, offsetMs.value).catch(() => undefined);
       }
-      if (micStartedHere) void engine.stop().catch(() => undefined);
+      // The mic runs only on the screen that turned it on: a mic this player opened (its own takes, or Reset audio and a
+      // reconnect from More, which open it too) goes off when it is left; one that was already on stays on.
+      if (micStartedHere || (!micWasOn && engine.state !== 'idle')) void engine.stop().catch(() => undefined);
     },
   };
 }

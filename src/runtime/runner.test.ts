@@ -11,7 +11,7 @@ import { makeTrack, sequence } from '../analysis/fixtures';
 import type { EngineError, EngineState, Recording } from '../audio/engine-types';
 import type { MetronomeHandle, NoteSpec, ScheduledHandle } from '../audio/synth-types';
 import type { PitchFrame } from '../core/types';
-import { WORLDS, analyzeTake, getExercise, realize, type ExerciseDef, type RealizedExercise } from '../exercises';
+import { WORLDS, analyzeTake, evaluate, getExercise, realize, type ExerciseDef, type RealizedExercise } from '../exercises';
 import { GOOD_SINGER, singTake, type SingerModel } from '../exercises/test-singer';
 import type { AttemptRecord } from '../storage/schema';
 import { installNoOpfs } from '../storage/test-helpers';
@@ -92,9 +92,10 @@ class FakeEngine {
 }
 
 class FakeSynth {
-  clicks: Array<{ at: number; accent: boolean }> = [];
+  clicks: Array<{ at: number; accent: boolean; gain?: number }> = [];
   notes: Array<NoteSpec & { stopped: boolean }> = [];
   metronomes: Array<{ bpm: number; startAt: number | undefined; stopped: boolean }> = [];
+  metronomeGains: number[] = [];
   stopAlls = 0;
   setVolume(): void {}
   playNote(spec: NoteSpec): ScheduledHandle {
@@ -109,11 +110,12 @@ class FakeSynth {
   playSequence(): ScheduledHandle {
     throw new Error('the runner never plays sequences itself');
   }
-  click(at: number, accent = false): void {
-    this.clicks.push({ at, accent });
+  click(at: number, accent = false, gain?: number): void {
+    this.clicks.push(gain === undefined ? { at, accent } : { at, accent, gain });
   }
-  startMetronome(bpm: number, opts?: { startAt?: number }): MetronomeHandle {
+  startMetronome(bpm: number, opts?: { startAt?: number; gain?: number }): MetronomeHandle {
     const m = { bpm, startAt: opts?.startAt, stopped: false };
+    if (opts?.gain !== undefined) this.metronomeGains.push(opts.gain);
     this.metronomes.push(m);
     return { startAt: opts?.startAt ?? 0, endAt: Infinity, bpm, beat0: opts?.startAt ?? 0, setBpm: () => undefined, stop: () => void (m.stopped = true) };
   }
@@ -283,6 +285,11 @@ describe('runner helpers', () => {
     expect(ladderTempo(def, [])).toBe(r0);
     const realized = realize(def, TENOR_RANGE, 'tenor', { bpm: r0 });
     const passing = analyzeTake(def, realized, singTake(realized, GOOD_SINGER), { vibratoStyle: 'pop' }).metrics;
+    /** A whole take at `bpm` lasts its count-in plus its material (the runner writes that as durationSec). */
+    const whole = (bpm: number) => {
+      const r = realize(def, TENOR_RANGE, 'tenor', { bpm });
+      return r.countInSec + r.totalSec;
+    };
     const row = (over: Partial<AttemptRecord>): AttemptRecord => ({
       id: Math.random().toString(36),
       profileId: 'p',
@@ -296,7 +303,7 @@ describe('runner helpers', () => {
       passed: false,
       mastery: 0,
       metrics: passing,
-      durationSec: 10,
+      durationSec: whole(over.tempoBpm ?? r0),
       tonicMidi: 60,
       tempoBpm: r0,
       takeId: null,
@@ -307,6 +314,11 @@ describe('runner helpers', () => {
     expect(ladderTempo(def, [row({ metrics: {} }), row({}), row({ exerciseId: 'other' }), row({ tempoBpm: null })])).toBe(r1);
     expect(ladderTempo(def, [row({ tempoBpm: def.tempoBpm })])).toBe(def.tempoBpm); // never past the top
     expect(ladderTempo(def, [row({ tempoBpm: r0 + 1 })])).toBe(r1); // an off-ladder tempo snaps to the rung below it
+    // A take stopped part way (its duration short of the whole take at its tempo) never climbs, and is skipped.
+    expect(ladderTempo(def, [row({ durationSec: 0.6 * whole(r0) })])).toBe(r0);
+    expect(ladderTempo(def, [row({ metrics: {} }), row({ tempoBpm: r1, durationSec: 0.5 * whole(r1) })])).toBe(r0);
+    expect(ladderTempo(def, [row({}), row({ tempoBpm: r1, metrics: passing, durationSec: 0.5 * whole(r1) })])).toBe(r1);
+    expect(ladderTempo(def, [row({ durationSec: whole(r0) - 0.2 })])).toBe(r1); // stopped in the last moment: whole
   });
 
   it('cueAt: cues show a little early and through the count-in; a syllable fills in when there is none', async () => {
@@ -376,7 +388,8 @@ describe('createRunner: preparing a target', () => {
       [{ kind: 'level', levelId: 'foundations.02' }, 'locked', 'Pass Range finder to unlock.'],
       [{ kind: 'level', levelId: 'foundations.03' }, 'locked', 'Pass Pitch match to unlock.'],
       [{ kind: 'level', levelId: 'vibrato.01' }, 'locked', 'Pass the Foundations Boss Recital to unlock Vibrato.'],
-      [{ kind: 'record', levelId: 'foundations.01' }, 'locked', 'Pass Range finder to chase personal records on it.'],
+      [{ kind: 'record', levelId: 'foundations.01' }, 'locked', 'The Range finder measures your range: it has no personal records to chase.'],
+      [{ kind: 'record', levelId: 'foundations.02' }, 'locked', 'Pass Pitch match to chase personal records on it.'],
       [{ kind: 'audition', worldId: 'foundations' }, 'locked', 'Pass Range finder to unlock the audition.'],
       [{ kind: 'workout', itemIndex: 0 }, 'locked', 'Pass your first level to unlock the daily workout.'],
       [{ kind: 'level', levelId: 'foundations.99' }, 'unknown', ''],
@@ -532,6 +545,25 @@ describe('sing: one take, start to finish', () => {
     expect(outcome.savedTake?.latencyMs).toBe(120);
   });
 
+  it('says so when the take was saved without its sound (the store could not write it), and still counts the take', async () => {
+    const r = await rig();
+    const storage = r.session.appStorage.value!;
+    const save = storage.takes.save.bind(storage.takes);
+    // What takes-repo does when the audio write fails with no older audio to free: the take is kept, its audio is not.
+    vi.spyOn(storage.takes, 'save').mockImplementation(async (input) => save({ ...input, audio: null }));
+    r.engine.recording = { samples: new Float32Array(8000 * 30).fill(0.1), sampleRate: 8000, startTime: 0 };
+    const runner = r.runnerMod.createRunner({ kind: 'level', levelId: 'foundations.01' });
+    await tapSing(runner);
+    r.engine.recording = { ...r.engine.recording, startTime: runner.origin.value! - 0.5 };
+    feed(r, runner, rangeSweep(45, 72));
+    await finishTake(r, runner);
+    const outcome = runner.outcome.value!;
+    expect(outcome.attempt.passed).toBe(true);
+    expect(outcome.take.audio).not.toBeNull();
+    expect(outcome.savedTake?.audioRef).toBeNull();
+    expect(outcome.saveError).toContain('its sound could not be saved');
+  });
+
   it('keeps no audio when the singer turned that off', async () => {
     const r = await rig();
     r.settings.updateSettings({ keepTakeAudio: false });
@@ -614,7 +646,7 @@ describe('sing: nothing is written unless a take is judged', () => {
     expect(r.synth.stopAlls).toBeGreaterThan(0);
   });
 
-  it('Stop while singing ends the take there and judges what was sung', async () => {
+  it('Stop while singing ends the take there: written as practice, not judged', async () => {
     const r = await rig();
     const runner = r.runnerMod.createRunner({ kind: 'level', levelId: 'foundations.01' });
     await tapSing(runner);
@@ -625,8 +657,82 @@ describe('sing: nothing is written unless a take is judged', () => {
     await until(() => runner.phase.value === 'done');
     const outcome = runner.outcome.value!;
     expect(outcome.attempt.passed).toBe(false); // the top was never reached
+    expect(outcome.evaluation).toMatchObject({ passed: false, notJudged: 'stopped' });
     expect(outcome.attempt.durationSec).toBeCloseTo(runner.prepared.value!.realized.countInSec + 8, 6);
     expect(await storedLog(r)).toHaveLength(1);
+  });
+
+  /** Sing `levelId` well, Stop at `share` of the material, and wait for the outcome. */
+  async function stopPartWay(r: Rig, target: RunTarget, share: number) {
+    const runner = r.runnerMod.createRunner(target);
+    await tapSing(runner);
+    const p = runner.prepared.value!;
+    const origin = runner.origin.value!;
+    const cut = share * p.realized.totalSec;
+    feed(r, runner, good, (f) => f.t < cut);
+    setClock(r, origin + cut);
+    runner.stop();
+    await until(() => runner.phase.value === 'done' || runner.phase.value === 'error');
+    expect(runner.error.value).toBeNull();
+    return { runner, outcome: runner.outcome.value!, p };
+  }
+
+  it('Stop part way through a level whose sung part is clean never passes it, and opens nothing (Sirens at 30%)', async () => {
+    const r = await rig();
+    await r.session.saveProfileRange(TENOR_RANGE);
+    await seedPasses(r, 'foundations.04');
+    const { outcome, p } = await stopPartWay(r, { kind: 'level', levelId: 'foundations.05' }, 0.3);
+    expect(evaluate(p.def, outcome.analysis.metrics).passed).toBe(true); // the part that was sung is clean on its own...
+    expect(outcome.evaluation).toMatchObject({ passed: false, mastery: 0, notJudged: 'stopped' }); // ...but it is not the exercise
+    expect(outcome.attempt).toMatchObject({ passed: false, mastery: 0 });
+    expect(outcome.attempt.durationSec).toBeCloseTo(p.realized.countInSec + 0.3 * p.realized.totalSec, 1);
+    expect(outcome.tip.id).toBe('general.stopped');
+    expect(outcome.unlocked).toEqual([]);
+    expect(r.session.snapshot.value.levels['foundations.05'].status).toBe('current');
+    expect(r.session.snapshot.value.levels['foundations.06'].status).toBe('locked');
+    expect(r.flow.afterTakeActions(outcome).find((a) => a.primary)?.kind).toBe('retry');
+  });
+
+  it('Stop part way through a Boss Recital opens no world (the Foundations Boss at 70%)', async () => {
+    const r = await rig();
+    await r.session.saveProfileRange(TENOR_RANGE);
+    await seedPasses(r, 'foundations.09');
+    const { outcome } = await stopPartWay(r, { kind: 'level', levelId: 'foundations.boss' }, 0.7);
+    expect(outcome.evaluation.notJudged).toBe('stopped');
+    expect(outcome.attempt.passed).toBe(false);
+    expect(outcome.after.worldsUnlocked).not.toContain('vibrato');
+    expect(outcome.after.features).not.toContain('song-stage');
+    expect(outcome.unlocked).toEqual([]);
+  });
+
+  it('a Boss Recital sung to its end but quiet after 65% is refused for its unsung notes, and counts only the time sung', async () => {
+    const r = await rig();
+    await r.session.saveProfileRange(TENOR_RANGE);
+    await seedPasses(r, 'foundations.09');
+    const runner = r.runnerMod.createRunner({ kind: 'level', levelId: 'foundations.boss' });
+    await tapSing(runner);
+    const p = runner.prepared.value!;
+    feed(r, runner, good, (f) => f.t < 0.65 * p.realized.totalSec);
+    await finishTake(r, runner);
+    const outcome = runner.outcome.value!;
+    expect(outcome.evaluation.notJudged).toBeUndefined(); // it ran to its end: judged...
+    expect(outcome.evaluation.passed).toBe(false); // ...and refused
+    expect(outcome.evaluation.unsung!.reached).toBeLessThan(outcome.evaluation.unsung!.total);
+    expect(outcome.tip.id).toBe('general.unsung');
+    expect(outcome.attempt.passed).toBe(false);
+    expect(outcome.attempt.durationSec).toBeLessThan(p.realized.countInSec + 0.8 * p.realized.totalSec);
+    expect(outcome.after.worldsUnlocked).not.toContain('vibrato');
+  });
+
+  it('Stop part way through an audition test grants nothing', async () => {
+    const r = await rig();
+    await r.session.saveProfileRange(TENOR_RANGE);
+    await seedPasses(r, 'foundations.01');
+    const { outcome } = await stopPartWay(r, { kind: 'audition', worldId: 'foundations' }, 0.6);
+    expect(outcome.evaluation.notJudged).toBe('stopped');
+    expect(outcome.attempt).toMatchObject({ kind: 'audition', passed: false });
+    expect(outcome.after.levels['foundations.02'].status).toBe('current');
+    expect(outcome.unlocked).toEqual([]);
   });
 
   it('leaving in the middle of a take writes nothing and releases the mic', async () => {
@@ -671,10 +777,20 @@ describe('sing: what a take counts for', () => {
 
     const outcome = await singWhole(r, runner, good);
     expect(r.synth.metronomes).toEqual([{ bpm: r0, startAt: outcome.take.downbeat, stopped: true }]);
+    // The metronome and the count-in click at a level that follows the reference volume, never the calibration click's.
+    const { musicalClickGain } = await import('../audio/synth');
+    const level = musicalClickGain(r.settings.settings.value.referenceVolume);
+    expect(r.synth.metronomeGains).toEqual([level]);
+    expect(r.synth.clicks.length).toBeGreaterThan(0);
+    expect(r.synth.clicks.every((c) => c.gain === level)).toBe(true);
     expect(outcome.evaluation.passed).toBe(true); // the rung was sung well...
     expect(outcome.attempt).toMatchObject({ passed: false, tempoBpm: r0 }); // ...but a lower rung never passes the level
     expect(outcome.nextBpm).toBe(r1);
-    expect(r.flow.afterTakeActions(outcome).find((a) => a.primary)?.kind).toBe('retry');
+    expect(r.flow.afterTakeActions(outcome).find((a) => a.primary)).toMatchObject({ kind: 'retry', label: `Sing at ${r1} bpm` });
+    // A clean rung lights no tally and leads to the next rung: its line says so, never "Replay to light the next tally".
+    expect(outcome.tip.id).toBe('general.polish');
+    expect(outcome.tip.text).toMatch(new RegExp(`^Clean at ${r0} bpm\\. The next take is at ${r1} bpm`));
+    expect(outcome.tip.text).not.toContain('tally');
     runner.dispose();
     expect(r.runnerMod.createRunner({ kind: 'level', levelId: 'runs.01' }).prepared.value?.bpm).toBe(r1);
 
@@ -683,6 +799,71 @@ describe('sing: what a take counts for', () => {
     r = await rig();
     runner = r.runnerMod.createRunner({ kind: 'level', levelId: 'runs.01' });
     expect(runner.prepared.value).toMatchObject({ bpm: r1, ladder: { index: 1 } });
+  });
+
+  it('a tempo ladder never climbs on a take stopped part way, or one that went quiet part way', async () => {
+    const r = await rig();
+    await r.session.saveProfileRange(TENOR_RANGE);
+    await seedPasses(r, 'inflections.boss');
+    const def = getExercise('runs.run.1')!;
+    const [r0] = def.tempoLadder!;
+
+    let runner = r.runnerMod.createRunner({ kind: 'level', levelId: 'runs.01' });
+    await tapSing(runner);
+    let origin = runner.origin.value!;
+    let total = runner.prepared.value!.realized.totalSec;
+    feed(r, runner, good, (f) => f.t < 0.6 * total);
+    setClock(r, origin + 0.6 * total);
+    runner.stop();
+    await until(() => runner.phase.value === 'done');
+    expect(runner.outcome.value!.nextBpm).toBe(r0);
+    runner.dispose();
+    expect(r.runnerMod.createRunner({ kind: 'level', levelId: 'runs.01' }).prepared.value?.bpm).toBe(r0);
+
+    runner = r.runnerMod.createRunner({ kind: 'level', levelId: 'runs.01' });
+    await tapSing(runner);
+    origin = runner.origin.value!;
+    total = runner.prepared.value!.realized.totalSec;
+    feed(r, runner, good, (f) => f.t < 0.6 * total); // quiet after 60%, no Stop
+    await finishTake(r, runner);
+    const quiet = runner.outcome.value!;
+    expect(evaluate(def, quiet.analysis.metrics).passed).toBe(true); // the part that was sung would climb on its own
+    expect(quiet.evaluation.passed).toBe(false);
+    expect(quiet.nextBpm).toBe(r0);
+    runner.dispose();
+    expect(r.runnerMod.createRunner({ kind: 'level', levelId: 'runs.01' }).prepared.value?.bpm).toBe(r0);
+  });
+
+  it('a laddered level passed by audition opens at its pass tempo, not the bottom rung (it has no take of its own yet)', async () => {
+    const r = await rig();
+    await r.session.saveProfileRange(TENOR_RANGE);
+    await seedPasses(r, 'inflections.boss');
+    const storage = r.session.appStorage.value!;
+    const profileId = r.session.activeProfile.value!.id;
+    const runs = WORLDS.find((w) => w.id === 'runs')!;
+    await storage.attempts.add({
+      profileId,
+      exerciseId: runs.audition!.exerciseIds[0],
+      levelId: null,
+      kind: 'audition',
+      score: 0.9,
+      passed: true,
+      mastery: 2,
+      metrics: {},
+      durationSec: 10,
+      tonicMidi: 60,
+      tempoBpm: null,
+      takeId: null,
+    });
+    await r.session.reloadSession();
+    expect(r.session.snapshot.value.levels['runs.01']).toMatchObject({ status: 'passed', viaAudition: true });
+    const def = getExercise('runs.run.1')!;
+    const prepared = r.runnerMod.createRunner({ kind: 'level', levelId: 'runs.01' }).prepared.value!;
+    expect(prepared).toMatchObject({ bpm: def.tempoBpm, ladder: { index: def.tempoLadder!.length - 1 } });
+    // The current level (not passed) still starts at the bottom rung.
+    const current = Object.values(r.session.snapshot.value.levels).find((l) => l.levelId.startsWith('runs.') && l.status === 'current')!;
+    const currentDef = getExercise(runs.levels.find((l) => l.id === current.levelId)!.exerciseId)!;
+    if (currentDef.tempoLadder) expect(r.runnerMod.createRunner({ kind: 'level', levelId: current.levelId }).prepared.value?.bpm).toBe(currentDef.tempoLadder[0]);
   });
 
   it('an audition sings its NEXT test, stops at the first miss, and moves on after a pass', async () => {
@@ -707,6 +888,8 @@ describe('sing: what a take counts for', () => {
     expect(runner.prepared.value?.def.id).toBe('foundations.audition.1');
     const pass = await singWhole(r, runner, good);
     expect(pass.attempt.passed).toBe(true);
+    expect(pass.tip.text).not.toContain('tally'); // a test closes once passed: there is nothing to replay or light
+    expect(pass.tip).toMatchObject({ id: 'general.polish', text: 'Test passed: the levels it covers are open.' });
     expect(pass.after.levels['foundations.04']).toMatchObject({ status: 'passed', viaAudition: true });
     expect(r.flow.afterTakeActions(pass).find((a) => a.primary)?.kind).toBe('next-test');
     runner.dispose();
@@ -724,6 +907,8 @@ describe('sing: what a take counts for', () => {
     expect(runner.prepared.value).toMatchObject({ def: { id: 'routine.warm-up' }, level: null, world: null, workout: { itemIndex: 0, itemCount: session.workout.items.length, take: 1 } });
     const outcome = await singWhole(r, runner, good);
     expect(outcome.attempt).toMatchObject({ kind: 'workout', levelId: null, exerciseId: 'routine.warm-up', passed: true });
+    expect(outcome.tip.text).not.toContain('tally'); // a routine has none
+    expect(outcome.tip).toMatchObject({ id: 'general.polish', text: 'Warm-up sirens done. Easy, unforced sound is all it asks.' });
     expect(r.workout.activeWorkout.value?.results[0].attemptIds).toEqual([outcome.attempt.id]);
     runner.dispose();
     runner = r.runnerMod.createRunner({ kind: 'workout', itemIndex: 0 });
@@ -738,6 +923,33 @@ describe('sing: what a take counts for', () => {
     expect(r.workout.activeWorkout.value?.results[levelItem].attemptIds).toEqual([levelTake.attempt.id]);
 
     expect(r.runnerMod.createRunner({ kind: 'workout', itemIndex: 99 }).error.value?.code).toBe('unknown');
+  });
+
+  it('a warm-up where nothing came through is not done, counts no practice time, and offers it again', async () => {
+    const r = await rig();
+    await r.session.saveProfileRange(TENOR_RANGE);
+    await seedPasses(r, 'foundations.01');
+    r.workout.startWorkout(5);
+    const runner = r.runnerMod.createRunner({ kind: 'workout', itemIndex: 0 });
+    const outcome = await singWhole(r, runner, singer({ silent: true }));
+    expect(outcome.analysis.tipContext.noVoice).toBe(true);
+    expect(outcome.attempt.durationSec).toBe(0);
+    expect(r.workout.activeWorkout.value?.results[0].attemptIds).toEqual([]);
+    expect(r.workout.finishWorkout()?.minutes).toBe(0);
+    expect(r.flow.afterTakeActions(outcome).find((a) => a.primary)).toMatchObject({ kind: 'retry', route: { name: 'sing' } });
+  });
+
+  it('the Range finder has no record attempts even once passed, and a Sing again re-measure saves the range', async () => {
+    const r = await rig();
+    const first = await singWhole(r, r.runnerMod.createRunner({ kind: 'level', levelId: 'foundations.01' }), rangeSweep(48, 62));
+    expect(first.rangeSaved).toBe(true);
+    await seedPasses(r, 'foundations.02'); // records open with the first pass; make sure that is not why
+    const record = r.runnerMod.createRunner({ kind: 'record', levelId: 'foundations.01' });
+    expect(record.error.value).toMatchObject({ code: 'locked' });
+    // Sing again (a level take) is the way to re-measure, and it saves the wider span.
+    const again = await singWhole(r, r.runnerMod.createRunner({ kind: 'level', levelId: 'foundations.01' }), rangeSweep(45, 72));
+    expect(again.rangeSaved).toBe(true);
+    expect(r.session.activeProfile.value?.range?.extended).toEqual({ low: 45, high: 72 });
   });
 
   it('a personal-record attempt is sung at the pass tempo and written as a record', async () => {

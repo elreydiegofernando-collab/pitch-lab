@@ -38,10 +38,11 @@ import { analyzeRange } from '../analysis/range';
 import { analyzeRun } from '../analysis/runs';
 import { metricsFromResults, type AnalyzerResults } from '../analysis/score';
 import { analyzeSwitch, type SwitchResult } from '../analysis/switch';
-import { cleanOctaveSpikes, framesInWindow, median } from '../analysis/track';
+import { cleanOctaveSpikes, estimateFrameDt, framesInWindow, median } from '../analysis/track';
 import { analyzeTransitions } from '../analysis/transitions';
 import { analyzeVibrato } from '../analysis/vibrato';
 import type { DynamicShape, LoudnessContour } from './cues';
+import type { NoteReach } from './evaluate';
 import { FOLLOWS_CUE_SCORE, loudnessShapeScore } from './loudness';
 import { planAnalysis, type AnalysisPlan } from './plan';
 import type { TipContext } from './tips';
@@ -50,6 +51,58 @@ import type { ExerciseDef } from './types';
 
 /** Less voiced audio than this in the whole take means nobody sang (PROPOSED CONFIG.exercises). */
 const NO_VOICE_SEC = 0.3;
+
+/**
+ * Per-note reach (PROPOSED CONFIG.exercises): was each target note sung at all? Voicing only, never pitch: how well a
+ * note was sung is the analyzers' business; this only tells a note that was sung from one that was skipped, so a
+ * take whose singer went quiet part way (or tapped Stop) cannot pass on the part it did sing (evaluate.ts reachHolds).
+ */
+export const REACH = {
+  /** A note at least this long is a hold ... */
+  holdSec: 1,
+  /**
+   * ... reached when voiced for at least this share of it, after a late start inside CONFIG.accuracy.lateStartAllowanceSec
+   * (a reaction to the cue, as the accuracy analyzer forgives it). A hold stopped 25% early, or come in 25% late, is
+   * reached; one sung for little more than half is not, which is what closes a one-swell exercise sung half way.
+   */
+  holdShare: 0.65,
+  /** A shorter note is reached when voiced for this long ... */
+  shortSec: 0.15,
+  /** ... or for this share of it when the note itself is shorter than that (a fast run's notes). */
+  shortShare: 0.5,
+} as const;
+
+/** How many of `notes` the singer voiced enough of to count as sung (REACH). `track` is the cleaned take. */
+export function noteReach(track: PitchTrack, notes: readonly TargetNote[]): NoteReach {
+  const dt = estimateFrameDt(track);
+  let reached = 0;
+  let lastReachedEnd = 0;
+  for (const note of notes) {
+    const dur = note.end - note.start;
+    const frames = framesInWindow(track, note.start, note.end);
+    let voicedSec = 0;
+    let firstVoiced: number | null = null;
+    if (Number.isFinite(dt)) {
+      for (const f of frames) {
+        if (!f.voiced) continue;
+        voicedSec += dt;
+        if (firstVoiced === null) firstVoiced = f.t;
+      }
+    }
+    let need: number;
+    if (dur >= REACH.holdSec) {
+      const lateStart = firstVoiced === null ? 0 : Math.min(CONFIG.accuracy.lateStartAllowanceSec, Math.max(0, firstVoiced - note.start));
+      need = REACH.holdShare * (dur - lateStart);
+    } else {
+      need = Math.min(REACH.shortSec, REACH.shortShare * dur);
+    }
+    if (voicedSec > 0 && voicedSec >= need - 1e-9) {
+      reached++;
+      lastReachedEnd = Math.max(lastReachedEnd, note.end);
+    }
+  }
+  return { reached, total: notes.length, lastReachedEnd };
+}
 
 export interface TakeDetails {
   accuracy: Array<{ note: TargetNote; result: AccuracyDetail }>;
@@ -83,6 +136,11 @@ export interface TakeAnalysis {
   voicedSec: number;
   /** RealizedExercise.fit of the realization that was sung: evaluate(def, metrics, analysis) refuses a 'folded' one. */
   fit: RealizedExercise['fit'];
+  /**
+   * How many of the realized notes were sung at all (noteReach): evaluate(def, metrics, analysis) refuses a pass when
+   * too few were (reachHolds), so a take whose singer went quiet part way never passes on the part that was sung.
+   */
+  reach: NoteReach;
 }
 
 const finite = (x: number | null | undefined): x is number => x !== null && x !== undefined && Number.isFinite(x);
@@ -213,8 +271,10 @@ export function analyzeTake(def: ExerciseDef, realized: RealizedExercise, track:
   }
   if (voicedSec < NO_VOICE_SEC) tipContext.noVoice = true;
   if (realized.fit === 'folded' || plan.issues.length > 0) tipContext.unfitRange = true;
+  const reach = noteReach(clean, realized.notes);
+  tipContext.reach = reach;
 
-  return { metrics, tipContext, plan, details, voicedSec, fit: realized.fit };
+  return { metrics, tipContext, plan, details, voicedSec, fit: realized.fit, reach };
 }
 
 const againstCue = (shapeScore: number | null): boolean => shapeScore !== null && shapeScore < FOLLOWS_CUE_SCORE;

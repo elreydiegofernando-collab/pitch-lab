@@ -14,7 +14,7 @@ import { CONFIG } from '../config';
 import type { DynamicsResult, InflectionKind, MetricKey, Metrics } from '../analysis/types';
 import { RANGE_MIN_SPAN } from './catalog/scoring';
 import { INFLECTION_CUES } from './cues';
-import { evaluate, gateHolds, passRequirements, termScore } from './evaluate';
+import { evaluate, gateHolds, passRequirements, reachHolds, termScore, type NoteReach } from './evaluate';
 import type { CoachingTip, ExerciseDef } from './types';
 
 /** A CoachingTip plus optional qualifiers. The extra fields are optional, so a TipRule IS a CoachingTip. */
@@ -53,6 +53,8 @@ export interface TipContext {
   noVoice?: boolean;
   /** The realization folded notes by octaves (or broke a figure doing so), so the take was not judged. */
   unfitRange?: boolean;
+  /** How many of the target notes were sung at all (analyze.ts noteReach): too few, and the tip says so. */
+  reach?: NoteReach;
 }
 
 const SIGNED_CONTEXT: Partial<Record<MetricKey, 'biasCents' | 'driftCentsPerSec' | 'centeringCents'>> = {
@@ -291,6 +293,28 @@ export const UNFIT_RANGE_TIP: CoachingTip = {
   priority: 0,
 };
 
+/** Shown when the take left notes unsung, so it could not pass (TipContext.reach short of evaluate.ts reachHolds). */
+export const UNSUNG_TIP: CoachingTip = {
+  id: 'general.unsung',
+  when: { metric: 'accuracy.inTolerancePct', op: '>=', value: 0 },
+  text: 'Some notes went unsung, so the take could not pass. Keep singing to the end of the exercise.',
+  priority: 0,
+};
+
+/** Shown for a take stopped before the end of the exercise: it is practice, and was not judged (the runner picks it). */
+export const STOPPED_TIP: CoachingTip = {
+  id: 'general.stopped',
+  when: { metric: 'accuracy.inTolerancePct', op: '>=', value: 0 },
+  text: 'You stopped before the end, so this take counts as practice and was not judged. Sing to the end of the exercise for it to count.',
+  priority: 0,
+};
+
+/** UNSUNG_TIP with the count: "You sang 6 of the 14 notes. ..." */
+function unsungText(def: Pick<ExerciseDef, 'kind'>, reach: NoteReach): string {
+  const all = def.kind === 'boss-recital' ? 'every note' : 'nearly every note';
+  return `You sang ${reach.reached} of the ${reach.total} notes. Keep singing to the end of the exercise: a take passes only when ${all} is sung.`;
+}
+
 /** A passed take that lost less than this share of the score on its costliest metric counts as polished (PROPOSED CONFIG.tips). */
 const POLISH_MAX_DEFICIT = 0.03;
 
@@ -385,14 +409,16 @@ function applies(rule: TipRule, metrics: Metrics, ctx: TipContext | undefined, k
  * (specific beats generic). Restricted to def.tipIds when present. A passed
  * take that lost almost nothing gets POLISH_TIP; a failed take always gets
  * advice, falling back to its first failed requirement. NO_VOICE_TIP needs
- * ctx.noVoice when a context is given (a sung take may measure nothing), and
- * UNFIT_RANGE_TIP answers a take that was not judged (ctx.unfitRange).
+ * ctx.noVoice when a context is given (a sung take may measure nothing),
+ * UNFIT_RANGE_TIP answers a take that was not judged (ctx.unfitRange), and
+ * UNSUNG_TIP a take that left too many notes unsung to pass (ctx.reach).
  */
 export function pickTip(metrics: Metrics, def: ExerciseDef, ctx?: TipContext): PickedTip {
   if (ctx?.noVoice || (ctx === undefined && !Object.values(metrics).some((v) => v !== undefined && Number.isFinite(v)))) {
     return { id: NO_VOICE_TIP.id, text: NO_VOICE_TIP.text, metric: null, value: null };
   }
   if (ctx?.unfitRange) return { id: UNFIT_RANGE_TIP.id, text: UNFIT_RANGE_TIP.text, metric: null, value: null };
+  if (ctx?.reach && !reachHolds(def, ctx.reach)) return { id: UNSUNG_TIP.id, text: unsungText(def, ctx.reach), metric: null, value: null };
   const lost = new Map<MetricKey, number>();
   let w = 0;
   for (const t of def.scoring) w += t.weight;

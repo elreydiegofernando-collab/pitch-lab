@@ -18,6 +18,7 @@
 import { batch, signal, untracked, type ReadonlySignal } from '@preact/signals';
 import { buildDemo } from '../audio/demos';
 import { getEngine } from '../audio/engine';
+import { musicalClickGain } from '../audio/synth';
 import type { AudioEngine, EngineError } from '../audio/engine-types';
 import type { MetronomeHandle, ReferenceSynth, ScheduledHandle } from '../audio/synth-types';
 import { TAKE_PRE_ROLL_SEC, TakeRecorder, encodeTake, roundTripSeconds, toInputTime, type TakeResult } from '../audio/take-recorder';
@@ -35,10 +36,12 @@ import {
   nextTempo,
   passRequirements,
   pickTip,
+  POLISH_TIP,
   rangeFromMeasurement,
   realize,
   reportTiles,
   startTempo,
+  STOPPED_TIP,
   type Evaluation,
   type ExerciseDef,
   type LevelDef,
@@ -46,6 +49,7 @@ import {
   type RealizedExercise,
   type ReportTile,
   type TakeAnalysis,
+  type TakeConditions,
   type WorldDef,
 } from '../exercises';
 import {
@@ -69,6 +73,8 @@ import { DEFAULT_SETTINGS } from '../state/settings-types';
 import { isQuotaError, newId } from '../storage';
 import type { AttemptRecord, TakeRecord } from '../storage/schema';
 import { auditionTests, unlockEvents } from './flow';
+import { RANGE_FINDER_NO_RECORDS, TAKE_AUDIO_NOT_KEPT } from './messages';
+import { polishLine } from './polish';
 import type { ExerciseRunner, PreparedRun, RunError, RunPhase, RunTarget, TakeOutcome } from './types';
 import { activeWorkout, recordWorkoutTake } from './workout';
 
@@ -89,28 +95,68 @@ export const SPEAKER_CLEARANCE_SEC = TAKE_PRE_ROLL_SEC + 0.1;
 /** On a speaker, a reference tone trimmed shorter than this is dropped: too short to hear as a pitch. */
 const MIN_SPEAKER_TONE_SEC = 0.25;
 
+/**
+ * A take stopped this close to the end of its material counts as complete. A take stopped earlier is practice: it is
+ * written, but never judged (evaluate's `complete: false`), and it never moves a tempo ladder (ladderTempo).
+ */
+export const COMPLETE_SLACK_SEC = 0.25;
+
 /** The last finished take (the report screen reads it). Survives leaving the Sing screen; replaced by the next take. */
 export const lastOutcome = signal<TakeOutcome | null>(null);
 
 // ---------------------------------------------------------------- pure helpers
 
 /**
- * The tempo of the next take of `def`. For a Runs tempo ladder it is the rung the singer has reached, read from the
- * attempt log so it survives a relaunch: the latest take of the exercise, one rung up when that take passed the
- * level's own pass rule at its rung (exercises/ladder.ts nextTempo), else the same rung; the first rung before any
- * take. Without a ladder: def.tempoBpm.
+ * The rung the log has reached on `def`'s tempo ladder, or null when no take of it can say (none yet, or only takes
+ * stopped part way). The latest COMPLETE take of the exercise decides: one rung up when it passed the level's own pass
+ * rule at its rung (exercises/ladder.ts nextTempo), else the same rung. A take stopped before the end of its material
+ * (durationSec short of the realized count-in plus material at its tempo) is skipped: it was not judged, and its
+ * metrics, measured on the part that was sung, would otherwise climb the ladder on a fraction of the exercise.
  */
-export function ladderTempo(def: ExerciseDef, log: readonly AttemptRecord[]): number {
-  if (!def.tempoLadder || def.tempoLadder.length === 0) return def.tempoBpm;
+function ladderRung(def: ExerciseDef, log: readonly AttemptRecord[]): number | null {
   const rungs = ladderOf(def);
+  const fullSec = new Map<number, number>();
+  /** Count-in plus material at `bpm`: the timing does not depend on the singer's range. */
+  const takeSec = (bpm: number): number => {
+    let sec = fullSec.get(bpm);
+    if (sec === undefined) {
+      const r = realize(def, null, 'unknown', { bpm });
+      sec = r.countInSec + r.totalSec;
+      fullSec.set(bpm, sec);
+    }
+    return sec;
+  };
   for (let i = log.length - 1; i >= 0; i--) {
     const a = log[i];
-    if (a.exerciseId !== def.id || a.deletedAt != null || a.tempoBpm === null || !Number.isFinite(a.tempoBpm)) continue;
+    if (a.exerciseId !== def.id || a.deletedAt != null || a.tempoBpm === null || !Number.isFinite(a.tempoBpm) || a.tempoBpm <= 0) continue;
+    if (a.durationSec < takeSec(a.tempoBpm) - COMPLETE_SLACK_SEC) continue; // stopped early: practice, never a step up
     let rung = rungs[0];
     for (const r of rungs) if (r <= a.tempoBpm + 1e-9) rung = r;
     return nextTempo(def, rung, a.metrics);
   }
-  return startTempo(def);
+  return null;
+}
+
+/**
+ * The tempo of the next take of `def`. For a Runs tempo ladder it is the rung the singer has reached, read from the
+ * attempt log so it survives a relaunch (ladderRung); the first rung before any complete take. Without a ladder:
+ * def.tempoBpm.
+ */
+export function ladderTempo(def: ExerciseDef, log: readonly AttemptRecord[]): number {
+  if (!def.tempoLadder || def.tempoLadder.length === 0) return def.tempoBpm;
+  return ladderRung(def, log) ?? startTempo(def);
+}
+
+/**
+ * The tempo a LEVEL take of `def` is sung at: ladderTempo, except that a level passed with no take of its own on the
+ * ladder (granted by an audition test, which was sung at the pass tempo) starts at its pass tempo, so its first takes
+ * can light tallies instead of climbing rungs the audition already proved.
+ */
+export function levelTempo(def: ExerciseDef, levelId: string, snap: ProgressSnapshot, log: readonly AttemptRecord[]): number {
+  if (!def.tempoLadder || def.tempoLadder.length === 0) return def.tempoBpm;
+  const rung = ladderRung(def, log);
+  if (rung !== null) return rung;
+  return snap.levels[levelId]?.status === 'passed' ? def.tempoBpm : startTempo(def);
 }
 
 /**
@@ -230,12 +276,13 @@ function resolveTarget(target: RunTarget, snap: ProgressSnapshot, log: readonly 
       if (!level || !def) return UNKNOWN;
       if (!isLevelOpenable(level.id, snap)) return locked(levelRequirementHint(level.id, snap, WORLDS));
       const world = getWorld(level.worldId) ?? null;
-      return { def, level, world, source: { type: 'level', level }, bpm: ladderTempo(def, log), audition: null, workout: null };
+      return { def, level, world, source: { type: 'level', level }, bpm: levelTempo(def, level.id, snap, log), audition: null, workout: null };
     }
     case 'record': {
       const level = getLevel(target.levelId);
       const def = level && getExercise(level.exerciseId);
       if (!level || !def) return UNKNOWN;
+      if (def.kind === 'range-finder') return locked(RANGE_FINDER_NO_RECORDS);
       if (!isFeatureUnlocked('records', snap) || !isRecordAttemptAllowed(def.id, snap, WORLDS)) {
         return locked(`Pass ${describeLevel(level)} to chase personal records on it.`);
       }
@@ -288,7 +335,7 @@ function resolveTarget(target: RunTarget, snap: ProgressSnapshot, log: readonly 
         level,
         world: item.worldId === null ? null : (getWorld(item.worldId) ?? null),
         source,
-        bpm: ladderTempo(def, log),
+        bpm: level ? levelTempo(def, level.id, snap, log) : ladderTempo(def, log),
         audition: null,
         workout: { item, itemIndex: target.itemIndex, itemCount: session.workout.items.length, take: session.results[target.itemIndex].attemptIds.length + 1 },
       };
@@ -643,8 +690,11 @@ class Runner implements ExerciseRunner {
     };
     this.take = take;
     recorder.start();
-    for (let k = 0; k < beats; k++) synth.click(countInStart + k * spb, k === 0);
-    if (p.def.metronome) take.metronome = synth.startMetronome(r.bpm, { startAt: downbeat });
+    // Count-in and metronome clicks follow the reference volume (the calibration's full-level click would sum with the
+    // starting pitch past full scale in the singer's headphones).
+    const clickGain = musicalClickGain(s.referenceVolume);
+    for (let k = 0; k < beats; k++) synth.click(countInStart + k * spb, k === 0, clickGain);
+    if (p.def.metronome) take.metronome = synth.startMetronome(r.bpm, { startAt: downbeat, gain: clickGain });
     const headphones = device.route === 'wired' || device.route === 'bluetooth';
     for (const tone of takeReferenceTones(r, headphones)) {
       take.tones.push(
@@ -715,6 +765,8 @@ class Runner implements ExerciseRunner {
     this.stopTicker();
     this.unwatchEngine(); // the take is captured: what the engine does next no longer matters to it
     const sungSec = Math.min(p.realized.totalSec, Math.max(0, take.ctx.currentTime - take.downbeat));
+    // Stop tapped before the material ended: the take is practice, never judged (the rest of it was never sung).
+    const complete = !early || sungSec >= p.realized.totalSec - COMPLETE_SLACK_SEC;
     if (early) this.silence(take);
     else take.metronome?.stop();
     batch(() => {
@@ -725,33 +777,44 @@ class Runner implements ExerciseRunner {
     });
     const result = await take.recorder.stop();
     if (token !== this.token || this.disposed) return;
-    await this.finish(token, p, result, sungSec);
+    await this.finish(token, p, result, complete ? p.realized.totalSec : sungSec, complete);
   }
 
-  private async finish(token: number, p: PreparedRun, take: TakeResult, sungSec: number): Promise<void> {
+  private async finish(token: number, p: PreparedRun, take: TakeResult, sungSec: number, complete: boolean): Promise<void> {
     const { def, realized } = p;
     const owner = this.attemptFor;
     if (!owner) return;
     let analysis: TakeAnalysis;
+    let conditions: TakeConditions;
     let evaluation: Evaluation;
     let tiles: ReportTile[];
     let tip: PickedTip;
     try {
       analysis = analyzeTake(def, realized, take.track, { vibratoStyle: this.vibratoStyle() });
-      evaluation = evaluate(def, analysis.metrics, analysis);
+      // The analyzers measure what WAS sung, so a take stopped part way is judged with `complete: false` (practice,
+      // not judged) and one that went quiet part way is refused by its note reach (both inside evaluate). The one
+      // evaluation goes into the attempt, the outcome (the report reads it) and the ladder.
+      conditions = complete ? analysis : { ...analysis, complete: false };
+      evaluation = evaluate(def, analysis.metrics, conditions);
       tiles = reportTiles(def, analysis.metrics);
-      tip = pickTip(analysis.metrics, def, analysis.tipContext);
+      tip = !complete && !analysis.tipContext.noVoice ? { id: STOPPED_TIP.id, text: STOPPED_TIP.text, metric: null, value: null } : pickTip(analysis.metrics, def, analysis.tipContext);
     } catch {
       this.fail('internal', 'This take could not be scored, so nothing was saved. Tap Sing to try again.');
       return;
     }
     const takeId = newId();
+    // The time actually sung: a take stopped early counts only what it ran, one refused for the notes it left unsung
+    // only up to its last sung note, and one where nothing came through counts none (Momentum and the workout's minutes
+    // are practice time). ladderTempo reads a short duration as "not a whole take" and never climbs on it, as nextBpm
+    // below does not.
+    const silent = analysis.tipContext.noVoice === true;
+    const sungFor = evaluation.unsung ? Math.min(sungSec, Math.max(0, evaluation.unsung.lastReachedEnd ?? sungSec)) : sungSec;
     const fields = buildAttempt({
       profileId: owner.profileId,
       def,
       source: owner.source,
-      // The tempo actually sung, and the time actually sung (a take stopped early counts only what it ran).
-      realized: { tonicMidi: realized.tonicMidi, bpm: realized.bpm, countInSec: realized.countInSec, totalSec: sungSec, fit: realized.fit },
+      // The tempo actually sung, and the time actually sung.
+      realized: { tonicMidi: realized.tonicMidi, bpm: realized.bpm, countInSec: silent ? 0 : realized.countInSec, totalSec: silent ? 0 : sungFor, fit: realized.fit },
       evaluation,
       metrics: analysis.metrics,
       takeId,
@@ -775,11 +838,16 @@ class Runner implements ExerciseRunner {
     try {
       if (!storage) throw new Error('storage is not open');
       savedTake = await storage.takes.save({ id: takeId, profileId: owner.profileId, exerciseId: def.id, ...encodeTake(take) });
+      // The store keeps the take but drops its sound when the audio will not write (no space left to free): say so,
+      // or the report would offer playback of a recording Recordings will never show.
+      if (take.audio && savedTake.audioRef === null) problems.push(TAKE_AUDIO_NOT_KEPT);
     } catch (err) {
       problems.push(takeSaveMessage(err));
     }
     let rangeSaved = false;
-    if (def.kind === 'range-finder' && attempt.passed) {
+    // Only a level take of the Range finder (the first one, or a re-measure with Sing again) saves the range: never a
+    // record attempt, which could only push the extremes toward notes the singer forces.
+    if (def.kind === 'range-finder' && attempt.passed && owner.source.type === 'level') {
       const measured = analysis.details.range;
       const range = measured ? rangeFromMeasurement(measured.lowestMidi, measured.highestMidi, attempt.createdAt) : null;
       if (range) {
@@ -791,6 +859,9 @@ class Runner implements ExerciseRunner {
         }
       }
     }
+    const nextBpm = p.ladder ? nextTempo(def, realized.bpm, analysis.metrics, conditions) : null;
+    // A clean take's line says what is next for THIS take (a rung, a closed test, a routine, every tally lit).
+    if (tip.id === POLISH_TIP.id) tip = { ...tip, text: polishLine(p, attempt, nextBpm) };
     const outcome: TakeOutcome = {
       id: attempt.id,
       prepared: p,
@@ -802,14 +873,15 @@ class Runner implements ExerciseRunner {
       attempt,
       savedTake,
       saveError: problems.length > 0 ? problems.join(' ') : null,
-      nextBpm: p.ladder ? nextTempo(def, realized.bpm, analysis.metrics, analysis) : null,
+      nextBpm,
       rangeSaved,
       before,
       after,
       unlocked: unlockEvents(before, after, WORLDS),
     };
     lastOutcome.value = outcome;
-    if (this.target.kind === 'workout') recordWorkoutTake(this.target.itemIndex, outcome);
+    // A warm-up or cool-down is completion: one where nothing came through is not done (the report says so).
+    if (this.target.kind === 'workout' && !(silent && p.level === null)) recordWorkoutTake(this.target.itemIndex, outcome);
     batch(() => {
       this.outcomeSig.value = outcome;
       this.originSig.value = null;

@@ -17,6 +17,11 @@ export interface ScoreRevealProps {
   score: number;
   /** Tally lights earned by this take, 0..3. */
   tally: number;
+  /**
+   * False for a take that cannot light a level's tally (an audition test, a routine, a lower rung of a tempo ladder):
+   * the score alone, with no lights that the level, the map and the Continue card would then contradict. Default true.
+   */
+  showTally?: boolean;
   /** Passed: the lights light in sequence after the ring. */
   celebrate: boolean;
   /** 'neutral' for a miss (never alarm colours), 'muted' for a take that was not judged. */
@@ -26,7 +31,8 @@ export interface ScoreRevealProps {
 export function ScoreReveal(props: ScoreRevealProps): JSX.Element {
   const animate = !prefersReducedMotion();
   const shown = useCountUp(props.score, COUNT_UP_MS, animate);
-  const lit = useStaggeredCount(props.tally, COUNT_UP_MS, LIGHT_STEP_MS, animate && props.celebrate);
+  const showTally = props.showTally ?? true;
+  const lit = useStaggeredCount(showTally ? props.tally : 0, COUNT_UP_MS, LIGHT_STEP_MS, animate && props.celebrate && showTally);
   return (
     <div class={`pl-reveal pl-reveal--${props.tone}`} data-testid="score-reveal">
       <ScoreRing value={shown} size={160} stroke={12} label={`Score ${percent(props.score)}`}>
@@ -34,7 +40,7 @@ export function ScoreReveal(props: ScoreRevealProps): JSX.Element {
           {percent(shown)}
         </span>
       </ScoreRing>
-      <TallyLights class="pl-reveal__tally" lit={lit} />
+      {showTally ? <TallyLights class="pl-reveal__tally" lit={lit} /> : null}
     </div>
   );
 }

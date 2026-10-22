@@ -334,6 +334,57 @@ describe('wake lock renewal', () => {
     expect(h.wakeLockRequest).toHaveBeenCalledTimes(2);
   });
 
+  /** Every sentinel the fake granted, so a test can count the ones still held. */
+  function trackSentinels(h: Harness): FakeWakeLockSentinel[] {
+    const all: FakeWakeLockSentinel[] = [];
+    h.wakeLockRequest.mockImplementation(async () => {
+      const s = new FakeWakeLockSentinel();
+      all.push(s);
+      h.state.lastSentinel = s;
+      return s;
+    });
+    return all;
+  }
+
+  it('Reset audio replaces the wake lock instead of leaking the old one, and stop() releases the last', async () => {
+    const h = await setUpHarness();
+    const sentinels = trackSentinels(h);
+    await h.engine.start();
+    await h.engine.reset();
+    expect(sentinels).toHaveLength(2);
+    expect(sentinels.filter((s) => !s.released)).toHaveLength(1);
+    await h.engine.stop();
+    expect(sentinels.filter((s) => !s.released)).toHaveLength(0);
+  });
+
+  it('a reconnect after a mute holds one wake lock, and stop() releases it', async () => {
+    const h = await setUpHarness();
+    const sentinels = trackSentinels(h);
+    await h.engine.start();
+    h.state.lastTrack?.dispatch('mute');
+    await h.engine.resume();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(sentinels.filter((s) => !s.released)).toHaveLength(1);
+    await h.engine.stop();
+    expect(sentinels.filter((s) => !s.released)).toHaveLength(0);
+  });
+
+  it('a wake lock granted after stop() is released, never kept', async () => {
+    const h = await setUpHarness();
+    await h.engine.start();
+    h.state.lastTrack?.dispatch('mute');
+    let grant: (s: FakeWakeLockSentinel) => void = () => {};
+    h.wakeLockRequest.mockImplementationOnce(() => new Promise<FakeWakeLockSentinel>((resolve) => (grant = resolve)));
+    await h.engine.resume(); // the rewire asks for a lock; the request is still pending
+    await h.engine.stop();
+    const late = new FakeWakeLockSentinel();
+    grant(late);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(late.released).toBe(true);
+  });
+
   it('does not re-request on visibilitychange while the held sentinel is still live', async () => {
     const h = await setUpHarness();
     await h.engine.start();
@@ -361,6 +412,34 @@ describe('mic track mute', () => {
 
     expect(h.engine.state).toBe('interrupted');
     expect(h.engine.error?.code).toBe('mic-ended');
+  });
+
+  it('reconnecting after a mute (a call, Siri) releases the old capture track: nothing stays live once stopped', async () => {
+    const h = await setUpHarness();
+    const tracks: FakeMediaStreamTrack[] = [];
+    h.getUserMedia.mockImplementation(async () => {
+      const t = new FakeMediaStreamTrack();
+      tracks.push(t);
+      h.state.lastTrack = t;
+      return new FakeMediaStream(t);
+    });
+    await h.engine.start();
+    const first = tracks[0];
+    first.dispatch('mute');
+    expect(h.engine.state).toBe('interrupted');
+
+    await h.engine.resume(); // 'mic-ended' with a worklet: the light rewire
+    expect(h.engine.state).toBe('running');
+    expect(tracks).toHaveLength(2);
+    expect(first.readyState).toBe('ended'); // released as soon as the new capture took over
+    expect(tracks.filter((t) => t.readyState === 'live')).toHaveLength(1);
+
+    first.dispatch('ended'); // a late event from the replaced track
+    first.dispatch('mute');
+    expect(h.engine.state).toBe('running');
+
+    await h.engine.stop();
+    expect(tracks.filter((t) => t.readyState === 'live')).toHaveLength(0);
   });
 
   it('stops listening for mute (and ended) once stop() has torn the track down', async () => {

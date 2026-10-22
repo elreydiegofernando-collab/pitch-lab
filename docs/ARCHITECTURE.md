@@ -90,7 +90,18 @@ Cross-module imports go only through the contract types plus each module's docum
 - Signals: synthesized in `src/dsp/test-signals.ts` (sine, harmonic-rich voice-like tones, vibrato, glides, cracks, noise, silence) at 44.1 and 48 kHz.
 - E2E (`npm run e2e`): build, `vite preview`, then the installed Chrome launched by playwright-core with `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream --use-file-for-fake-audio-capture=<synth.wav>`. It asserts the detected pitch, frame rate, and offline relaunch.
 - E2E, Wave 1 engines (`e2e/wave1-browser.e2e.test.ts`): nothing in the app imports the Wave 1 engines until the Wave 2 runner exists, so the production build cannot reach them. This test bundles them with Vite into `e2e/.artifacts/wave1/`, serves the bundle to the installed Chrome and runs `e2e/browser/wave1-checks.js` in the page: storage on real IndexedDB and OPFS (relaunch, delete, wipe, backup round trip) and every exercise's Listen demo built with the real synth into a real `OfflineAudioContext`, read back through the production framer and detector. The Node unit tests use fake-indexeddb, a fake OPFS and a hand-rolled Web Audio evaluator, so this is the check against the real APIs. Once the runner exists, drive the real UI instead and keep this as the engine-level guard.
-- E2E, Wave 2 (`e2e/wave2-take.e2e.test.ts`): the real UI of the production build, fed a fake mic that holds A2 and B3: the first-run sheets, Home's Continue, the first take of a launch on the Sing screen (its audio must be captured), the report with the saved range and what opened, Back to the level, and a locked deep link refused with its requirement.
+- E2E, Wave 2: the real UI of the production build.
+  - `wave2-take`: a fake mic built from the Range finder's own `realize()` timings (`range-signal.e2e.test.ts` proves it passes from every start phase of Chrome's loop). It covers:
+    - the first-run sheets and Home's Continue;
+    - the first take of a launch (its audio must be captured);
+    - the report with the saved range and what opened;
+    - the next level opening on the map;
+    - reload and offline persistence.
+  - `wave2-gating`: 13 locked deep links refused with their requirement line. The locked screen never enters the DOM.
+  - `wave2-data`: backup export and import round trip, Delete all data, WAV export, a crafted Foundations-complete backup opening Song Stage, and profiles not sharing unlocks.
+  - `wave2-song`: calibration, then a sung phrase through to the take sheet.
+  - `wave2-layout`: every screen and sheet at 320, 375 and 1280 px, with no sideways scroll, targets of at least 48 px and no console errors.
+  - `wave1-browser` renders every Listen demo in lock step with the metronome's timers and checks that none clips at the default reference volume.
 - Manual: docs/MANUAL-TEST-CHECKLIST.md on a real iPhone, **as an installed home-screen app** (standalone mode has its own bugs).
 
 ## Phases 2–7 module map

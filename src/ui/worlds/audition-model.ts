@@ -6,11 +6,11 @@
  * levels a test covers). The one piece of module state is the snapshot from before the run, so the results can say what
  * the run opened: the Sing screen and the report in between do not know about it.
  */
-import { signal } from '@preact/signals';
 import { getExercise } from '../../exercises';
 import type { LevelDef, WorldDef, WorldId } from '../../exercises/types';
 import { LEVEL_REFS, auditionSpans, currentLevelOf, levelStatus, nextAuditionExercise, type ProgressSnapshot } from '../../progress';
 import { unlockEvents } from '../../runtime/flow';
+import { auditionRun } from '../../runtime/audition-run';
 import type { TakeOutcome, UnlockEvent } from '../../runtime/types';
 import type { AttemptRecord } from '../../storage/schema';
 import { plural, rangeLabel, testTitle } from './format';
@@ -133,23 +133,18 @@ export function eventLabel(event: UnlockEvent): string | null {
 
 // ---------------------------------------------------------------- the run
 
-export interface AuditionRun {
-  worldId: WorldId;
-  /** The progress snapshot from before the first test of the run. */
-  before: ProgressSnapshot;
-  /** Epoch ms of the Start that opened the run. */
-  since: number;
-}
-
-/** The run in progress: set when Start is tapped, handed to the results view (and cleared) when the run ends. */
-export const auditionRun = signal<AuditionRun | null>(null);
+// The run itself is per-singer state the session clears on every change of profile or data (src/runtime/audition-run.ts).
+export { auditionRun, type AuditionRun } from '../../runtime/audition-run';
 
 /**
  * Start a run. A run that was left unfinished (the singer passed a test and went Back) keeps its baseline, so the
- * results still count what its first tests opened, unless the singer has sung anything else since.
+ * results still count what its first tests opened, unless the singer has sung anything else since. A run of another
+ * singer (or of no one) never lends this one its baseline: `attempts` is the CURRENT singer's log, so it could not tell.
  */
 export function beginAuditionRun(input: {
   worldId: WorldId;
+  /** The active profile: the run is theirs. */
+  profileId: string;
   before: ProgressSnapshot;
   attempts: readonly AttemptRecord[];
   /** The world's audition exercise ids (a run is made of attempts at these). */
@@ -158,14 +153,14 @@ export function beginAuditionRun(input: {
 }): void {
   const run = auditionRun.peek();
   const now = input.now ?? Date.now();
-  if (run && run.worldId === input.worldId) {
+  if (run && run.worldId === input.worldId && run.profileId === input.profileId) {
     const tests = new Set(input.testIds);
     const movedOn = input.attempts.some(
       (a) => a.deletedAt == null && Date.parse(a.createdAt) >= run.since && !(a.kind === 'audition' && tests.has(a.exerciseId)),
     );
     if (!movedOn) return;
   }
-  auditionRun.value = { worldId: input.worldId, before: input.before, since: now };
+  auditionRun.value = { worldId: input.worldId, profileId: input.profileId, before: input.before, since: now };
 }
 
 export interface ClaimedResults {
@@ -190,8 +185,8 @@ export function rememberIntro(entry: object): void {
  * entry shows the intro again. Handed out ONCE per take (a later visit from the map shows the intro) and it ends the
  * run. Null when `outcome` is not an audition take of this world, or was already seen.
  */
-export function claimResults(input: { worldId: WorldId; outcome: TakeOutcome | null; entry: object }): ClaimedResults | null {
-  const { worldId, outcome, entry } = input;
+export function claimResults(input: { worldId: WorldId; outcome: TakeOutcome | null; entry: object; profileId: string | null }): ClaimedResults | null {
+  const { worldId, outcome, entry, profileId } = input;
   if (!outcome || outcome.id === lastClaimed) return null;
   const target = outcome.prepared.target;
   if (target.kind !== 'audition' || target.worldId !== worldId) return null;
@@ -199,7 +194,8 @@ export function claimResults(input: { worldId: WorldId; outcome: TakeOutcome | n
   if (entry === introEntry) return null;
   const run = auditionRun.peek();
   auditionRun.value = null;
-  return { outcome, before: run && run.worldId === worldId ? run.before : null };
+  // Another singer's run (a profile switch since) is no baseline for this one's results.
+  return { outcome, before: run && run.worldId === worldId && run.profileId === profileId ? run.before : null };
 }
 
 /** Test helper: forget the run, the claimed results and the intro entry. */

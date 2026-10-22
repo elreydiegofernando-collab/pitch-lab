@@ -66,14 +66,25 @@ export interface MetronomeHandle extends ScheduledHandle {
 }
 
 export interface ReferenceSynth {
+  /**
+   * The node every voice of this synth mixes into, ahead of its output stage (the soft limiter in synth.ts). Code that
+   * builds its own voices on the same context (the Listen demos' shaped voices) connects them here, so the whole mix is
+   * limited together and overlapping voices never sum past full scale. Optional: a stand-in synth may leave it out.
+   */
+  readonly input?: AudioNode;
   /** Master volume 0..1. */
   setVolume(v: number): void;
   playNote(spec: NoteSpec): ScheduledHandle;
   playGlide(spec: GlideSpec): ScheduledHandle;
   playSequence(notes: readonly SequenceNote[], opts?: { startAt?: number; timbre?: Timbre; gain?: number }): ScheduledHandle;
-  /** One click at an AudioContext time. Accent = louder/higher downbeat. */
-  click(at: number, accent?: boolean): void;
-  /** Lookahead-scheduled metronome ("A Tale of Two Clocks" pattern). */
-  startMetronome(bpm: number, opts?: { beatsPerBar?: number; startAt?: number; countInBeats?: number }): MetronomeHandle;
+  /**
+   * One click at an AudioContext time. Accent = louder/higher downbeat. `gain` (linear 0..1, optional) is the accented
+   * click's peak, an unaccented one sounds at two thirds of it; omitted, the click is the full-level transient the
+   * latency calibration listens for. Musical clicks (count-ins, metronomes) pass a level that follows the reference
+   * volume, so they never sum past full scale with the notes they play against.
+   */
+  click(at: number, accent?: boolean, gain?: number): void;
+  /** Lookahead-scheduled metronome ("A Tale of Two Clocks" pattern). `gain`: the clicks' level, as for click(). */
+  startMetronome(bpm: number, opts?: { beatsPerBar?: number; startAt?: number; countInBeats?: number; gain?: number }): MetronomeHandle;
   stopAll(): void;
 }

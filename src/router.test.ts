@@ -102,6 +102,28 @@ describe('router: in-memory navigation stack', () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(route.value.name).toBe('live');
   });
+
+  it('Esc typed into a text field (or already handled) stays there: the screen and its work are kept', async () => {
+    const { bindDesktopBackKey, escapeBelongsToTarget, navigate, route } = await import('./router');
+    navigate('profiles'); // a screen with text fields (its sheets aside)
+    bindDesktopBackKey();
+    for (const tag of ['input', 'textarea', 'select'] as const) {
+      const field = document.createElement(tag);
+      document.body.appendChild(field);
+      field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      expect(route.value.name, tag).toBe('profiles');
+      field.remove();
+    }
+    const handled = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+    handled.preventDefault();
+    window.dispatchEvent(handled);
+    expect(route.value.name).toBe('profiles');
+    expect(escapeBelongsToTarget({ defaultPrevented: false, target: { tagName: 'DIV', isContentEditable: true } as unknown as EventTarget })).toBe(true);
+    expect(escapeBelongsToTarget({ defaultPrevented: false, target: document.createElement('button') })).toBe(false);
+    // Anywhere else, Esc is still Back.
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(route.value.name).toBe('home');
+  });
 });
 
 describe('router: deep links with params', () => {
@@ -200,6 +222,22 @@ describe('router: the guard (SPEC §11.1, everything is earned)', () => {
     expect(back()).toBe(true);
     expect(route.value.name).toBe('home');
     expect(back()).toBe(false);
+  });
+
+  it('previousRoute is where Back goes (null at the root), and sameRoute compares screen and params', async () => {
+    const { back, installRouteGuard, navigate, previousRoute, replace, routeOf, sameRoute } = await import('./router');
+    expect(previousRoute.value).toBeNull();
+    installRouteGuard(() => OPEN);
+    navigate('map');
+    navigate('level', { levelId: 'foundations.02' });
+    navigate('sing', { target: 'level', levelId: 'foundations.02' });
+    replace('report');
+    expect(previousRoute.value).toEqual(routeOf('level', { levelId: 'foundations.02' }));
+    expect(sameRoute(previousRoute.value!, routeOf('level', { levelId: 'foundations.02' }))).toBe(true);
+    expect(sameRoute(previousRoute.value!, routeOf('level', { levelId: 'foundations.03' }))).toBe(false);
+    expect(sameRoute(routeOf('map'), routeOf('map', { worldId: undefined }))).toBe(true);
+    back();
+    expect(previousRoute.value).toEqual(routeOf('map'));
   });
 
   it('revalidate() drops screens that closed (a profile switch)', async () => {

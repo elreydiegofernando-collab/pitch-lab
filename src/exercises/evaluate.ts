@@ -16,7 +16,12 @@
  *  - given the take (analyzeTake's result), a realization that had to fold
  *    notes by octaves, or lost a figure doing so, never passes: what was sung
  *    was not the exercise (validate.ts keeps every exercise inside the
- *    narrowest range the Range finder saves, so only a bad saved range folds).
+ *    narrowest range the Range finder saves, so only a bad saved range folds);
+ *  - a take stopped before the end of the material (TakeConditions.complete
+ *    false) is practice, never judged; and a take that left notes unsung
+ *    (TakeConditions.reach, analyze.ts noteReach) never passes: the analyzers
+ *    measure what WAS sung, so without these a take could pass on its first
+ *    half (a Boss Recital, an audition test that grants levels).
  */
 import { gateHolds, scoreExercise, valueScore } from '../analysis/score';
 import type { MetricKey, Metrics } from '../analysis/types';
@@ -34,6 +39,20 @@ export function termScore(term: ScoreTerm, value: number | undefined): number | 
   return valueScore(value, term.best, term.worst);
 }
 
+/** How many of a take's target notes were sung at all (analyze.ts noteReach). */
+export interface NoteReach {
+  reached: number;
+  total: number;
+  /** Take time the last reached note ends (0 when none was): where the singing stopped, for a take that went quiet. */
+  lastReachedEnd?: number;
+}
+
+/**
+ * Why a take was not judged: 'folded' = the realization folded notes by octaves (or broke a figure), so what was sung
+ * was not the exercise; 'stopped' = the singer stopped before the end of the material, so the take is practice only.
+ */
+export type NotJudgedReason = 'folded' | 'stopped';
+
 export interface Evaluation {
   score: number;
   passed: boolean;
@@ -41,7 +60,9 @@ export interface Evaluation {
   /** Gates that failed, by index into def.pass.gates. */
   failedGates: number[];
   /** Set when the take could not count at all (TakeConditions): the score is shown, but it never passes. */
-  notJudged?: 'folded';
+  notJudged?: NotJudgedReason;
+  /** Set when the take left too many notes unsung to pass (reachHolds): how many of them were sung. */
+  unsung?: NoteReach;
 }
 
 /** How the take was realized (an analyzeTake result is one): what the pass depends on besides the metrics. */
@@ -50,6 +71,24 @@ export interface TakeConditions {
   fit?: RealizedExercise['fit'];
   /** AnalysisPlan.issues: figures the realization broke (a flip folded into a drop), so they were never judged. */
   plan?: { readonly issues: readonly string[] };
+  /** False when the take ended before the material did (Stop while singing): it is practice, never judged. */
+  complete?: boolean;
+  /** How many of the target notes were sung (analyze.ts noteReach); too few, and the take cannot pass (reachHolds). */
+  reach?: NoteReach;
+}
+
+/** A take passes only when at least this share of its notes were sung (every note in a Boss Recital). PROPOSED CONFIG.exercises. */
+export const MIN_REACH_SHARE = 0.9;
+
+/**
+ * True when enough of the take's notes were sung for it to pass: every note of a Boss Recital, and at least
+ * MIN_REACH_SHARE of them elsewhere. The Range finder measures rather than asks for notes (any honest exploration of
+ * the voice passes it), so it is exempt; a take with no notes has nothing to miss.
+ */
+export function reachHolds(def: Pick<ExerciseDef, 'kind'>, reach: NoteReach): boolean {
+  if (def.kind === 'range-finder' || reach.total <= 0) return true;
+  if (def.kind === 'boss-recital') return reach.reached >= reach.total;
+  return reach.reached >= MIN_REACH_SHARE * reach.total - 1e-9;
 }
 
 /** True when `take` was not the exercise as written: folded by octaves, or with figures dropped. */
@@ -59,11 +98,16 @@ export function isFolded(take: TakeConditions): boolean {
 
 /**
  * Score, pass/fail, mastery tier and failed gates of an attempt. A metric that is missing or NaN counts as not
- * measured. Pass the take (`evaluate(def, a.metrics, a)`) so a folded realization can never pass.
+ * measured. Pass the take (`evaluate(def, a.metrics, a)`) so a folded realization, or a take that left notes unsung,
+ * can never pass; the runner adds `complete: false` for a take stopped before its end.
  */
 export function evaluate(def: ExerciseDef, metrics: Metrics, take?: TakeConditions): Evaluation {
   const { score, passed, mastery, failedGates } = scoreExercise(def, metrics);
   if (take !== undefined && isFolded(take)) return { score, passed: false, mastery: 0, failedGates, notJudged: 'folded' };
+  if (take?.complete === false) return { score, passed: false, mastery: 0, failedGates, notJudged: 'stopped' };
+  if (take?.reach !== undefined && !reachHolds(def, take.reach)) {
+    return { score, passed: false, mastery: 0, failedGates, unsung: { ...take.reach } };
+  }
   return { score, passed, mastery, failedGates };
 }
 

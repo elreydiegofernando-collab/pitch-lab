@@ -2,18 +2,49 @@
  * The Momentum chip: the number and a 7-day mini bar row (docs/DESIGN.md 13.1). Shown on Home only once the
  * dashboard is unlocked, and it opens the dashboard. Rest days keep it: momentum decays slowly and never resets, so a
  * rest day's bar is only dimmer, never empty.
+ *
+ * The number is computed the way the dashboard computes it (dashboard-model momentumView): from the attempt log at the
+ * time it is shown, not from the session snapshot, which is recomputed only at boot and after a take. Both the number
+ * and the bars are recomputed when the app comes back into view, so a tab or a home-screen app left open for days
+ * never shows the day it was opened.
  */
-import { useMemo } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import { ChevronRight } from 'lucide-preact';
+import { computeMomentum } from '../../progress';
 import { navigate } from '../../router';
-import { attemptLog, snapshot } from '../../state/session';
+import { attemptLog } from '../../state/session';
 import { localUtcOffsetMinutes, momentumBars, practiceSummary } from './momentum-bars';
 
+/** A counter that moves each time the page becomes visible again (or the window regains focus). */
+function useReturnTick(): number {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const onReturn = (): void => {
+      if (document.visibilityState !== 'hidden') setTick((n) => n + 1);
+    };
+    document.addEventListener('visibilitychange', onReturn);
+    window.addEventListener('focus', onReturn);
+    return () => {
+      document.removeEventListener('visibilitychange', onReturn);
+      window.removeEventListener('focus', onReturn);
+    };
+  }, []);
+  return tick;
+}
+
 export function MomentumChip(): JSX.Element {
-  const value = Math.round(snapshot.value.momentum);
   const log = attemptLog.value;
-  const bars = useMemo(() => momentumBars(log, Date.now(), localUtcOffsetMinutes()), [log]);
+  const tick = useReturnTick();
+  const { value, bars } = useMemo(() => {
+    const now = Date.now();
+    const utcOffsetMinutes = localUtcOffsetMinutes();
+    return {
+      value: Math.round(computeMomentum(log, now, { utcOffsetMinutes })),
+      bars: momentumBars(log, now, utcOffsetMinutes),
+    };
+    // `tick` is a dependency on purpose: coming back to the app re-reads the clock.
+  }, [log, tick]);
   const summary = practiceSummary(bars);
   return (
     <button

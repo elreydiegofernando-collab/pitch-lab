@@ -92,6 +92,11 @@ describe('personal records in the snapshot', () => {
     expect(r).toEqual({});
   });
 
+  it('keeps no record of a range span: a measurement, and pushing it is straining', () => {
+    const r = records([attempt({ exerciseId: 'foundations.range-finder.1', metrics: { 'range.spanSemitones': 14 } }), attempt({ exerciseId: 'foundations.range-finder.1', metrics: { 'range.spanSemitones': 19 } })]);
+    expect(r).toEqual({});
+  });
+
   it('with an exercise lookup, keeps only the metrics that exercise actually scores', () => {
     const def = exerciseDef('x', { scoring: [{ metric: 'run.score', weight: 1, best: 1, worst: 0 }, { metric: 'run.definedRate', weight: 0, best: 1, worst: 0 }] });
     const lookup = (id: string) => (id === 'x' ? def : undefined);

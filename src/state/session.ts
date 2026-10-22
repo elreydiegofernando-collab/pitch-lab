@@ -21,6 +21,7 @@ import { computeSnapshot, isFeatureUnlocked, withRoutines } from '../progress';
 import type { AttemptFields } from '../progress/attempt';
 import type { FeatureId, ProgressSnapshot } from '../progress/types';
 import { installRouteGuard, resetTo, revalidate, type Route } from '../router';
+import { auditionRun } from '../runtime/audition-run';
 import { guardRoute } from '../runtime/guard';
 import { lastOutcome } from '../runtime/runner';
 import type { GuardContext } from '../runtime/types';
@@ -177,9 +178,10 @@ async function ready(): Promise<{ storage: AppStorage; profile: ProfileRecord }>
   return { storage, profile };
 }
 
-/** A take's outcome and a running workout belong to the profile (and the log) they were made with. */
+/** A take's outcome, a running workout and an audition run belong to the profile (and the log) they were made with. */
 function clearTakeState(): void {
   lastOutcome.value = null;
+  auditionRun.value = null;
   abandonWorkout();
 }
 
@@ -293,11 +295,17 @@ export function deleteProfile(id: string, opts: { removeRecordings: boolean }): 
   });
 }
 
-/** Reload everything from storage (after a backup import or Delete all data) and revalidate the router. */
-export function reloadSession(): Promise<void> {
+/**
+ * Reload everything from storage (after a backup import or Delete all data) and revalidate the router. Settings changed
+ * in the last moments are written first, each under its own profile (an import never overwrites a profile's existing
+ * settings, so they are still right); after Delete all data pass `pendingSettings: 'discard'`: their profile is gone,
+ * and writing them would leave its settings behind the wipe.
+ */
+export function reloadSession(opts: { pendingSettings?: 'flush' | 'discard' } = {}): Promise<void> {
   return serial(async () => {
     const { storage } = await ready();
-    discardPendingSettings(); // written against the data that was just replaced
+    if (opts.pendingSettings === 'discard') discardPendingSettings();
+    else await flushSettings();
     clearTakeState();
     await loadActive(storage);
     void loadSongs();

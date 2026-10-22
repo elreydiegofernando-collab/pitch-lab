@@ -30,7 +30,8 @@ export function Banner(props: BannerProps): JSX.Element {
         <p class="pl-banner__msg">{message}</p>
         {children}
         {actionLabel && onAction ? (
-          <Button variant="primary" onClick={onAction}>
+          // Secondary: a screen keeps its one amber (primary) button (DESIGN §13.0), whatever banner it shows.
+          <Button variant="secondary" onClick={onAction}>
             {actionLabel}
           </Button>
         ) : null}

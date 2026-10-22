@@ -3,7 +3,7 @@
  * delete one behind a typed-name confirmation. Every action reports its real result: a rejected delete says so,
  * keeps the profile, and never claims "Deleted".
  */
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { useCallback, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import { Plus, Trash2 } from 'lucide-preact';
 import { navigate } from '../../router';
@@ -63,7 +63,9 @@ export function NewProfileSheet(props: { open: boolean; onClose: () => void; onP
   const [error, setError] = useState<string | null>(null);
   const close = useGuardedClose(onClose, busy);
 
-  useEffect(() => {
+  // A layout effect: the fields are fresh before the opened sheet is first painted, so a name typed straight away (the
+  // first control has focus) is never wiped by a reset that lands after it.
+  useLayoutEffect(() => {
     if (!open) return;
     setName('');
     setVoice('unknown');
@@ -131,8 +133,9 @@ export function EditProfileSheet(props: { profile: ProfileRecord | null; onClose
   const close = useGuardedClose(onClose, busy);
   const id = profile?.id ?? null;
 
-  // Reset only when a different profile opens, not on every save that updates the record under it.
-  useEffect(() => {
+  // Reset only when a different profile opens, not on every save that updates the record under it. A layout effect, so
+  // the sheet is first painted with the profile's own values and nothing typed after that is overwritten.
+  useLayoutEffect(() => {
     if (!profile) return;
     setName(profile.name);
     setVoice(profile.voiceType);
@@ -192,7 +195,8 @@ export function DeleteProfileSheet(props: { profile: ProfileRecord | null; isOnl
   const close = useGuardedClose(onClose, busy);
   const id = profile?.id ?? null;
 
-  useEffect(() => {
+  // Before the first paint of a newly opened sheet (see NewProfileSheet): the confirmation typed at once is kept.
+  useLayoutEffect(() => {
     setTyped('');
     setRemoveRecordings(true);
     setBusy(false);
@@ -222,12 +226,12 @@ export function DeleteProfileSheet(props: { profile: ProfileRecord | null; isOnl
     <Sheet open={profile !== null} title={profile ? `Delete ${profile.name}?` : 'Delete profile'} onClose={close}>
       {profile ? (
         <form class="pl-stack pl-profiles-form" onSubmit={confirm}>
-          <p class="pl-body pl-prose">{profile.name} and their progress will no longer appear in Pitch Lab on this device.</p>
+          <p class="pl-body pl-prose">This profile and its progress will no longer appear in Pitch Lab on this device.</p>
           {isOnly ? <p class="pl-body-s pl-muted pl-prose">This is the only profile, so a new empty one named Me is created afterwards.</p> : null}
           <div class="pl-list">
             <ListRow
               title="Also delete recordings"
-              subtitle="Their saved takes and audio are erased from this device."
+              subtitle="Its saved takes, their audio, and the songs it imported (with their backing tracks) are erased from this device."
               trailing={<Toggle checked={removeRecordings} onChange={setRemoveRecordings} aria-label="Also delete recordings" disabled={busy} />}
             />
           </div>

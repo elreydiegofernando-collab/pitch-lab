@@ -40,9 +40,12 @@ export function bossChain(def: Pick<ExerciseDef, 'pattern'>): string[] {
   return out;
 }
 
-/** What the Sing screen's title bar says: the level, the audition test or the workout item. */
+/**
+ * What the Sing screen's title bar says: the level, the audition test or the workout item. A Boss Recital is named in
+ * full ("Foundations Boss Recital", as on Level, Home and the report): every boss level is titled just "Boss Recital".
+ */
 export function singTitle(prepared: PreparedRun): string {
-  return prepared.level?.title ?? prepared.def.title;
+  return prepared.level?.kind === 'boss' ? prepared.def.title : (prepared.level?.title ?? prepared.def.title);
 }
 
 /**

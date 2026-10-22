@@ -23,6 +23,8 @@ import { attempt, fakeOutcome, passAudition, snapshotOf } from './test-support';
 
 const foundations = getWorld('foundations')!;
 const vibrato = getWorld('vibrato')!;
+/** The singer the runs in these tests belong to. */
+const ME = 'profile-1';
 
 beforeEach(() => {
   resetAuditionStateForTests();
@@ -172,40 +174,50 @@ describe('beginAuditionRun', () => {
   const testIds = foundations.audition!.exerciseIds;
 
   it('records the snapshot from before the run', () => {
-    beginAuditionRun({ worldId: 'foundations', before, attempts: [], testIds, now: 1000 });
-    expect(auditionRun.value).toEqual({ worldId: 'foundations', before, since: 1000 });
+    beginAuditionRun({ worldId: 'foundations', profileId: ME,before, attempts: [], testIds, now: 1000 });
+    expect(auditionRun.value).toEqual({ worldId: 'foundations', profileId: ME, before, since: 1000 });
   });
 
   it('keeps the baseline of a run that was left unfinished while only audition tests were sung', () => {
-    beginAuditionRun({ worldId: 'foundations', before, attempts: [], testIds, now: Date.parse('2026-10-22T12:00:00Z') });
+    beginAuditionRun({ worldId: 'foundations', profileId: ME,before, attempts: [], testIds, now: Date.parse('2026-10-22T12:00:00Z') });
     const later = snapshotOf('foundations.01', [passAudition('foundations', 1)]);
     const sung = [attempt({ kind: 'audition', exerciseId: 'foundations.audition.1', levelId: null, createdAt: '2026-10-22T12:05:00.000Z' })];
-    beginAuditionRun({ worldId: 'foundations', before: later, attempts: sung, testIds, now: Date.parse('2026-10-22T12:10:00Z') });
+    beginAuditionRun({ worldId: 'foundations', profileId: ME,before: later, attempts: sung, testIds, now: Date.parse('2026-10-22T12:10:00Z') });
     expect(auditionRun.value?.before).toBe(before);
     expect(auditionRun.value?.since).toBe(Date.parse('2026-10-22T12:00:00Z'));
   });
 
   it('starts over once the singer has done anything else since', () => {
-    beginAuditionRun({ worldId: 'foundations', before, attempts: [], testIds, now: Date.parse('2026-10-22T12:00:00Z') });
+    beginAuditionRun({ worldId: 'foundations', profileId: ME,before, attempts: [], testIds, now: Date.parse('2026-10-22T12:00:00Z') });
     const later = snapshotOf('foundations.02');
     const played = [attempt({ kind: 'practice', levelId: 'foundations.02', createdAt: '2026-10-22T12:05:00.000Z' })];
-    beginAuditionRun({ worldId: 'foundations', before: later, attempts: played, testIds, now: Date.parse('2026-10-22T12:10:00Z') });
+    beginAuditionRun({ worldId: 'foundations', profileId: ME,before: later, attempts: played, testIds, now: Date.parse('2026-10-22T12:10:00Z') });
     expect(auditionRun.value?.before).toBe(later);
   });
 
   it('ignores attempts from before the run and deleted ones', () => {
-    beginAuditionRun({ worldId: 'foundations', before, attempts: [], testIds, now: Date.parse('2026-10-22T12:00:00Z') });
+    beginAuditionRun({ worldId: 'foundations', profileId: ME,before, attempts: [], testIds, now: Date.parse('2026-10-22T12:00:00Z') });
     const old = attempt({ kind: 'practice', levelId: 'foundations.01', createdAt: '2026-10-22T11:00:00.000Z' });
     const gone = attempt({ kind: 'practice', levelId: 'foundations.02', createdAt: '2026-10-22T12:05:00.000Z', deletedAt: '2026-10-22T12:06:00.000Z' });
-    beginAuditionRun({ worldId: 'foundations', before: snapshotOf(null), attempts: [old, gone], testIds, now: Date.parse('2026-10-22T12:10:00Z') });
+    beginAuditionRun({ worldId: 'foundations', profileId: ME,before: snapshotOf(null), attempts: [old, gone], testIds, now: Date.parse('2026-10-22T12:10:00Z') });
     expect(auditionRun.value?.before).toBe(before);
   });
 
   it("never carries a baseline over from another world's run", () => {
-    beginAuditionRun({ worldId: 'foundations', before, attempts: [], testIds, now: 1 });
+    beginAuditionRun({ worldId: 'foundations', profileId: ME,before, attempts: [], testIds, now: 1 });
     const other = snapshotOf('foundations.boss');
-    beginAuditionRun({ worldId: 'vibrato', before: other, attempts: [], testIds: vibrato.audition!.exerciseIds, now: 2 });
-    expect(auditionRun.value).toEqual({ worldId: 'vibrato', before: other, since: 2 });
+    beginAuditionRun({ worldId: 'vibrato', profileId: ME,before: other, attempts: [], testIds: vibrato.audition!.exerciseIds, now: 2 });
+    expect(auditionRun.value).toEqual({ worldId: 'vibrato', profileId: ME, before: other, since: 2 });
+  });
+
+  it("never keeps another singer's unfinished run: a profile switch starts a fresh baseline", () => {
+    // Singer A starts the Foundations audition and leaves mid-run.
+    const theirs = snapshotOf('foundations.01');
+    beginAuditionRun({ worldId: 'foundations', profileId: 'singer-a', before: theirs, attempts: [], testIds, now: Date.parse('2026-10-22T12:00:00Z') });
+    // Singer B (who passed 01-04 long ago, nothing sung since A's start) taps Start on the same audition.
+    const mine = snapshotOf('foundations.04');
+    beginAuditionRun({ worldId: 'foundations', profileId: ME, before: mine, attempts: [], testIds, now: Date.parse('2026-10-22T12:10:00Z') });
+    expect(auditionRun.value).toEqual({ worldId: 'foundations', profileId: ME, before: mine, since: Date.parse('2026-10-22T12:10:00Z') });
   });
 });
 
@@ -219,35 +231,43 @@ describe('claimResults', () => {
 
   it('hands out the results of a take opened on a new route entry, with the snapshot from before the run, and ends the run', () => {
     const before = snapshotOf('foundations.01');
-    beginAuditionRun({ worldId: 'foundations', before, attempts: [], testIds: foundations.audition!.exerciseIds });
-    const claimed = claimResults({ worldId: 'foundations', outcome: miss(), entry: entry() });
+    beginAuditionRun({ worldId: 'foundations', profileId: ME,before, attempts: [], testIds: foundations.audition!.exerciseIds });
+    const claimed = claimResults({ worldId: 'foundations', profileId: ME, outcome: miss(), entry: entry() });
     expect(claimed?.outcome.id).toBe('t1');
     expect(claimed?.before).toBe(before);
     expect(auditionRun.value).toBeNull();
   });
 
   it('hands them out once per take only', () => {
-    expect(claimResults({ worldId: 'foundations', outcome: miss('same'), entry: entry() })).not.toBeNull();
-    expect(claimResults({ worldId: 'foundations', outcome: miss('same'), entry: entry() })).toBeNull();
-    expect(claimResults({ worldId: 'foundations', outcome: miss('another'), entry: entry() })).not.toBeNull();
+    expect(claimResults({ worldId: 'foundations', profileId: ME, outcome: miss('same'), entry: entry() })).not.toBeNull();
+    expect(claimResults({ worldId: 'foundations', profileId: ME, outcome: miss('same'), entry: entry() })).toBeNull();
+    expect(claimResults({ worldId: 'foundations', profileId: ME, outcome: miss('another'), entry: entry() })).not.toBeNull();
+  });
+
+  it("offers no baseline from another singer's run (the results never credit them with someone else's levels)", () => {
+    beginAuditionRun({ worldId: 'foundations', profileId: 'singer-a', before: snapshotOf('foundations.01'), attempts: [], testIds: foundations.audition!.exerciseIds });
+    const claimed = claimResults({ worldId: 'foundations', profileId: ME, outcome: miss('b-take'), entry: entry() });
+    expect(claimed?.outcome.id).toBe('b-take');
+    expect(claimed?.before).toBeNull();
+    expect(auditionRun.value).toBeNull();
   });
 
   it('has no baseline to offer when the run start was not recorded', () => {
-    expect(claimResults({ worldId: 'foundations', outcome: miss(), entry: entry() })?.before).toBeNull();
+    expect(claimResults({ worldId: 'foundations', profileId: ME, outcome: miss(), entry: entry() })?.before).toBeNull();
   });
 
   it('gives the results of a passed test too: the report offers "See your placement" to stop early, and after the last test', () => {
-    expect(claimResults({ worldId: 'foundations', outcome: passedOne(), entry: entry() })?.outcome.id).toBe('p1');
+    expect(claimResults({ worldId: 'foundations', profileId: ME, outcome: passedOne(), entry: entry() })?.outcome.id).toBe('p1');
   });
 
   it("shows the intro again when Back from the report returns to the intro's own entry, and keeps the run open", () => {
     const before = snapshotOf('foundations.01');
-    beginAuditionRun({ worldId: 'foundations', before, attempts: [], testIds: foundations.audition!.exerciseIds });
+    beginAuditionRun({ worldId: 'foundations', profileId: ME,before, attempts: [], testIds: foundations.audition!.exerciseIds });
     const intro = entry();
     rememberIntro(intro);
-    expect(claimResults({ worldId: 'foundations', outcome: passedOne(), entry: intro })).toBeNull();
+    expect(claimResults({ worldId: 'foundations', profileId: ME, outcome: passedOne(), entry: intro })).toBeNull();
     // The take counts as seen, and the run goes on: the next Start keeps its baseline.
-    expect(claimResults({ worldId: 'foundations', outcome: passedOne(), entry: entry() })).toBeNull();
+    expect(claimResults({ worldId: 'foundations', profileId: ME, outcome: passedOne(), entry: entry() })).toBeNull();
     expect(auditionRun.value?.before).toBe(before);
   });
 
@@ -256,14 +276,14 @@ describe('claimResults', () => {
     const second = entry();
     rememberIntro(first);
     rememberIntro(second);
-    expect(claimResults({ worldId: 'foundations', outcome: miss('x'), entry: first })).not.toBeNull();
+    expect(claimResults({ worldId: 'foundations', profileId: ME, outcome: miss('x'), entry: first })).not.toBeNull();
   });
 
   it('ignores takes that are not an audition of this world', () => {
-    expect(claimResults({ worldId: 'foundations', outcome: null, entry: entry() })).toBeNull();
-    expect(claimResults({ worldId: 'foundations', outcome: fakeOutcome({ id: 'lvl', passed: false }), entry: entry() })).toBeNull();
-    expect(claimResults({ worldId: 'vibrato', outcome: miss('wrong-world'), entry: entry() })).toBeNull();
+    expect(claimResults({ worldId: 'foundations', profileId: ME, outcome: null, entry: entry() })).toBeNull();
+    expect(claimResults({ worldId: 'foundations', profileId: ME, outcome: fakeOutcome({ id: 'lvl', passed: false }), entry: entry() })).toBeNull();
+    expect(claimResults({ worldId: 'vibrato', profileId: ME, outcome: miss('wrong-world'), entry: entry() })).toBeNull();
     // A take of another world is not used up: its own world can still claim it.
-    expect(claimResults({ worldId: 'foundations', outcome: miss('wrong-world'), entry: entry() })).not.toBeNull();
+    expect(claimResults({ worldId: 'foundations', profileId: ME, outcome: miss('wrong-world'), entry: entry() })).not.toBeNull();
   });
 });

@@ -346,6 +346,38 @@ describe('Data: backup', () => {
     expect(session.reloadSession).toHaveBeenCalledTimes(1);
   });
 
+  it('asks for an explicit restore (a deleted profile the file holds comes back)', async () => {
+    await mount();
+    await chooseFile('{"format":"pitch-lab-backup","version":1,"profiles":[],"attempts":[]}');
+    const [, options] = fake.importBackup.mock.calls[0] as [string, { restoreDeleted?: boolean }];
+    expect(options.restoreDeleted).toBe(true);
+  });
+
+  it('an import that changed nothing leaves the session (and a setting changed a moment ago) alone: no reload', async () => {
+    fake.importBackup.mockResolvedValue({ ...REPORT, profilesAdded: 0, attemptsAdded: 0, settingsRestored: 0, retiredDefaultProfileId: null, attemptsSkipped: 3 });
+    await mount();
+    await chooseFile('{"format":"pitch-lab-backup","version":1,"profiles":[],"attempts":[]}');
+    expect(text(container.querySelector('[data-testid="import-report"]')!)).toContain('Nothing new in that backup.');
+    expect(session.reloadSession).not.toHaveBeenCalled();
+  });
+
+  it('writes a setting changed a moment before the import, under its own profile, before the file is read in', async () => {
+    const settings = await import('../../state/settings');
+    const order: string[] = [];
+    const flush = vi.spyOn(settings, 'flushSettings');
+    flush.mockImplementation(async () => {
+      order.push('flush');
+    });
+    fake.importBackup.mockImplementation(async () => {
+      order.push('import');
+      return REPORT;
+    });
+    await mount();
+    await chooseFile('{"format":"pitch-lab-backup","version":1,"profiles":[],"attempts":[]}');
+    expect(order.slice(0, 2)).toEqual(['flush', 'import']);
+    flush.mockRestore();
+  });
+
   it('says so when the backup was merged but the session could not reload, without calling it a failed import', async () => {
     vi.mocked(session.reloadSession).mockRejectedValue(new Error('the database is busy'));
     await mount();
@@ -495,6 +527,24 @@ describe('Data: recordings', () => {
     expect(text()).toContain('No recordings yet');
   });
 
+  it('never tells a singer to turn on Keep take audio while it is on (the default), only while it is off', async () => {
+    const { settings } = await import('../../state/settings');
+    const { DEFAULT_SETTINGS } = await import('../../state/settings-types');
+    fake.listByProfile.mockResolvedValue([]);
+    settings.value = { ...DEFAULT_SETTINGS, keepTakeAudio: true };
+    await mount();
+    expect(text()).toContain('with their sound');
+    expect(text()).not.toContain('Turn on Keep take audio');
+    await act(() => {
+      render(null, container);
+    });
+    container.remove();
+    settings.value = { ...DEFAULT_SETTINGS, keepTakeAudio: false };
+    await mount();
+    expect(text()).toContain('Turn on Keep take audio in Settings');
+    settings.value = DEFAULT_SETTINGS;
+  });
+
   it('shows a list that could not be read as an error, not as empty', async () => {
     fake.listByProfile.mockRejectedValue(new Error('the take store is unreadable'));
     await mount();
@@ -536,8 +586,18 @@ describe('Data: Delete all data', () => {
     await click(buttonIn(sheet, 'Delete everything'));
     await settle();
     expect(order).toEqual(['wipe', 'reload']);
+    // Pending profile settings are dropped, not written behind the wipe: their profile is gone.
+    expect(session.reloadSession).toHaveBeenCalledWith({ pendingSettings: 'discard' });
     expect(route.value.name).toBe('home');
     expect(toasts.value.map((t) => t.message)).toContain('All data deleted.');
+  });
+
+  it('says what is kept: the device calibration and audio setup, not "all settings"', async () => {
+    await mount();
+    expect(text()).toContain('This device’s latency calibration and audio setup are kept.');
+    const sheet = await openSheet();
+    expect(text(sheet)).not.toContain('all settings');
+    expect(sheet.querySelector('[data-testid="delete-all-kept"]')?.textContent).toContain('latency calibration and audio setup');
   });
 
   it('reports an incomplete wipe as incomplete: not "deleted", still on the screen, session resynced', async () => {

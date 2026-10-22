@@ -65,8 +65,14 @@ export function masteryForScore(def: Pick<ExerciseDef, 'tiers'>, score: number):
 
 interface LevelStats {
   attempts: number;
+  /** The best score of a take at the level's pass tempo (a lower rung of a Runs ladder is practice at another speed). */
   bestScore: number;
   pass: { at: string; bestScore: number; mastery: Mastery } | null;
+  /**
+   * The best of the PASSED personal-record takes at the pass tempo: they light the level's tally lights (a record take
+   * is the level sung again, judged by its own rule), though they never pass it. 0 when there is none.
+   */
+  record: { bestScore: number; mastery: Mastery } | null;
 }
 
 interface Grant {
@@ -106,17 +112,26 @@ function collectLevelStats(
     const score = cleanScore(a.score);
     let s = stats.get(a.levelId);
     if (!s) {
-      s = { attempts: 0, bestScore: 0, pass: null };
+      s = { attempts: 0, bestScore: 0, pass: null, record: null };
       stats.set(a.levelId, s);
     }
     s.attempts += 1;
-    if (score > s.bestScore) s.bestScore = score;
-    if (a.passed === true && LEVEL_PASSING_KINDS.has(a.kind) && atPassTempo(a, owner.level, getExercise)) {
+    const atTempo = atPassTempo(a, owner.level, getExercise);
+    // The level's "Best" is a score at its own tempo: the Map, Home's Continue card and Level then agree.
+    if (atTempo && score > s.bestScore) s.bestScore = score;
+    if (a.passed === true && LEVEL_PASSING_KINDS.has(a.kind) && atTempo) {
       const mastery = passMastery(a.mastery);
       if (!s.pass) s.pass = { at: a.createdAt, bestScore: score, mastery };
       else {
         if (score > s.pass.bestScore) s.pass.bestScore = score;
         if (mastery > s.pass.mastery) s.pass.mastery = mastery;
+      }
+    } else if (a.passed === true && a.kind === 'record' && atTempo) {
+      const mastery = passMastery(a.mastery);
+      if (!s.record) s.record = { bestScore: score, mastery };
+      else {
+        if (score > s.record.bestScore) s.record.bestScore = score;
+        if (mastery > s.record.mastery) s.record.mastery = mastery;
       }
     }
   }
@@ -242,15 +257,17 @@ export function computeSnapshot(
       let bestScore = st?.bestScore ?? 0;
       let mastery: Mastery = 0;
       let passedAt: string | null = null;
+      const def = options.getExercise?.(level.exerciseId);
+      // A passed record take lights the tally like any passing take (never the pass itself: that needs evidence above).
+      const recordMastery: Mastery = st?.record ? (def ? (Math.max(st.record.mastery, masteryForScore(def, st.record.bestScore)) as Mastery) : st.record.mastery) : 0;
       if (evidence === 'direct' && st?.pass) {
         passedAt = st.pass.at;
-        const def = options.getExercise?.(level.exerciseId);
-        mastery = def ? (Math.max(st.pass.mastery, masteryForScore(def, st.pass.bestScore)) as Mastery) : st.pass.mastery;
+        mastery = def ? (Math.max(st.pass.mastery, masteryForScore(def, st.pass.bestScore), recordMastery) as Mastery) : (Math.max(st.pass.mastery, recordMastery) as Mastery);
       } else if (evidence === 'audition') {
         const grant = grants.get(world.id)?.get(level.id);
         passedAt = grant?.at ?? null;
         bestScore = Math.max(bestScore, grant?.score ?? 0);
-        mastery = 1;
+        mastery = Math.max(1, recordMastery) as Mastery;
       }
       levels[level.id] = {
         levelId: level.id,

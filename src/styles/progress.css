@@ -280,14 +280,15 @@
   border-radius: var(--radius-pill);
   background: var(--meter-fill);
 }
-/* The world hues are bright (they are made for the dark theme): darken them on the light track so the bar keeps 3:1.
-   Foundations is the tally colour, which the light theme already deepens, so it is left as it is. */
-:root[data-theme='light'] .pl-dash-world:not([data-world='foundations']) {
-  --meter-fill: color-mix(in srgb, var(--accent, var(--tally)) 55%, #000);
+/* tokens.css already gives the light theme contrast-adjusted world hues; on the light meter TRACK (--line) a few of them
+   (Foundations' tally, Dynamics) still sit under 3:1, so the light fill leans a quarter toward the text colour (tokens
+   only): every world's bar then keeps at least 4:1 against its track and 5.7:1 against the card. */
+:root[data-theme='light'] .pl-dash-world {
+  --meter-fill: color-mix(in srgb, var(--accent, var(--tally)) 75%, var(--text-hi));
 }
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme]) .pl-dash-world:not([data-world='foundations']) {
-    --meter-fill: color-mix(in srgb, var(--accent, var(--tally)) 55%, #000);
+  :root:not([data-theme]) .pl-dash-world {
+    --meter-fill: color-mix(in srgb, var(--accent, var(--tally)) 75%, var(--text-hi));
   }
 }
 
@@ -825,5 +826,5 @@ button.pl-profiles-main:disabled {
   color: var(--text-mid);
 }
 .pl-data-chip--off {
-  color: var(--text-lo);
+  color: var(--text-mid); /* --text-lo on --bg-2 is 4.39:1 in the light theme */
 }

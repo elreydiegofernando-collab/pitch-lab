@@ -81,9 +81,10 @@ vi.mock('../../state/settings', async () => {
 
 import { resetRouterForTests, routeOf } from '../../router';
 import { getBundledLibrary } from '../../song/library';
+import { activeProfile } from '../../state/session';
 import { deviceSettings } from '../../state/settings';
 import { loadSongs } from '../../state/songs';
-import { SongPlayer } from './SongPlayer';
+import { SongPlayer, rememberedKey } from './SongPlayer';
 
 const TWINKLE = `#TITLE:Twinkle Twinkle
 #ARTIST:Traditional
@@ -173,6 +174,30 @@ describe('Song player', () => {
     expect(c.querySelector('[data-testid="song-primary"]')?.textContent).toBe('Sing');
     expect(c.querySelector('[data-testid="song-primary"]')?.getAttribute('aria-label')).toBe('Sing phrase 1');
     expect(c.textContent).not.toContain('Calibrate latency first');
+  });
+
+  it('remembers a singer\'s choices for the song, and never hands them to another singer', async () => {
+    const pressed = (c: HTMLElement): string[] =>
+      [...c.querySelectorAll('[data-testid="phrase-scrubber"] button')].filter((p) => p.getAttribute('aria-pressed') === 'true').map((p) => p.textContent ?? '');
+    const me = activeProfile.value!;
+    let c = await open('twinkle');
+    await until(() => c.querySelector('[data-testid="song-player"]'));
+    const pills = [...c.querySelectorAll<HTMLButtonElement>('[data-testid="phrase-scrubber"] button')];
+    pills[2].click(); // phrase 2
+    await until(() => (pressed(c)[0]?.includes('2') ? true : null));
+    render(null, c); // leave: the choices are remembered for this singer
+
+    activeProfile.value = { ...me, id: 'p2', profileId: 'p2', name: 'Beginner' };
+    c = await open('twinkle');
+    await until(() => c.querySelector('[data-testid="song-player"]'));
+    expect(pressed(c)[0]).toContain('1'); // the other singer starts from the default, not from phrase 2
+    render(null, c);
+
+    activeProfile.value = me;
+    c = await open('twinkle');
+    await until(() => c.querySelector('[data-testid="song-player"]'));
+    expect(pressed(c)[0]).toContain('2'); // and the first singer gets their own choice back
+    expect(rememberedKey('twinkle')).toBe('p1:twinkle');
   });
 
   it('never opens a song the singer has not earned', async () => {

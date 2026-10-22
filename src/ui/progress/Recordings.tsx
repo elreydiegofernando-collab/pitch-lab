@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import { Download, Mic, Play, Square, Trash2, Volume2, VolumeX } from 'lucide-preact';
 import { getEngine } from '../../audio/engine';
+import { settings } from '../../state/settings';
 import { songIndex } from '../../state/songs';
 import type { AppStorage } from '../../storage';
 import type { TakeRecord } from '../../storage/schema';
@@ -178,7 +179,15 @@ export function Recordings(props: RecordingsProps): JSX.Element {
       ) : takes === null ? (
         <div class="pl-data-skeleton pl-data-skeleton--list" aria-hidden="true" data-testid="recordings-loading" />
       ) : takes.length === 0 ? (
-        <EmptyState icon={Mic} title="No recordings yet" message="Takes you sing are saved here. Turn on Keep take audio in Settings to hear them again." />
+        <EmptyState
+          icon={Mic}
+          title="No recordings yet"
+          message={
+            settings.value.keepTakeAudio
+              ? 'Takes you sing are saved here, with their sound, so you can hear them again.'
+              : 'Takes you sing are saved here. Turn on Keep take audio in Settings to hear them again.'
+          }
+        />
       ) : (
         <ul class="pl-data-takes" aria-label={plural(takes.length, 'recording')}>
           {takes.map((take) => {

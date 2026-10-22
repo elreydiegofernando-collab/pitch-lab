@@ -4,15 +4,16 @@
  * the replay of the trace against the targets, the one coaching tip and playback of the take. Its next steps come from
  * afterTakeActions and open with replace, so Back from the next screen skips the report. Nothing here is colour-only.
  */
-import { useMemo } from 'preact/hooks';
+import { useEffect, useMemo, useRef } from 'preact/hooks';
 import type { JSX } from 'preact';
 import { MicOff } from 'lucide-preact';
-import { back, replace } from '../../router';
+import { back, previousRoute, replace, sameRoute } from '../../router';
 import { CONFIG } from '../../config';
-import { rangeFromMeasurement } from '../../exercises';
+import { canPassAtTempo, rangeFromMeasurement } from '../../exercises';
 import { afterTakeActions } from '../../runtime/flow';
 import { lastOutcome } from '../../runtime/runner';
 import type { AfterTakeAction, TakeOutcome } from '../../runtime/types';
+import { finishWorkout } from '../../runtime/workout';
 import { activeProfile } from '../../state/session';
 import { settings } from '../../state/settings';
 import { AppBar } from '../components/AppBar';
@@ -20,7 +21,7 @@ import { Banner } from '../components/Banner';
 import { PlaybackControls } from '../practice/PlaybackControls';
 import { RangeCard } from '../practice/RangeCard';
 import { ReportBar } from '../practice/ReportBar';
-import { MetricTiles, TipCard, VerdictLine, type Verdict } from '../practice/ReportParts';
+import { MetricTiles, TipCard, VerdictLine, notJudgedLine, type Verdict } from '../practice/ReportParts';
 import { ScoreReveal } from '../practice/ScoreReveal';
 import { TraceReplay } from '../practice/TraceReplay';
 import { Unavailable } from '../practice/Unavailable';
@@ -33,13 +34,34 @@ interface Judgement {
   celebrate: boolean;
 }
 
+/** A warm-up or cool-down of the daily workout: completion-based, it carries no level and no tally. */
+function isRoutineTake(outcome: TakeOutcome): boolean {
+  return outcome.prepared.target.kind === 'workout' && outcome.prepared.level === null;
+}
+
+/**
+ * True when this take can light a level's tally lights (progress/engine.ts): a level, workout-level or record take at the
+ * level's pass tempo. An audition test, a routine and a lower rung of a tempo ladder show their score with no lights.
+ */
+function showsTally(outcome: TakeOutcome): boolean {
+  const { prepared } = outcome;
+  if (prepared.target.kind === 'audition' || prepared.level === null) return false;
+  return canPassAtTempo(prepared.def, prepared.bpm);
+}
+
 /**
  * How the take went. The attempt is the log's truth (a lower rung of a tempo ladder is practice, never a level pass), the
  * evaluation is how the take did against the pass rule at the tempo it was sung: a rung can be passed without the level.
+ * A take stopped part way was not judged; a routine is completion (Done), never a pass with a celebration.
  */
 function judge(outcome: TakeOutcome): Judgement {
-  const { evaluation, attempt, prepared } = outcome;
+  const { evaluation, attempt, prepared, analysis } = outcome;
   if (evaluation.notJudged) return { kind: 'not-judged', word: 'Not judged', celebrate: false };
+  if (isRoutineTake(outcome)) {
+    if (analysis.tipContext.noVoice) return { kind: 'not-yet', word: 'Nothing came through', celebrate: false };
+    if (evaluation.unsung) return { kind: 'not-yet', word: 'Not finished', celebrate: false };
+    return { kind: 'done', word: 'Done', celebrate: false };
+  }
   if (attempt.passed) return { kind: 'passed', word: 'Passed', celebrate: true };
   if (evaluation.passed) return { kind: 'passed', word: `Passed at ${prepared.bpm} bpm`, celebrate: false };
   return { kind: 'not-yet', word: 'Not yet', celebrate: false };
@@ -76,20 +98,45 @@ function ReportView(props: { outcome: TakeOutcome }): JSX.Element {
     : null;
 
   const act = (action: AfterTakeAction): void => {
+    // "Finish workout" ends the workout first, so the Workout screen opens on its summary (finishWorkout is idempotent)
+    // rather than on the list of items, where the singer would have to end it a second time.
+    if (action.kind === 'finish-workout') finishWorkout();
+    // "Back to level" / "Finish workout" when that very screen sits right beneath the report (the take was started from
+    // it): go back to it. Replacing the report with it would stack a second copy, and the next Back would seem to do
+    // nothing. Every other action replaces the report (a new entry: the audition's "See your placement" relies on that).
+    const beneath = previousRoute.peek();
+    if ((action.kind === 'level' || action.kind === 'finish-workout') && beneath && sameRoute(beneath, action.route)) {
+      back();
+      return;
+    }
     replace(action.route.name, action.route.params);
   };
+
+  // The verdict is the news: move focus to it when the report opens (the Sing screen it replaced had the focus), so a
+  // screen reader reads it out. A live region created together with its message is often skipped.
+  const mainRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    mainRef.current?.querySelector<HTMLElement>('[data-testid="verdict"]')?.focus({ preventScroll: true });
+  }, []);
 
   return (
     <div class="pl-screen pl-report" data-testid="report-screen">
       <AppBar title="Take report" onBack={() => back()} />
 
       <div class="pl-scroll">
-        <main class="pl-page">
-          <VerdictLine verdict={verdict.kind} word={verdict.word} caption={captionOf(outcome)} ladderLine={climbed ? `Next take at ${outcome.nextBpm} bpm` : null} />
+        <main class="pl-page" ref={mainRef}>
+          <VerdictLine
+            verdict={verdict.kind}
+            word={verdict.word}
+            caption={captionOf(outcome)}
+            ladderLine={climbed ? `Next take at ${outcome.nextBpm} bpm` : null}
+            reasonLine={evaluation.notJudged ? notJudgedLine(evaluation.notJudged, prepared.target.kind === 'audition') : null}
+          />
 
           <ScoreReveal
             score={evaluation.score}
             tally={outcome.attempt.mastery}
+            showTally={showsTally(outcome)}
             celebrate={verdict.celebrate}
             tone={verdict.kind === 'passed' ? 'accent' : verdict.kind === 'not-judged' ? 'muted' : 'neutral'}
           />

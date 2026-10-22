@@ -7,13 +7,14 @@ import { useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import { Download, Upload } from 'lucide-preact';
 import { reloadSession } from '../../state/session';
+import { flushSettings } from '../../state/settings';
 import type { AppStorage } from '../../storage';
 import { Banner } from '../components/Banner';
 import { Button } from '../components/Button';
 import { Locked } from '../components/Locked';
 import { asLocalDay, errorText } from './format';
 import { HandoffView, useHandoff } from './handoff';
-import { describeImport, type ImportSummary } from './import-report';
+import { describeImport, importChanged, type ImportSummary } from './import-report';
 import { ImportReportView } from './ImportReportView';
 import { useMounted } from './use-mounted';
 
@@ -61,14 +62,22 @@ export function BackupCard(props: { storage: AppStorage | null; onChanged: () =>
         setNotice({ kind: 'error', text: 'That file is too large to be a Pitch Lab backup. Nothing was imported.' });
         return;
       }
-      const result = await storage.backup.import(await file.text(), { kv: storage.kv, retireEmptyDefaultProfile: true });
+      const text = await file.text();
+      // A setting changed a moment ago is written first, under its own profile: the import never overwrites a
+      // profile's existing settings, and nothing then waits to be written across the reload.
+      await flushSettings();
+      // The singer chose this file: a profile deleted here that it holds alive comes back (restoreDeleted).
+      const result = await storage.backup.import(text, { kv: storage.kv, retireEmptyDefaultProfile: true, restoreDeleted: true });
       if (mounted.current) setReport(describeImport(result));
-      // Whatever the file did (even a partial merge), the app must show what is really stored now.
-      try {
-        await reloadSession();
-        onChanged();
-      } catch (err) {
-        if (mounted.current) setNotice({ kind: 'error', text: `The backup was merged, but Pitch Lab could not reload what is stored. ${errorText(err)} Close the app and open it again.` });
+      // Whatever the file did (even a partial merge), the app must show what is really stored now; a file that
+      // changed nothing leaves the session as it is.
+      if (importChanged(result)) {
+        try {
+          await reloadSession();
+          onChanged();
+        } catch (err) {
+          if (mounted.current) setNotice({ kind: 'error', text: `The backup was merged, but Pitch Lab could not reload what is stored. ${errorText(err)} Close the app and open it again.` });
+        }
       }
     } catch (err) {
       if (mounted.current) setNotice({ kind: 'error', text: `Could not import the backup. ${errorText(err)}` });

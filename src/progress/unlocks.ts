@@ -220,11 +220,14 @@ export function isExerciseOpenable(exerciseId: string, snapshot: ProgressSnapsho
   return false;
 }
 
-/** Personal-record attempts are allowed on an exercise once its level is PASSED (SPEC §11.2). */
+/**
+ * Personal-record attempts are allowed on an exercise once its level is PASSED (SPEC §11.2). Never on the Range finder:
+ * it measures the voice, and a "record" there would reward a wider, strained span (voice care: never strain for range).
+ */
 export function isRecordAttemptAllowed(exerciseId: string, snapshot: ProgressSnapshot, worlds: readonly WorldDef[]): boolean {
   for (const world of worlds) {
     const level = world.levels.find((l) => l.exerciseId === exerciseId);
-    if (level) return levelStatus(level.id, snapshot) === 'passed';
+    if (level) return level.id !== LEVEL_REFS.rangeFinder && levelStatus(level.id, snapshot) === 'passed';
   }
   return false;
 }

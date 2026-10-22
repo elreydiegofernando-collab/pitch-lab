@@ -420,10 +420,11 @@ describe('computeSnapshot: tempo ladders', () => {
   const getExercise = (id: string) => (id === ladder.id ? ladder : undefined);
   const at = (bpm: number | null, extra: Partial<Parameters<typeof pass>[1]> = {}) => pass('foundations.01', { tempoBpm: bpm, ...extra });
 
-  it('a take below the pass tempo never passes the level, even recorded as passed', () => {
+  it('a take below the pass tempo never passes the level, even recorded as passed, nor becomes its "Best"', () => {
     for (const bpm of [45, 68]) {
       const s = snap([at(bpm, { score: 0.99 })], { getExercise });
-      expect(s.levels['foundations.01'], `${bpm} bpm`).toMatchObject({ status: 'current', attempts: 1, bestScore: 0.99, mastery: 0 });
+      // The attempt counts; its score was at another speed, so the level's best (at its own tempo) is still to come.
+      expect(s.levels['foundations.01'], `${bpm} bpm`).toMatchObject({ status: 'current', attempts: 1, bestScore: 0, mastery: 0 });
     }
   });
 
@@ -433,9 +434,21 @@ describe('computeSnapshot: tempo ladders', () => {
     expect(s.levels['foundations.02'].status).toBe('current');
   });
 
-  it('mastery comes from the passing take, not from a better-scoring lower rung', () => {
+  it('mastery and the best score come from the takes at the pass tempo, not from a better-scoring lower rung', () => {
     const s = snap([at(68, { score: 1, mastery: 3 }), at(90, { score: 0.65, mastery: 1 })], { getExercise });
-    expect(s.levels['foundations.01']).toMatchObject({ status: 'passed', mastery: 1, bestScore: 1 });
+    expect(s.levels['foundations.01']).toMatchObject({ status: 'passed', mastery: 1, bestScore: 0.65 });
+  });
+
+  it('a passed record take at the pass tempo lights the level\'s tally lights (never passes it); a lower-rung one does not', () => {
+    const tiered = exerciseDef('foundations.01.ex', { kind: 'run', tempoBpm: 90, tempoLadder: [45, 68, 90], tiers: { solid: 0.8, studio: 0.92 } });
+    const lookup = (id: string) => (id === tiered.id ? tiered : undefined);
+    const record = (bpm: number, score: number) => attempt({ levelId: 'foundations.01', exerciseId: tiered.id, kind: 'record', passed: true, score, mastery: 3, tempoBpm: bpm });
+    const passed = at(90, { score: 0.7, mastery: 1, exerciseId: tiered.id });
+    expect(snap([passed], { getExercise: lookup }).levels['foundations.01']).toMatchObject({ mastery: 1, bestScore: 0.7 });
+    expect(snap([passed, record(90, 0.95)], { getExercise: lookup }).levels['foundations.01']).toMatchObject({ status: 'passed', mastery: 3, bestScore: 0.95 });
+    expect(snap([passed, record(68, 0.95)], { getExercise: lookup }).levels['foundations.01']).toMatchObject({ mastery: 1, bestScore: 0.7 });
+    // A record take alone never passes a level.
+    expect(snap([record(90, 0.95)], { getExercise: lookup }).levels['foundations.01']).toMatchObject({ status: 'current', mastery: 0 });
   });
 
   it('cannot tell without the catalog lookup, or when the tempo was not recorded, so the recorded pass stands', () => {

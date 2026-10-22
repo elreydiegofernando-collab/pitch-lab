@@ -14,6 +14,14 @@ export interface ImportSummary {
   details: string[];
 }
 
+/**
+ * True when the import changed what is stored (so the session must reload to show it). An import that changed nothing
+ * (every row already here) leaves the session, and settings changed a moment before it, exactly as they were.
+ */
+export function importChanged(r: ImportReport): boolean {
+  return r.profilesAdded + r.profilesUpdated + r.attemptsAdded + r.settingsRestored > 0 || r.retiredDefaultProfileId !== null;
+}
+
 export function describeImport(r: ImportReport): ImportSummary {
   if (!r.ok) {
     // `ok` is also false when the importer stopped on an unexpected error after merging some rows.
@@ -36,7 +44,7 @@ export function describeImport(r: ImportReport): ImportSummary {
   if (r.profilesDeleted > 0) lines.push(`The backup deleted ${plural(r.profilesDeleted, 'profile')}.`);
   if (r.profilesRestored > 0) lines.push(`The backup brought back ${plural(r.profilesRestored, 'deleted profile')}.`);
   if (r.attemptsAdded > 0) lines.push(`Added ${plural(r.attemptsAdded, 'attempt')} to the practice history.`);
-  if (r.attemptsSkipped > 0) lines.push(`Skipped ${plural(r.attemptsSkipped, 'attempt')} that were already here.`);
+  if (r.attemptsSkipped > 0) lines.push(`Skipped ${plural(r.attemptsSkipped, 'attempt')} that ${r.attemptsSkipped === 1 ? 'was' : 'were'} already here.`);
   if (r.settingsRestored > 0) lines.push(`Restored the settings of ${plural(r.settingsRestored, 'profile')}.`);
   if (r.retiredDefaultProfileId !== null) lines.push('Replaced the empty starter profile.');
 

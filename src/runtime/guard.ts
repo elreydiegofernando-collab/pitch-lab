@@ -8,6 +8,7 @@
  */
 import type { LevelDef, WorldDef, WorldId } from '../exercises/types';
 import {
+  LEVEL_REFS,
   auditionRequirementHint,
   isAuditionAvailable,
   isFeatureUnlocked,
@@ -21,6 +22,7 @@ import {
 } from '../progress';
 import type { FeatureId } from '../progress/types';
 import { ALWAYS_OPEN, routeOf, type GuardVerdict, type Route } from '../router';
+import { RANGE_FINDER_NO_RECORDS } from './messages';
 import type { GuardContext } from './types';
 import { targetFromParams } from './targets';
 
@@ -74,6 +76,8 @@ function singVerdict(route: Extract<Route, { name: 'sing' }>, ctx: GuardContext)
       if (!found) return refuse(routeOf('map'), 'Not available.');
       if (isFeatureUnlocked('records', ctx.snapshot) && isRecordAttemptAllowed(found.level.exerciseId, ctx.snapshot, ctx.worlds)) return OK;
       const back = isLevelOpenable(found.level.id, ctx.snapshot) ? routeOf('level', { levelId: found.level.id }) : mapAtLevel(ctx.worlds, found.level.id);
+      // The Range finder never has records, passed or not: say that, not "Pass Range finder".
+      if (found.level.id === LEVEL_REFS.rangeFinder) return refuse(back, RANGE_FINDER_NO_RECORDS);
       return refuse(back, `Pass ${describeLevel(found.world, found.level)} to chase personal records on it.`);
     }
     case 'audition': {

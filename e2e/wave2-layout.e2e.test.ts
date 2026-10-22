@@ -11,7 +11,7 @@ import type { Browser, Page } from 'playwright-core';
 import { PREVIEW_URL, TONE_WAV_PATH } from './config';
 import { launchWithFakeMic } from './chrome';
 import { FOUNDATIONS_RUN, craftBackup } from './backup-fixture';
-import { goHome, openFromHome } from './ui';
+import { goHome, openDeepLink, openFromHome } from './ui';
 
 /** DESIGN.md sections 6 and 12: touch targets are at least 48 x 48 px. Half a pixel of rounding is forgiven. */
 const MIN_TARGET_PX = 48;
@@ -158,4 +158,25 @@ describe('Wave 2 - every screen keeps to the layout rules in DESIGN.md', () => {
       await context.close();
     }
   }, 180_000);
+
+  it('Live and the Sing screen fit a 320 px phone (an iPhone SE): the readouts wrap, the page never scrolls sideways', async () => {
+    const context = await browser.newContext({ viewport: { width: 320, height: 568 } });
+    try {
+      const page = await context.newPage();
+      const overflow = (): Promise<number> =>
+        page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - window.innerWidth);
+      await openDeepLink(page, '#/live');
+      await page.getByTestId('live-screen').waitFor({ timeout: 15_000 });
+      await page.waitForTimeout(300);
+      expect(await overflow(), 'Live scrolls sideways').toBe(0);
+      await openDeepLink(page, '#/level/foundations.01');
+      await page.getByTestId('level-screen').waitFor({ timeout: 15_000 });
+      await page.getByTestId('sing-button').click();
+      await page.getByTestId('sing-screen').waitFor({ timeout: 15_000 });
+      await page.waitForTimeout(300);
+      expect(await overflow(), 'the Sing screen scrolls sideways').toBe(0);
+    } finally {
+      await context.close();
+    }
+  }, 60_000);
 });

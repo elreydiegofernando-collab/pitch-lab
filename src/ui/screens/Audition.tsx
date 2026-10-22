@@ -12,7 +12,7 @@ import { getWorld, WORLDS } from '../../exercises';
 import { auditionRequirementHint } from '../../progress';
 import { back, navigate, resetTo, route } from '../../router';
 import { lastOutcome } from '../../runtime/runner';
-import { attemptLog, snapshot } from '../../state/session';
+import { activeProfile, attemptLog, snapshot } from '../../state/session';
 import { AppBar } from '../components/AppBar';
 import { Button } from '../components/Button';
 import { EmptyState } from '../components/EmptyState';
@@ -36,7 +36,9 @@ export function Audition(): JSX.Element {
   const audition = world?.audition ?? null;
 
   // Opened by the report's "See your placement": the results of the take just sung, claimed once (audition-model.ts).
-  const [claimed] = useState(() => (world ? claimResults({ worldId: world.id, outcome: lastOutcome.peek(), entry: current }) : null));
+  const [claimed] = useState(() =>
+    world ? claimResults({ worldId: world.id, outcome: lastOutcome.peek(), entry: current, profileId: activeProfile.peek()?.id ?? null }) : null,
+  );
   // Back (or Esc) from the results lands on this same screen: from then on it shows the intro.
   const openedAs = useRef(current);
   const showResults = claimed !== null && current === openedAs.current;
@@ -46,7 +48,13 @@ export function Audition(): JSX.Element {
 
   const start = useCallback(() => {
     if (!world || !audition) return;
-    beginAuditionRun({ worldId: world.id, before: snapshot.peek(), attempts: attemptLog.peek(), testIds: audition.exerciseIds });
+    beginAuditionRun({
+      worldId: world.id,
+      profileId: activeProfile.peek()?.id ?? '',
+      before: snapshot.peek(),
+      attempts: attemptLog.peek(),
+      testIds: audition.exerciseIds,
+    });
     navigate('sing', { target: 'audition', worldId: world.id });
   }, [world, audition]);
 

@@ -144,6 +144,14 @@ export interface ImportOptions {
    * becomes the active one.
    */
   retireEmptyDefaultProfile?: boolean;
+  /**
+   * The singer chose this file to restore from (the Data screen's Import): a profile deleted on this device that the
+   * file holds ALIVE comes back, even though the local deletion is newer (plain last-write-wins would keep the
+   * tombstone, and the backup made just before deleting it could never bring it back). The profile keeps its details as
+   * they were when it was deleted (its settings key was kept), and its attempts, which a deletion never removes,
+   * reappear. Counted in `profilesUpdated` and `profilesRestored`. Leave it off for a sync-style merge.
+   */
+  restoreDeleted?: boolean;
 }
 
 export interface ImportReport {
@@ -395,7 +403,7 @@ async function runImport(db: PitchLabDb, input: unknown, opts: ImportOptions, re
     const incoming = parsed.record;
     try {
       db.receiveTimestamp(incoming.updatedAt);
-      const result: { outcome: 'added' | 'updated' | 'skipped'; wasDeleted: boolean } = { outcome: 'skipped', wasDeleted: false };
+      const result: { outcome: 'added' | 'updated' | 'restored' | 'skipped'; wasDeleted: boolean } = { outcome: 'skipped', wasDeleted: false };
       await profiles.update(incoming.id, (existing) => {
         if (!existing) {
           result.outcome = 'added';
@@ -406,12 +414,20 @@ async function runImport(db: PitchLabDb, input: unknown, opts: ImportOptions, re
           result.wasDeleted = existing.deletedAt !== null;
           return incoming;
         }
+        if (opts.restoreDeleted && existing.deletedAt !== null && incoming.deletedAt === null) {
+          // An explicit restore: undelete the local record (its details as of the deletion) with a fresh clock.
+          result.outcome = 'restored';
+          return { ...existing, deletedAt: null, updatedAt: db.nextTimestamp() };
+        }
         result.outcome = 'skipped';
         return undefined;
       });
       if (result.outcome === 'added' && incoming.deletedAt === null) {
         report.profilesAdded += 1;
         addedLive.push(incoming);
+      } else if (result.outcome === 'restored') {
+        report.profilesUpdated += 1;
+        report.profilesRestored += 1;
       } else if (result.outcome === 'updated') {
         report.profilesUpdated += 1;
         const isDeleted = incoming.deletedAt !== null;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ImportReport } from '../../storage';
-import { describeImport } from './import-report';
+import { describeImport, importChanged } from './import-report';
 
 function report(over: Partial<ImportReport> = {}): ImportReport {
   return {
@@ -45,6 +45,21 @@ describe('describeImport', () => {
 
   it('says so when it is an empty backup', () => {
     expect(describeImport(report()).lines).toEqual(['Everything in it was already on this device.']);
+  });
+
+  it('agrees in number: one attempt "was" already here', () => {
+    expect(describeImport(report({ attemptsSkipped: 1 })).lines).toEqual(['Skipped 1 attempt that was already here.']);
+  });
+
+  it('tells a restored profile apart, and says whether the import changed anything (the session reloads only then)', () => {
+    const restored = report({ profilesUpdated: 1, profilesRestored: 1, attemptsSkipped: 1 });
+    expect(describeImport(restored).headline).toBe('Backup imported.');
+    expect(describeImport(restored).lines).toContain('The backup brought back 1 deleted profile.');
+    expect(importChanged(restored)).toBe(true);
+    expect(importChanged(report({ attemptsSkipped: 40, profilesSkipped: 2 }))).toBe(false);
+    expect(importChanged(report({ ok: false, errors: ['x'] }))).toBe(false);
+    expect(importChanged(report({ retiredDefaultProfileId: 'p0' }))).toBe(true);
+    expect(importChanged(report({ ok: false, attemptsAdded: 3 }))).toBe(true);
   });
 
   it('separates plain updates from deletions and restorations the backup carried', () => {

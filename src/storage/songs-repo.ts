@@ -144,3 +144,23 @@ export async function deleteSong(db: PitchLabDb, opfs: OpfsStore, id: string): P
   if (existing?.song.backingRef) await deleteConfirmed(opfs, existing.song.backingRef);
   await db.store<SongRecord>(STORE).delete(id);
 }
+
+/**
+ * Deletes every song (record and backing track) a profile imported. Returns how many were removed. A song that cannot
+ * be deleted does not stop the others; the first failure is rethrown once all were tried (as deleteTakesByProfile).
+ */
+export async function deleteSongsByProfile(db: PitchLabDb, opfs: OpfsStore, profileId: string): Promise<number> {
+  const songs = await db.store<SongRecord>(STORE).getAllByIndex('profileId', profileId);
+  let failed = false;
+  let failure: unknown;
+  for (const song of songs) {
+    try {
+      await deleteSong(db, opfs, song.id);
+    } catch (err) {
+      if (!failed) failure = err;
+      failed = true;
+    }
+  }
+  if (failed) throw failure;
+  return songs.length;
+}

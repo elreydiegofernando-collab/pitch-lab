@@ -10,6 +10,23 @@ export interface ToastMessage {
 
 export const toasts = signal<readonly ToastMessage[]>([]);
 
+/**
+ * How many sheets are open right now (Sheet registers itself while open). A toast never covers an open sheet: while one
+ * is open the toast region moves to the top of the screen, clear of the sheet's actions at the bottom.
+ */
+export const openSheets = signal(0);
+
+/** A sheet opened: count it until the returned function is called (once) as it closes. */
+export function sheetOpened(): () => void {
+  openSheets.value += 1;
+  let closed = false;
+  return () => {
+    if (closed) return;
+    closed = true;
+    openSheets.value = Math.max(0, openSheets.value - 1);
+  };
+}
+
 let nextId = 1;
 
 export interface ShowToastOptions {

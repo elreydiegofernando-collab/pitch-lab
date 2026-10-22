@@ -53,7 +53,7 @@
   min-height: var(--target-min);
   padding: 0 var(--sp-3);
   border-radius: var(--radius-control);
-  color: var(--tally);
+  color: var(--tally-text);
   font-weight: 600;
   font-size: 15px;
   flex-shrink: 0;
@@ -494,7 +494,7 @@ button.pl-song-row:active {
 .pl-song-tbtn[aria-pressed='true'] {
   background: color-mix(in srgb, var(--tally) 16%, var(--bg-2));
   border-color: var(--tally);
-  color: var(--tally);
+  color: var(--tally-text); /* the icon and label: 3:1 and 4.5:1 on the tinted fill in the light theme too */
 }
 .pl-song-tbtn:disabled {
   opacity: 0.4;
@@ -531,7 +531,7 @@ button.pl-song-row:active {
   gap: 4px;
   font-size: 14px;
   font-weight: 600;
-  color: var(--on);
+  color: var(--on-text);
 }
 .pl-song-key__suggest {
   min-height: var(--target-min);
@@ -539,7 +539,7 @@ button.pl-song-row:active {
   border-radius: var(--radius-control);
   font-size: 14px;
   font-weight: 600;
-  color: var(--tally);
+  color: var(--tally-text);
   text-decoration: underline;
   text-underline-offset: 3px;
 }

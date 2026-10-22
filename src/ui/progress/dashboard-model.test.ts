@@ -104,7 +104,8 @@ describe('personalBests', () => {
       attemptAt('foundations.02', { daysAgo: 1, metrics: { 'accuracy.inTolerancePct': 92, 'accuracy.medianAbsCents': 8, 'onset.settleMs': 210 } }),
     ];
     const rows = personalBests(snapshotOf(attempts), WORLDS);
-    expect(rows.map((r) => r.level.id)).toEqual(['foundations.02', 'foundations.01']);
+    // The Range finder's span is a measurement, never a personal best (pushing it means straining).
+    expect(rows.map((r) => r.level.id)).toEqual(['foundations.02']);
     const pitchMatch = rows[0];
     expect(pitchMatch.level.title).toBe('Pitch match');
     expect(pitchMatch.metrics.map((m) => `${m.label} ${m.text}`)).toEqual(expect.arrayContaining(['In tune 92%', 'Typical miss 8¢', 'Settle 210 ms']));

@@ -35,6 +35,68 @@ const STOP_PAD_SEC = 0.01;
 
 const DEFAULT_TIMBRE: Timbre = 'piano';
 
+/** The calibration click's peak (accent / other): the loud, sharp transient loopback and sing calibration detect. */
+const CALIBRATION_CLICK_PEAK = { accent: 0.9, other: 0.6 } as const;
+
+/**
+ * Musical clicks (count-ins, metronomes) sit at this share of the reference volume: clearly audible under the notes,
+ * and a click on a note's downbeat plus the note itself stays under full scale (the calibration click, at 0.9 whatever
+ * the volume, summed with a note at the reference volume, went past it).
+ */
+export const CLICK_SHARE_OF_REFERENCE = 0.4;
+
+/** The click level (an accented click's peak) for a reference volume: pass it as `gain` to click() and startMetronome(). */
+export function musicalClickGain(referenceVolume: number): number {
+  return clamp01(referenceVolume) * CLICK_SHARE_OF_REFERENCE;
+}
+
+/**
+ * The output stage's soft limiter (PROPOSED CONFIG.audio): the synth's output passes unchanged up to SOFT_LIMIT_KNEE (so
+ * the calibration click, at 0.9, is untouched), and anything louder (voices that overlap for a moment: a release under
+ * the next note's attack, a click on a downbeat) is eased toward SOFT_LIMIT_CEILING instead of hard-clipping in the
+ * speaker. Inputs up to SOFT_LIMIT_RANGE are shaped; louder ones (never reached in practice) are held at the ceiling.
+ * A WaveShaperNode without oversampling adds no latency, so the latency calibration and takes stay aligned.
+ */
+export const SOFT_LIMIT_KNEE = 0.9;
+export const SOFT_LIMIT_CEILING = 0.99;
+const SOFT_LIMIT_RANGE = 2;
+const SOFT_LIMIT_POINTS = 16385;
+
+/** The limiter's transfer: identity up to the knee, then a tanh ease toward the ceiling. Exported for tests. */
+export function softLimit(x: number): number {
+  const a = Math.abs(x);
+  if (a <= SOFT_LIMIT_KNEE) return x;
+  const room = SOFT_LIMIT_CEILING - SOFT_LIMIT_KNEE;
+  return Math.sign(x) * (SOFT_LIMIT_KNEE + room * Math.tanh((a - SOFT_LIMIT_KNEE) / room));
+}
+
+let limiterCurve: Float32Array | null = null;
+/** The WaveShaper curve: SOFT_LIMIT_POINTS samples of softLimit over [-SOFT_LIMIT_RANGE, SOFT_LIMIT_RANGE] (the node's input is pre-scaled into [-1, 1]). */
+function softLimitCurve(): Float32Array {
+  if (!limiterCurve) {
+    limiterCurve = new Float32Array(SOFT_LIMIT_POINTS);
+    for (let i = 0; i < SOFT_LIMIT_POINTS; i++) limiterCurve[i] = softLimit(((2 * i) / (SOFT_LIMIT_POINTS - 1) - 1) * SOFT_LIMIT_RANGE);
+  }
+  return limiterCurve;
+}
+
+/**
+ * `master -> limiter -> destination`: a pre-gain scales the input range into the WaveShaper's [-1, 1], the curve applies
+ * softLimit. Where the context has no WaveShaper (the unit tests' fake graphs), the master connects straight through.
+ */
+function connectThroughLimiter(ctx: BaseAudioContext, master: GainNode, destination: AudioNode): void {
+  if (typeof (ctx as Partial<BaseAudioContext>).createWaveShaper !== 'function') {
+    master.connect(destination);
+    return;
+  }
+  const scale = ctx.createGain();
+  scale.gain.value = 1 / SOFT_LIMIT_RANGE;
+  const shaper = ctx.createWaveShaper();
+  shaper.curve = softLimitCurve() as Float32Array<ArrayBuffer>;
+  shaper.oversample = 'none';
+  master.connect(scale).connect(shaper).connect(destination);
+}
+
 // ---------------------------------------------------------------------------
 // Timbre tables (createPeriodicWave): index 0 is the DC term, ignored by the
 // Web Audio spec (left at 0). Each table is normalised by the browser, so
@@ -96,7 +158,7 @@ export function beatsInWindow(beat0: number, bpm: number, from: number, to: numb
 export function createSynth(ctx: BaseAudioContext, destination: AudioNode): ReferenceSynth {
   const master = ctx.createGain();
   master.gain.value = 1;
-  master.connect(destination);
+  connectThroughLimiter(ctx, master, destination);
 
   // PeriodicWaves are shared across every voice of that timbre (safe: a PeriodicWave is immutable once created).
   const pianoWave = ctx.createPeriodicWave(PIANO_REAL, PIANO_IMAG);
@@ -289,10 +351,15 @@ export function createSynth(ctx: BaseAudioContext, destination: AudioNode): Refe
     };
   }
 
-  /** Loud, sharp-onset burst (~1 ms rise, ~10 ms total): a clean transient for loopback latency detection. */
-  function fireClick(at: number, accent: boolean): void {
+  /**
+   * Sharp-onset burst (~1 ms rise, ~10 ms total): a clean transient for loopback latency detection. Without `gain` it is
+   * the loud calibration click; with it, a musical click at that level (accent) or two thirds of it.
+   */
+  function fireClick(at: number, accent: boolean, clickGain?: number): void {
     const freq = accent ? 2800 : 1800;
-    const peak = accent ? 0.9 : 0.6;
+    const level = clickGain === undefined ? null : clamp01(clickGain);
+    const peak = level === null ? (accent ? CALIBRATION_CLICK_PEAK.accent : CALIBRATION_CLICK_PEAK.other) : accent ? level : (level * 2) / 3;
+    if (!(peak > 0)) return; // a muted click: nothing to schedule
     const RISE_SEC = 0.001;
     const DECAY_SEC = 0.007;
     const TOTAL_SEC = 0.01;
@@ -318,8 +385,8 @@ export function createSynth(ctx: BaseAudioContext, destination: AudioNode): Refe
     osc.addEventListener('ended', unregister);
   }
 
-  function click(at: number, accent = false): void {
-    fireClick(at, accent);
+  function click(at: number, accent = false, gain?: number): void {
+    fireClick(at, accent, gain);
   }
 
   /** `~25 ms` scheduler tick; each tick looks `~120 ms` ahead on the AudioContext clock ("A Tale of Two Clocks"). */
@@ -328,10 +395,11 @@ export function createSynth(ctx: BaseAudioContext, destination: AudioNode): Refe
 
   function startMetronome(
     bpm: number,
-    opts?: { beatsPerBar?: number; startAt?: number; countInBeats?: number },
+    opts?: { beatsPerBar?: number; startAt?: number; countInBeats?: number; gain?: number },
   ): MetronomeHandle {
     const beatsPerBar = opts?.beatsPerBar ?? 4;
     const countInBeats = opts?.countInBeats ?? 0;
+    const clickGain = opts?.gain;
     // Default beat0 leaves room for the count-in to run starting right away (now + lead); an explicit
     // startAt is taken as the caller's exact intended downbeat time, count-in included or not is on them.
     const beat0 = opts?.startAt ?? ctx.currentTime + DEFAULT_START_LEAD_SEC + countInBeats * (60 / bpm);
@@ -354,7 +422,7 @@ export function createSynth(ctx: BaseAudioContext, destination: AudioNode): Refe
       if (!(to > scheduledUpTo)) return;
       for (const b of beatsInWindow(anchorTime, currentBpm, scheduledUpTo, to)) {
         const absoluteIndex = anchorIndex + b.index;
-        fireClick(b.time, isDownbeat(absoluteIndex));
+        fireClick(b.time, isDownbeat(absoluteIndex), clickGain);
       }
       scheduledUpTo = to;
     }, METRONOME_TICK_MS);
@@ -395,6 +463,7 @@ export function createSynth(ctx: BaseAudioContext, destination: AudioNode): Refe
   }
 
   return {
+    input: master,
     setVolume(v: number): void {
       // setTargetAtTime: smooth, click-free approach to a new level (useful for a live volume slider).
       master.gain.setTargetAtTime(clamp01(v), ctx.currentTime, 0.01);

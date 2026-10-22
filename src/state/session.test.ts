@@ -303,7 +303,7 @@ describe('session: reload and degraded launches', () => {
     settings.updateSettings({ theme: 'dark' });
 
     await session.appStorage.value!.deleteAllData();
-    await session.reloadSession();
+    await session.reloadSession({ pendingSettings: 'discard' });
     expect(session.activeProfile.value?.id).not.toBe(before.id);
     expect(session.attemptLog.value).toEqual([]);
     expect(session.snapshot.value.levels['foundations.02'].status).toBe('locked');
@@ -312,6 +312,36 @@ describe('session: reload and degraded launches', () => {
     expect(settings.settings.value.theme).toBe('system');
     await new Promise((r) => setTimeout(r, settings.SAVE_DEBOUNCE_MS + 50));
     expect(await session.appStorage.value!.kv.get(keys.profileSettingsKey(before.id))).toBeUndefined();
+  });
+
+  it('a profile switch, deleting the active profile and a reload all end an audition run (its baseline is per singer)', async () => {
+    const { session } = await booted();
+    const { auditionRun } = await import('../runtime/audition-run');
+    const me = session.activeProfile.value!;
+    const run = () => ({ worldId: 'foundations' as const, profileId: session.activeProfile.value!.id, before: session.snapshot.value, since: Date.now() });
+    const other = await session.createProfile({ name: 'B' });
+
+    auditionRun.value = run();
+    await session.reloadSession(); // a backup import into the same profile replaces the log under the run
+    expect(auditionRun.value).toBeNull();
+
+    auditionRun.value = run();
+    await session.switchProfile(other.id);
+    expect(auditionRun.value).toBeNull();
+
+    auditionRun.value = run();
+    await session.deleteProfile(other.id, { removeRecordings: false });
+    expect(session.activeProfile.value?.id).toBe(me.id);
+    expect(auditionRun.value).toBeNull();
+  });
+
+  it('after a backup import: a setting changed a moment before is written under its profile, not dropped', async () => {
+    const { session, settings, keys } = await booted();
+    const me = session.activeProfile.value!;
+    settings.updateSettings({ theme: 'dark' }); // still pending (debounced) when the reload starts
+    await session.reloadSession();
+    expect(settings.settings.value.theme).toBe('dark');
+    expect(await session.appStorage.value!.kv.get(keys.profileSettingsKey(me.id))).toMatchObject({ theme: 'dark' });
   });
 
   it('when IndexedDB is missing: the warning shows, and settings of the throwaway profile are never written', async () => {

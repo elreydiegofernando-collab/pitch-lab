@@ -6,13 +6,15 @@ import { act } from 'preact/test-utils';
 
 const flow = vi.hoisted(() => ({ afterTakeActions: vi.fn() }));
 vi.mock('../../runtime/flow', () => flow);
+const workout = vi.hoisted(() => ({ finishWorkout: vi.fn() }));
+vi.mock('../../runtime/workout', () => workout);
 vi.mock('../../audio/engine', async () => (await import('../practice/test-fakes')).engineModule());
 vi.mock('../../runtime/runner', async () => (await import('../practice/test-fakes')).runnerModule());
 vi.mock('../../state/session', async () => (await import('../practice/test-fakes')).sessionModule());
 vi.mock('../../state/settings', async () => (await import('../practice/test-fakes')).settingsModule());
 vi.mock('../../state/audio', async () => (await import('../practice/test-fakes')).audioModule());
 
-import { installRouteGuard, resetRouterForTests, route, routeOf } from '../../router';
+import { back, installRouteGuard, resetRouterForTests, route, routeOf } from '../../router';
 import type { AfterTakeAction, TakeOutcome } from '../../runtime/types';
 import { makeOutcome } from '../practice/outcome-fixture';
 import { lastOutcomeSignal, resetRunner, resetSession, session, settingsSignal, snapshotAfter, synthMocks } from '../practice/test-fakes';
@@ -114,9 +116,50 @@ describe('Report: the verdict and the score', () => {
     expect(q('.pl-verdict--passed')).not.toBeNull();
     expect(q('.pl-verdict')?.textContent).toContain('the level passes at 90 bpm');
     expect(q('[data-testid="ladder-line"]')?.textContent).toBe('Next take at 68 bpm');
-    // No tally and no unlock strip: the level has not been passed.
-    expect(q('.pl-tally-lights')!.getAttribute('aria-label')!.slice(0, 1)).toBe('0');
+    // No tally lights (a lower rung cannot light the level's) and no unlock strip: the level has not been passed.
+    expect(q('.pl-tally-lights')).toBeNull();
     expect(q('[data-testid="unlocked-strip"]')).toBeNull();
+  });
+
+  it('says a take stopped part way was practice and not judged, with no tiles and no lights', async () => {
+    const stopped = makeOutcome({ levelId: 'foundations.05' });
+    const notJudged = { ...stopped, evaluation: { ...stopped.evaluation, passed: false, mastery: 0 as const, notJudged: 'stopped' as const } };
+    await mount(notJudged, MISSED);
+    expect(q('[data-testid="verdict"]')?.textContent).toBe('Not judged');
+    expect(q('[data-testid="verdict-reason"]')?.textContent).toBe('Stopped early: practice only, not judged for the level.');
+    expect(text()).not.toContain('saved range');
+    expect(q('.pl-reveal--muted')).not.toBeNull();
+    expect(q('.pl-tiles')).toBeNull();
+  });
+
+  it('moves focus to the verdict when it opens, so a screen reader reads it', async () => {
+    await mount(PASSING);
+    expect(document.activeElement).toBe(q('[data-testid="verdict"]'));
+  });
+
+  it('shows an audition test with its score but no tally lights (a test lights no level)', async () => {
+    const audition = { ...PASSING, prepared: { ...PASSING.prepared, target: { kind: 'audition' as const, worldId: 'foundations' as const }, level: null } };
+    await mount(audition);
+    expect(q('[data-testid="score-reveal"]')).not.toBeNull();
+    expect(q('.pl-tally-lights')).toBeNull();
+  });
+
+  it('calls a finished warm-up "Done", never "Passed", and a silent one "Nothing came through"', async () => {
+    const routine = (noVoice: boolean): TakeOutcome => ({
+      ...PASSING,
+      prepared: { ...PASSING.prepared, target: { kind: 'workout', itemIndex: 0 }, level: null },
+      analysis: { ...PASSING.analysis, tipContext: { ...PASSING.analysis.tipContext, noVoice } },
+    });
+    await mount(routine(false), MISSED);
+    expect(q('[data-testid="verdict"]')?.textContent).toBe('Done');
+    expect(q('.pl-tally-lights')).toBeNull();
+    expect(q('[data-testid="unlocked-strip"]')).toBeNull();
+    await act(() => {
+      render(null, container);
+    });
+    container.remove();
+    await mount(routine(true), MISSED);
+    expect(q('[data-testid="verdict"]')?.textContent).toBe('Nothing came through');
   });
 
   it('says plainly when the recording was not kept, and when the range was not saved', async () => {
@@ -240,6 +283,31 @@ describe('Report: the next steps', () => {
     installRouteGuard(() => ({ ok: true }));
     q<HTMLButtonElement>('[data-testid="report-retry"]')!.click();
     expect(route.value).toEqual(routeOf('sing', { target: 'level', levelId: 'foundations.03' }));
+  });
+
+  it('"Back to level" returns to the level the take came from: one Back then leaves it (no second copy)', async () => {
+    flow.afterTakeActions.mockReturnValue(MISSED);
+    lastOutcomeSignal.value = MISS;
+    resetRouterForTests([routeOf('home'), routeOf('map'), routeOf('level', { levelId: 'foundations.03' }), routeOf('report')]);
+    installRouteGuard(() => ({ ok: true }));
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    await act(() => {
+      render(<Report />, container);
+    });
+    [...container.querySelectorAll<HTMLButtonElement>('nav button')].find((b) => b.textContent?.includes('Back to level'))!.click();
+    expect(route.value).toEqual(routeOf('level', { levelId: 'foundations.03' }));
+    expect(back()).toBe(true);
+    expect(route.value.name).toBe('map');
+  });
+
+  it('"Finish workout" ends the workout first, so the Workout screen opens on its summary', async () => {
+    workout.finishWorkout.mockClear();
+    const finish: AfterTakeAction[] = [{ kind: 'finish-workout', label: 'Finish workout', primary: true, route: routeOf('workout') }];
+    await mount(PASSING, finish);
+    q<HTMLButtonElement>('[data-testid="report-primary"]')!.click();
+    expect(workout.finishWorkout).toHaveBeenCalledTimes(1);
+    expect(route.value.name).toBe('workout');
   });
 
   it('asks the runner for the actions of this outcome', async () => {

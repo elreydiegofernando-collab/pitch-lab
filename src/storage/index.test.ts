@@ -218,6 +218,33 @@ describe('profiles', () => {
     expect(await storage.opfs.read(take.audioRef!)).toBeUndefined();
     expect(await storage.attempts.listByProfile(me.id)).toHaveLength(1);
   });
+
+  it('removeRecordings also deletes the songs the profile imported, backing tracks included (nothing left unreachable)', async () => {
+    const { storage } = await boot();
+    const me = await storage.profiles.active();
+    const other = await storage.profiles.create({ name: 'Keeper' });
+    const mine = await storage.songs.import(me.id, SONG, new Blob(['backing']));
+    const theirs = await storage.songs.import(other.id, SONG, new Blob(['their backing']));
+    const before = (await storage.usage()).binaryBytes;
+    await storage.profiles.delete(me.id, { removeRecordings: true });
+    expect(await storage.songs.get(mine.id)).toBeUndefined();
+    expect(await storage.opfs.read(mine.song.backingRef!)).toBeUndefined();
+    expect((await storage.usage()).binaryBytes).toBeLessThan(before);
+    // Another singer's import of the same file is theirs, and stays.
+    expect(await storage.songs.get(theirs.id)).toBeDefined();
+    expect(await (await storage.opfs.read(theirs.song.backingRef!))?.text()).toBe('their backing');
+  });
+
+  it('without removeRecordings the imported songs are kept, so a restored profile gets them back', async () => {
+    const { storage } = await boot();
+    const me = await storage.profiles.active();
+    await storage.profiles.create({ name: 'Keeper' });
+    const mine = await storage.songs.import(me.id, SONG, new Blob(['backing']));
+    await storage.profiles.delete(me.id);
+    expect(await storage.songs.get(mine.id)).toBeDefined();
+    await storage.profiles.restore(me.id);
+    expect((await storage.songs.listByProfile(me.id)).map((s) => s.id)).toEqual([mine.id]);
+  });
 });
 
 describe('attempts', () => {
@@ -327,6 +354,30 @@ describe('backup', () => {
     expect(report.errors).toHaveLength(1);
     expect((await storage.profiles.active()).id).toBe(me.id);
     expect(await storage.profiles.list()).toHaveLength(1);
+  });
+
+  it('brings back a profile deleted after the backup was made, when the import is an explicit restore (and only then)', async () => {
+    const { storage } = await boot();
+    const me = await storage.profiles.active();
+    const sam = await storage.profiles.create({ name: 'Sam' });
+    const attempt = await storage.attempts.add(attemptInput(sam.id));
+    const backup = await storage.backup.exportJson(); // "Export a backup first", as the Delete sheet offers
+    await storage.profiles.delete(sam.id);
+    expect((await storage.profiles.list()).map((p) => p.id)).toEqual([me.id]);
+
+    // A sync-style merge keeps the newer deletion.
+    const merge = await storage.backup.import(backup);
+    expect(merge).toMatchObject({ profilesRestored: 0, profilesUpdated: 0 });
+    expect((await storage.profiles.list()).map((p) => p.id)).toEqual([me.id]);
+
+    // The singer restoring from the file gets Sam back, history included.
+    const restore = await storage.backup.import(backup, { restoreDeleted: true });
+    expect(restore).toMatchObject({ ok: true, profilesRestored: 1, profilesUpdated: 1 });
+    expect((await storage.profiles.list()).map((p) => p.name)).toEqual(['Me', 'Sam']);
+    expect((await storage.attempts.listByProfile(sam.id)).map((a) => a.id)).toEqual([attempt.id]);
+    // A profile the file holds deleted is never brought back by it.
+    const again = await storage.backup.import(backup, { restoreDeleted: true });
+    expect(again.profilesRestored).toBe(0);
   });
 
   it('exports a chosen profile only', async () => {

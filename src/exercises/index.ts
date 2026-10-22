@@ -30,11 +30,11 @@ export {
 export type { RealizeOptions, RealizedExercise, RealizedStep, VoiceType } from './transpose';
 export { PLAN, planAnalysis } from './plan';
 export type { AnalysisPlan, PlannedHold, PlannedPhrase } from './plan';
-export { analyzeTake } from './analyze';
+export { REACH, analyzeTake, noteReach } from './analyze';
 export type { TakeAnalysis, TakeDetails } from './analyze';
-export { evaluate, gateHolds, isFolded, passRequirements, reportTiles, termScore } from './evaluate';
-export type { Evaluation, ReportTile, Requirement, TakeConditions } from './evaluate';
-export { COACHING_TIPS, NO_VOICE_TIP, POLISH_TIP, UNFIT_RANGE_TIP, getTip, pickTip, tipIdsFor } from './tips';
+export { MIN_REACH_SHARE, evaluate, gateHolds, isFolded, passRequirements, reachHolds, reportTiles, termScore } from './evaluate';
+export type { Evaluation, NoteReach, NotJudgedReason, ReportTile, Requirement, TakeConditions } from './evaluate';
+export { COACHING_TIPS, NO_VOICE_TIP, POLISH_TIP, STOPPED_TIP, UNFIT_RANGE_TIP, UNSUNG_TIP, getTip, pickTip, tipIdsFor } from './tips';
 export type { PickedTip, TipContext, TipRule } from './tips';
 export { canPassAtTempo, isPassTempo, ladderOf, nextTempo, startTempo } from './ladder';
 export { ANALYZER_METRICS, METRIC_DIRECTION, METRIC_INFO, formatMetric, metricsProducedBy } from './metrics';

@@ -2,6 +2,7 @@
 import { useEffect } from 'preact/hooks';
 import type { JSX } from 'preact';
 import { Ellipsis, Mic, Square, Volume2 } from 'lucide-preact';
+import { activatedBySpace, hasModifier, ignoresShortcuts } from './keys';
 
 export interface BottomBarProps {
   onListen?: () => void;
@@ -13,22 +14,19 @@ export interface BottomBarProps {
   class?: string;
 }
 
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
-}
-
 export function BottomBar(props: BottomBarProps): JSX.Element {
   const { onListen, onToggleSing, singing, singBusy = false, onMore, class: className } = props;
 
   // Desktop shortcuts (docs/DESIGN.md §6): Space = Sing/Stop, L = Listen. Scoped to while this bar is mounted (Live only).
+  // Never over a focused control, typing or an open sheet (components/keys.ts), and never on a held key's repeats.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent): void {
-      if (isTypingTarget(e.target)) return;
-      if (e.code === 'Space' && !singBusy) {
-        e.preventDefault();
-        onToggleSing();
-      } else if ((e.key === 'l' || e.key === 'L') && onListen) {
+      if (hasModifier(e) || ignoresShortcuts(e.target)) return;
+      if (e.code === 'Space') {
+        if (activatedBySpace(e.target)) return;
+        e.preventDefault(); // the page must not scroll
+        if (!e.repeat && !singBusy) onToggleSing();
+      } else if ((e.key === 'l' || e.key === 'L') && onListen && !e.repeat) {
         e.preventDefault();
         onListen();
       }

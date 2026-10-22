@@ -105,7 +105,7 @@ function fakeContext(sources: FakeSource[]): AudioContext {
     sampleRate: 48_000,
     createGain: () => ({ ...node(), gain: { value: 1, setTargetAtTime: () => {} } }),
     createBufferSource: () => {
-      const source: FakeSource = { ...node(), buffer: null, start: vi.fn(), stop: () => {} };
+      const source: FakeSource = { ...node(), buffer: null, start: vi.fn(), stop: vi.fn() };
       sources.push(source);
       return source;
     },
@@ -158,9 +158,15 @@ class FakeEngine {
   emit(frames: readonly PitchFrame[]): void {
     for (const f of frames) for (const l of [...this.frameListeners]) l(f);
   }
-  startRecording(): void {}
+  /** When set, a recording returns this many seconds of audio from where it started (a take with its audio kept). */
+  recordingSeconds = 0;
+  private recordingFrom = 0;
+  startRecording(): void {
+    this.recordingFrom = this.context?.currentTime ?? 0;
+  }
   stopRecording(): Promise<Recording> {
-    return Promise.resolve({ samples: new Float32Array(0), sampleRate: 48_000, startTime: 0 });
+    const sampleRate = 8000;
+    return Promise.resolve({ samples: new Float32Array(Math.round(this.recordingSeconds * sampleRate)).fill(0.1), sampleRate, startTime: this.recordingFrom });
   }
 }
 
@@ -199,10 +205,16 @@ interface Rig {
 /** The backing track of a rig: a stereo tone this long, at a low rate so a stretch stays quick. */
 const BACKING_RATE = 8000;
 
-function rig(opts: { latency?: LatencyCalibration | null; backing?: { seconds: number; offsetMs: number } } = {}): Rig {
+function rig(
+  opts: { latency?: LatencyCalibration | null; backing?: { seconds: number; offsetMs: number }; keepTakeAudio?: boolean; micOn?: boolean } = {},
+): Rig {
   const backing = opts.backing;
   const song: Song = backing ? { ...chart(), backingRef: 'songs/rec-1.backing', offsetMs: backing.offsetMs } : chart();
   const engine = new FakeEngine();
+  if (opts.micOn) {
+    engine.ensureContext();
+    engine.state = 'running';
+  }
   const { synth, notes, clicks } = fakeSynth();
   const recordAttempt = vi.fn(async (fields: AttemptFields) => ({
     attempt: { ...fields, id: 'attempt-1', createdAt: new Date().toISOString(), updatedAt: '1', deletedAt: null } as AttemptRecord,
@@ -233,7 +245,7 @@ function rig(opts: { latency?: LatencyCalibration | null; backing?: { seconds: n
     },
     storage: () => storage,
     profile: () => PROFILE,
-    settings: () => ({ ...DEFAULT_SETTINGS, keepTakeAudio: false }),
+    settings: () => ({ ...DEFAULT_SETTINGS, keepTakeAudio: opts.keepTakeAudio ?? false }),
     latency: () => (opts.latency === undefined ? CALIBRATION : opts.latency),
     recordAttempt,
     decodeAudio: async () => {
@@ -545,6 +557,72 @@ describe('a song take', () => {
     await settle();
     expect(r.recordAttempt).not.toHaveBeenCalled();
     expect(r.engine.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaving turns off a mic that Reset audio (or a reconnect) opened here, and leaves alone one that was already on', async () => {
+    const r = rig();
+    await r.engine.reset(); // what More's Reset audio does: it reopens the mic
+    expect(r.engine.state).toBe('running');
+    r.session.dispose();
+    expect(r.engine.stop).toHaveBeenCalledTimes(1);
+    expect(r.engine.state).toBe('idle');
+
+    const on = rig({ micOn: true });
+    on.session.dispose();
+    expect(on.engine.stop).not.toHaveBeenCalled();
+  });
+
+  it('says so when the take was saved without its sound (the store could not write it)', async () => {
+    const r = rig({ keepTakeAudio: true });
+    r.engine.recordingSeconds = 30;
+    await singTake(r, (tl) => sungFrames(tl, r.song));
+    const result = r.session.result.value!;
+    expect(result.audio).not.toBeNull();
+    expect(result.savedTake?.audioRef).toBeNull(); // this rig's store, like a full device, keeps no audio
+    expect(result.saveError).toContain('its sound could not be saved');
+    expect(result.attempt).not.toBeNull();
+  });
+
+  it('a take being played back stops before the next take, Listen or another phrase, so the mic never records it', async () => {
+    const r = rig({ keepTakeAudio: true });
+    r.engine.recordingSeconds = 30;
+    await singTake(r, (tl) => sungFrames(tl, r.song));
+    expect(r.session.result.value?.audio).not.toBeNull();
+    const playing = () => r.engine.sources[r.engine.sources.length - 1];
+
+    r.session.playTake();
+    expect(r.session.takePlaying.value).toBe(true);
+    let source = playing();
+    // Retry, as the take sheet does it: the old take stops inside the tap, before the new count-in.
+    r.session.dismissResult();
+    r.session.sing();
+    expect(source.stop).toHaveBeenCalled();
+    expect(r.session.takePlaying.value).toBe(false);
+    await settle();
+    expect(r.session.phase.value).toBe('count-in');
+    r.session.stop();
+    await settle();
+
+    // A finished take again, then Listen and Next phrase.
+    await singTake(r, (tl) => sungFrames(tl, r.song));
+    r.session.playTake();
+    source = playing();
+    r.session.listen();
+    expect(source.stop).toHaveBeenCalled();
+    expect(r.session.takePlaying.value).toBe(false);
+    r.session.stop();
+
+    r.session.playTake();
+    source = playing();
+    r.session.dismissResult();
+    r.session.select(1);
+    expect(source.stop).toHaveBeenCalled();
+    expect(r.session.takePlaying.value).toBe(false);
+
+    r.session.playTake();
+    source = playing();
+    r.session.dispose();
+    expect(source.stop).toHaveBeenCalled();
   });
 });
 

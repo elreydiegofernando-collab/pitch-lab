@@ -1,5 +1,5 @@
 /** Setup: a 5-step stepper for headphones/route, microphone, an audio-routing check, latency calibration, and tips. */
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import {
   Bluetooth,
@@ -205,17 +205,91 @@ function StepAudioCheck(): JSX.Element {
   );
 }
 
+/** The mic's state in a sentence, for a calibration that could not open it. */
+function micProblem(code: string | undefined): string {
+  switch (code) {
+    case 'permission-denied':
+      return 'Microphone blocked. On iPhone open Settings › Safari › Microphone and choose Allow; in Chrome or Edge allow it from the site icon in the address bar. Then tap Run again.';
+    case 'no-microphone':
+      return 'No microphone was found. Connect one or pick another input in the Microphone step, then tap Run again.';
+    case 'mic-in-use':
+      return 'Another app is using the microphone. Close it, then tap Run again.';
+    default:
+      return 'The microphone did not start, so the clicks could not be heard. Tap Run again; if it keeps failing, use Reset audio in the Audio check step.';
+  }
+}
+
+/**
+ * Open the mic for a calibration from inside the tap (the iOS gesture rule), then call `onRunning` once the engine
+ * reports 'running' (its worklet wired, so transient detection works), or `onFailed` when it stops trying. Returns a
+ * cancel function. A mic that is already running calls `onRunning` at once.
+ */
+function openMicThen(engine: ReturnType<typeof getEngine>, onRunning: () => void, onFailed: (code: string | undefined) => void): () => void {
+  if (engine.state === 'running') {
+    onRunning();
+    return () => undefined;
+  }
+  // First thing in the tap: start, or resume (a route change resets inside resume()).
+  let opening: Promise<void> | null = null;
+  if (engine.state === 'idle' || engine.state === 'error') opening = engine.start();
+  else if (engine.state === 'interrupted' || engine.state === 'suspended') opening = engine.resume();
+  let done = false;
+  const finish = (): void => {
+    if (done) return;
+    if (engine.state === 'running') {
+      done = true;
+      off();
+      onRunning();
+    } else if (engine.state === 'error' || engine.state === 'idle' || engine.state === 'interrupted') {
+      done = true;
+      off();
+      onFailed(engine.error?.code);
+    }
+  };
+  const off = engine.onState(() => finish());
+  const settle = (): void => {
+    // 'suspended' while the context resumes, or 'starting' while a prompt is up: keep waiting for the next state.
+    if (!done && engine.state !== 'starting' && engine.state !== 'suspended') finish();
+  };
+  opening?.then(settle, settle);
+  return () => {
+    done = true;
+    off();
+  };
+}
+
 function StepLatency(): JSX.Element {
   const [method, setMethod] = useState<CalibrationMethod>('loopback');
   const [session, setSession] = useState<CalibrationSession | null>(null);
   const [progress, setProgress] = useState<CalibrationProgress | null>(null);
   const [result, setResult] = useState<OffsetEstimate | null>(null);
   const [running, setRunning] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
+  const pending = useRef<(() => void) | null>(null);
+  const current = useRef<CalibrationSession | null>(null);
 
-  function handleRun(): void {
+  // Leaving the step (or Setup) mid-run: stop issuing clicks, and stop waiting for the mic.
+  useEffect(
+    () => () => {
+      pending.current?.();
+      current.current?.cancel();
+    },
+    [],
+  );
+
+  /** The click train itself: the synth is made here, once the mic (when one is needed) is running. */
+  function begin(chosen: CalibrationMethod): void {
     const engine = getEngine();
-    const synth = getSynth();
-    const next = startCalibration(method, { engine, synth });
+    let synth: ReturnType<typeof getSynth>;
+    try {
+      synth = getSynth();
+    } catch {
+      setRunning(false);
+      setMicError('Audio could not start. Tap Run again; if it keeps failing, use Reset audio in the Audio check step.');
+      return;
+    }
+    const next = startCalibration(chosen, { engine, synth });
+    current.current = next;
     setSession(next);
     setProgress(null);
     setResult(null);
@@ -228,6 +302,35 @@ function StepLatency(): JSX.Element {
         setRunning(false);
         unsubscribe();
       });
+  }
+
+  function handleRun(): void {
+    pending.current?.();
+    pending.current = null;
+    current.current?.cancel();
+    setMicError(null);
+    const chosen = method;
+    // Tap needs no mic. Loopback and Sing listen for the clicks on the mic: it opens first thing in this tap, and the
+    // synth (which would put the audio session back to playback while the mic is still opening) only once it runs.
+    if (chosen === 'tap') {
+      begin(chosen);
+      return;
+    }
+    setResult(null);
+    setProgress(null);
+    setRunning(true);
+    pending.current = openMicThen(
+      getEngine(),
+      () => {
+        pending.current = null;
+        begin(chosen);
+      },
+      (code) => {
+        pending.current = null;
+        setRunning(false);
+        setMicError(micProblem(code));
+      },
+    );
   }
 
   function handleSave(): void {
@@ -253,10 +356,16 @@ function StepLatency(): JSX.Element {
       </p>
       <Segmented aria-label="Calibration method" options={METHOD_OPTIONS} value={method} onChange={setMethod} />
       <p class="pl-body-s pl-muted">{METHOD_HINTS[method]}</p>
+      {method !== 'tap' && engineState.value !== 'running' ? (
+        <p class="pl-body-s pl-muted" data-testid="calibration-mic-note">
+          Run turns the microphone on to hear the clicks.
+        </p>
+      ) : null}
 
       <Button variant="primary" loading={running} onClick={handleRun}>
         Run
       </Button>
+      {micError ? <Banner kind="error" message={micError} /> : null}
 
       {progress ? (
         <p class="pl-body-s pl-muted pl-tabular">
@@ -321,6 +430,13 @@ export function Setup(): JSX.Element {
   const [step, setStep] = useState(1);
   useReleaseMicOnLeave(getEngine());
 
+  const next = (): void => {
+    // Step 1 shows Wired selected when no route was ever chosen: going on from it chooses Wired, so what is stored (and
+    // what the calibration is filed under, and what takes and song mode treat as headphones) is what was shown.
+    if (step === 1 && deviceSettings.value.route === 'unknown') updateDeviceSettings({ route: 'wired' });
+    setStep((s) => Math.min(STEP_NAMES.length, s + 1));
+  };
+
   return (
     <div class="pl-screen" data-testid="setup-screen">
       <AppBar title="Setup" routeIcon={SlidersHorizontal} onBack={() => back()} />
@@ -341,7 +457,7 @@ export function Setup(): JSX.Element {
               Back
             </Button>
             {step < STEP_NAMES.length ? (
-              <Button variant="primary" onClick={() => setStep((s) => Math.min(STEP_NAMES.length, s + 1))}>
+              <Button variant="primary" onClick={next}>
                 Next
               </Button>
             ) : (

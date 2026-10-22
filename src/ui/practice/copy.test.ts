@@ -97,6 +97,13 @@ describe('titles and percentages', () => {
     expect(singTitle({ ...prepared, level: null })).toBe(prepared.def.title);
   });
 
+  it('names a Boss Recital in full, as Level, Home and the report do (every boss level is titled just "Boss Recital")', () => {
+    const boss = makePrepared('foundations.boss');
+    expect(boss.level?.title).toBe('Boss Recital');
+    expect(singTitle(boss)).toBe(boss.def.title);
+    expect(singTitle(boss)).toMatch(/^Foundations Boss Recital/);
+  });
+
   it('rounds a score to a whole percent and keeps it in range', () => {
     expect(percent(0.864)).toBe('86%');
     expect(percent(0.865)).toBe('87%');

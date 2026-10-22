@@ -50,6 +50,17 @@ describe('afterTakeActions', () => {
     expect(missed[1]).toMatchObject({ label: 'Back to level', route: routeOf('level', { levelId: 'foundations.03' }) });
   });
 
+  it('a tempo-ladder take that climbed a rung says the retry sings at the new tempo', () => {
+    const after = snap(passThrough(WORLDS, 'foundations.02'));
+    const ladderTake = (bpm: number, nextBpm: number | null) =>
+      ({ prepared: { target: { kind: 'level', levelId: 'foundations.03' }, workout: null, bpm }, attempt: { passed: false }, after, nextBpm }) as unknown as TakeOutcome;
+    const climbed = afterTakeActions(ladderTake(45, 68));
+    expect(kinds(climbed)).toEqual(['retry*', 'level']);
+    expect(climbed[0]).toMatchObject({ label: 'Sing at 68 bpm', route: routeOf('sing', { target: 'level', levelId: 'foundations.03' }) });
+    expect(afterTakeActions(ladderTake(45, 45))[0].label).toBe('Retry');
+    expect(afterTakeActions(ladderTake(60, null))[0].label).toBe('Retry');
+  });
+
   it('after a Boss Recital, "Next level" is the first level of the world it opened; after the last one, the map', () => {
     const afterBoss = snap(passThrough(WORLDS, 'foundations.boss'));
     expect(afterTakeActions(outcome({ kind: 'level', levelId: 'foundations.boss' }, true, afterBoss))[0]).toMatchObject({

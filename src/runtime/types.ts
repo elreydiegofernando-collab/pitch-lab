@@ -108,7 +108,10 @@ export interface TakeOutcome {
   evaluation: Evaluation;
   /** 2-4 report tiles: exercises/evaluate.ts reportTiles. */
   tiles: ReportTile[];
-  /** The one coaching tip: pickTip(analysis.metrics, def, analysis.tipContext). */
+  /**
+   * The one coaching tip: pickTip(analysis.metrics, def, analysis.tipContext), or STOPPED_TIP for a take stopped before
+   * the end, or the polish line when nothing is left to fix (runtime/polish.ts).
+   */
   tip: PickedTip;
   /** The row appended to the log; its `passed` already folds in the tempo-ladder and range-fit rules (buildAttempt). */
   attempt: AttemptRecord;

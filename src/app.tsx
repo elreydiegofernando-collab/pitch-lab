@@ -9,18 +9,19 @@
  * Wave 2: the route switch below is the contract's screen table (docs/ARCHITECTURE.md "Wave 2"); the runtime
  * builder owns the rest of this file.
  */
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect } from 'preact/hooks';
 import type { JSX } from 'preact';
 import { bindDesktopBackKey, refusal, route } from './router';
 import { initTheme } from './state/theme';
 import { bootSession, storageDurable } from './state/session';
 import { flushSettings } from './state/settings';
-import { engineState } from './state/engine-store';
+import { engineState, refreshEngineInfo } from './state/engine-store';
+import { syncEngineSettings } from './state/engine-sync';
 import { showToast } from './state/toast';
+import { getEngine } from './audio/engine';
 import { registerServiceWorker } from './pwa/register-sw';
 import { requestPersistentStorage } from './pwa/persist';
-import { CONFIG } from './config';
-import { Banner } from './ui/components/Banner';
+import { NotSavingBanner, useBreakReminder } from './ui/components/GlobalNotices';
 import { ToastRegion } from './ui/components/Toast';
 import { About } from './ui/screens/About';
 import { Audition } from './ui/screens/Audition';
@@ -108,13 +109,11 @@ function openAtTop(el: HTMLDivElement | null): void {
 /** Module-scope, not component state: the request must fire exactly once per app lifetime, not once per mount. */
 let persistentStorageRequested = false;
 
-const BREAK_REMINDER_MS = CONFIG.health.breakReminderMin * 60 * 1000;
-
 export function App(): JSX.Element {
-  const [showBreakReminder, setShowBreakReminder] = useState(false);
+  useBreakReminder();
 
-  const runningSince = useRef<number | null>(null);
-  const accumulatedRunningMs = useRef(0);
+  // The engine follows the saved detector and input device: at launch, after a profile switch or a backup reload.
+  useEffect(() => syncEngineSettings(getEngine(), refreshEngineInfo), []);
 
   useEffect(() => {
     initTheme();
@@ -155,49 +154,11 @@ export function App(): JSX.Element {
     }
   }, [engineState.value]);
 
-  // Break reminder: accumulate actual running time (paused while stopped), independent of wall-clock since mount.
-  useEffect(() => {
-    if (engineState.value === 'running') {
-      if (runningSince.current === null) runningSince.current = Date.now();
-    } else if (runningSince.current !== null) {
-      accumulatedRunningMs.current += Date.now() - runningSince.current;
-      runningSince.current = null;
-    }
-  }, [engineState.value]);
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      const extra = runningSince.current !== null ? Date.now() - runningSince.current : 0;
-      if (accumulatedRunningMs.current + extra >= BREAK_REMINDER_MS) {
-        setShowBreakReminder(true);
-      }
-    }, 10_000);
-    return () => clearInterval(id);
-  }, []);
-
-  function dismissBreakReminder(): void {
-    setShowBreakReminder(false);
-    accumulatedRunningMs.current = 0;
-    runningSince.current = engineState.value === 'running' ? Date.now() : null;
-  }
-
   return (
     <>
-      {!storageDurable.value ? (
-        // Not dismissable (ARCHITECTURE "Wave 2 must-dos"): on this launch nothing will survive a reload.
-        <Banner kind="warn" message="This browser is not saving your data on this visit. Progress and takes will be lost when you close Pitch Lab." />
-      ) : null}
+      {!storageDurable.value ? <NotSavingBanner /> : null}
 
-      {showBreakReminder ? (
-        <Banner
-          kind="info"
-          message={`You've been singing for a while. A short break helps your voice.`}
-          actionLabel="Dismiss"
-          onAction={dismissBreakReminder}
-        />
-      ) : null}
-
-      <div key={screenKey()} ref={openAtTop} class="pl-fade-rise" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div key={screenKey()} ref={openAtTop} class="pl-fade-rise pl-screen-host" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         <CurrentScreen />
       </div>
 

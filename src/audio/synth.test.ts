@@ -1,5 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSynth, beatsInWindow, nextBeatAtOrAfter } from './synth';
+import {
+  CLICK_SHARE_OF_REFERENCE,
+  SOFT_LIMIT_CEILING,
+  SOFT_LIMIT_KNEE,
+  beatsInWindow,
+  createSynth,
+  musicalClickGain,
+  nextBeatAtOrAfter,
+  softLimit,
+} from './synth';
 import { midiToHz } from '../core/music';
 import type { Timbre } from './synth-types';
 
@@ -367,6 +376,87 @@ describe('createSynth: click', () => {
     expect(events[0]).toEqual({ method: 'setValueAtTime', value: 0, time: 1 });
     expect(events[events.length - 1].value).toBe(0);
     expect(events[events.length - 1].time - 1).toBeLessThanOrEqual(0.015);
+  });
+
+  const peakOf = (g: FakeGainNode): number => Math.max(...g.gain.events.map((e) => e.value ?? 0));
+
+  it('without a level it is the full calibration click (latency calibration listens for it); with one, a musical click at that level', () => {
+    const ctx = makeCtx();
+    const synth = createSynth(ctx as unknown as BaseAudioContext, new FakeAudioNode() as unknown as AudioNode);
+    synth.click(1, true);
+    synth.click(2, false);
+    synth.click(3, true, 0.28);
+    synth.click(4, false, 0.28);
+    synth.click(5, true, 0);
+    const [, cal, calPlain, music, musicPlain] = ctx.createdGains;
+    expect(peakOf(cal)).toBe(0.9);
+    expect(peakOf(calPlain)).toBe(0.6);
+    expect(peakOf(music)).toBeCloseTo(0.28, 9);
+    expect(peakOf(musicPlain)).toBeCloseTo((0.28 * 2) / 3, 9);
+    expect(ctx.createdOscillators).toHaveLength(4); // a muted click schedules nothing
+  });
+
+  it('a musical click follows the reference volume, well under the notes it plays against', () => {
+    expect(musicalClickGain(0.7)).toBeCloseTo(0.7 * CLICK_SHARE_OF_REFERENCE, 9);
+    expect(musicalClickGain(5)).toBe(CLICK_SHARE_OF_REFERENCE);
+    expect(musicalClickGain(0)).toBe(0);
+    // A click on a note's downbeat plus the note itself stays under full scale at any volume.
+    for (const v of [0.3, 0.7, 1]) expect(v + musicalClickGain(v)).toBeLessThan(1.5);
+    expect(0.7 + musicalClickGain(0.7)).toBeLessThan(1);
+  });
+});
+
+describe('createSynth: the soft limiter at its output', () => {
+  it('passes everything up to the knee unchanged (the calibration click included) and never reaches past the ceiling', () => {
+    for (const x of [0, 0.1, -0.5, 0.6, 0.9, -0.9]) expect(softLimit(x)).toBe(x);
+    expect(SOFT_LIMIT_KNEE).toBeGreaterThanOrEqual(0.9);
+    let prev = softLimit(SOFT_LIMIT_KNEE);
+    for (let x = SOFT_LIMIT_KNEE + 0.01; x <= 3; x += 0.01) {
+      const y = softLimit(x);
+      expect(y).toBeGreaterThanOrEqual(prev); // monotonic: louder in, never quieter out (no fold-over)
+      expect(y).toBeLessThanOrEqual(SOFT_LIMIT_CEILING);
+      expect(softLimit(-x)).toBe(-y);
+      prev = y;
+    }
+    // Smooth at the knee: no kink in level.
+    expect(softLimit(SOFT_LIMIT_KNEE + 1e-4) - SOFT_LIMIT_KNEE).toBeCloseTo(1e-4, 6);
+  });
+
+  it('routes the master through a WaveShaper with that curve (no oversampling, so no added latency) when the context has one', () => {
+    class ShaperCtx extends FakeAudioContext {
+      shapers: Array<FakeAudioNode & { curve: Float32Array | null; oversample: string }> = [];
+      createWaveShaper(): FakeAudioNode & { curve: Float32Array | null; oversample: string } {
+        const s = Object.assign(new FakeAudioNode(), { curve: null as Float32Array | null, oversample: 'none' });
+        this.shapers.push(s);
+        return s;
+      }
+    }
+    const ctx = new ShaperCtx();
+    const destination = new FakeAudioNode();
+    createSynth(ctx as unknown as BaseAudioContext, destination as unknown as AudioNode);
+    const [master, scale] = ctx.createdGains;
+    const [shaper] = ctx.shapers;
+    expect(master.connections).toEqual([scale]);
+    expect(scale.connections).toEqual([shaper]);
+    expect(shaper.connections).toEqual([destination]);
+    expect(shaper.oversample).toBe('none');
+    // The curve maps the scaled input [-1, 1] back through softLimit: identity below the knee.
+    const curve = shaper.curve!;
+    const range = 1 / scale.gain.value;
+    const at = (input: number): number => curve[Math.round(((input / range + 1) / 2) * (curve.length - 1))];
+    expect(at(0)).toBeCloseTo(0, 6);
+    expect(at(0.5)).toBeCloseTo(0.5, 3);
+    expect(at(0.9)).toBeCloseTo(0.9, 3);
+    expect(at(1.6)).toBeLessThan(SOFT_LIMIT_CEILING);
+    expect(Math.max(...curve)).toBeLessThan(1);
+  });
+
+  it('connects straight through where the context has no WaveShaper', () => {
+    const ctx = makeCtx();
+    const destination = new FakeAudioNode();
+    const synth = createSynth(ctx as unknown as BaseAudioContext, destination as unknown as AudioNode);
+    expect(ctx.createdGains[0].connections).toEqual([destination]);
+    expect(synth.input).toBe(ctx.createdGains[0]); // its own voices' mix, for callers with voices of their own
   });
 });
 

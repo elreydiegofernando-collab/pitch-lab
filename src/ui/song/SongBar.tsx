@@ -8,6 +8,7 @@ import { useEffect } from 'preact/hooks';
 import type { JSX } from 'preact';
 import { Ellipsis, Square, Volume2 } from 'lucide-preact';
 import type { Icon } from '../components/icon';
+import { activatedBySpace, hasModifier, ignoresShortcuts } from '../components/keys';
 
 export interface SongBarPrimary {
   label: string;
@@ -31,22 +32,21 @@ export interface SongBarProps {
   shortcuts: boolean;
 }
 
-function isTypingTarget(target: EventTarget | null): boolean {
-  return target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
-}
-
 export function SongBar(props: SongBarProps): JSX.Element {
   const { listening, listenDisabled, onListen, primary, onMore, shortcuts } = props;
   const PrimaryIcon = primary.icon;
 
   useEffect(() => {
     if (!shortcuts) return undefined;
+    // Never over a focused control (a speed radio, a phrase pill: Space is theirs), typing or an open sheet, and never on
+    // a held key's repeats (components/keys.ts).
     function onKeyDown(e: KeyboardEvent): void {
-      if (isTypingTarget(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.code === 'Space' && !primary.busy) {
-        e.preventDefault();
-        primary.onClick();
-      } else if ((e.key === 'l' || e.key === 'L') && !listenDisabled) {
+      if (hasModifier(e) || ignoresShortcuts(e.target)) return;
+      if (e.code === 'Space') {
+        if (activatedBySpace(e.target)) return;
+        e.preventDefault(); // the page must not scroll
+        if (!e.repeat && !primary.busy) primary.onClick();
+      } else if ((e.key === 'l' || e.key === 'L') && !listenDisabled && !e.repeat) {
         e.preventDefault();
         onListen();
       }

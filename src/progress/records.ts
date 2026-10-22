@@ -51,6 +51,12 @@ export function recordsForExercise(snapshot: ProgressSnapshot, exerciseId: strin
   return out;
 }
 
+/**
+ * Metrics that are measurements, not skills, so they are never personal records: a wider range span is not "better"
+ * singing, and celebrating it would reward straining (the Range finder's own rule: never reward straining).
+ */
+export const NOT_RECORDS: ReadonlySet<string> = new Set(['range.spanSemitones']);
+
 /** Fold the (oldest-first) log into records. */
 export function foldRecords(log: readonly LoggedAttempt[], getExercise?: ExerciseLookup): ProgressSnapshot['records'] {
   const records: ProgressSnapshot['records'] = {};
@@ -69,7 +75,7 @@ export function foldRecords(log: readonly LoggedAttempt[], getExercise?: Exercis
     if (!a.passed || !RECORD_KINDS.has(a.kind) || !a.metrics) continue;
     const scored = marqueeOf(a.exerciseId);
     for (const [metric, value] of Object.entries(a.metrics)) {
-      if (typeof value !== 'number' || !Number.isFinite(value)) continue;
+      if (typeof value !== 'number' || !Number.isFinite(value) || NOT_RECORDS.has(metric)) continue;
       const direction = recordDirection(metric);
       if (direction === null || (scored !== null && !scored.has(metric))) continue;
       const key = recordKey(a.exerciseId, metric);

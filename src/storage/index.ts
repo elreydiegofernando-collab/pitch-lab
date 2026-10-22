@@ -53,6 +53,7 @@ import {
 import type { AttemptRecord, BackupFile, ProfileRecord, SongRecord, TakeRecord, VocalRange } from './schema';
 import {
   deleteSong,
+  deleteSongsByProfile,
   findSongByContentId,
   getSong,
   importSong,
@@ -112,9 +113,10 @@ export interface ProfilesApi {
   setVoiceType(id: string, voiceType: VoiceType): Promise<ProfileRecord>;
   /**
    * Soft delete (undoable with `restore`). Attempts are kept. With `removeRecordings`, the
-   * profile's takes and their audio are deleted for good (rejects, keeping the profile, if a recording
-   * would not delete). If it was the active profile, another live one is selected, or a fresh default
-   * is created when it was the last.
+   * profile's takes and their audio, and the songs it imported with their backing tracks, are deleted for good
+   * (rejects, keeping the profile, if a file would not delete). Without it they are kept, so a restored profile gets
+   * them back. If it was the active profile, another live one is selected, or a fresh default is created when it was
+   * the last.
    */
   delete(id: string, opts?: { removeRecordings?: boolean }): Promise<void>;
   restore(id: string): Promise<ProfileRecord>;
@@ -288,7 +290,19 @@ export async function openStorage(options: OpenStorageOptions = {}): Promise<App
     setRange: (id, range) => updateProfile(db, id, { range }),
     setVoiceType: (id, voiceType) => updateProfile(db, id, { voiceType }),
     delete: async (id, opts = {}) => {
-      if (opts.removeRecordings) await deleteTakesByProfile(db, opfs, id);
+      if (opts.removeRecordings) {
+        // The takes and the imported songs (backing tracks included): after the delete nothing can reach them, so they
+        // would sit on the device unseen. Both are tried; the first failure rejects, keeping the profile.
+        let failure: { err: unknown } | null = null;
+        for (const remove of [deleteTakesByProfile, deleteSongsByProfile]) {
+          try {
+            await remove(db, opfs, id);
+          } catch (err) {
+            failure ??= { err };
+          }
+        }
+        if (failure) throw failure.err;
+      }
       await deleteProfile(db, id);
       await ensureActiveProfile(db);
     },

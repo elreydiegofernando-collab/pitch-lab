@@ -15,8 +15,10 @@ vi.mock('../../audio/platform', () => ({
   isLikelyBluetoothLabel: () => false,
 }));
 
-import { requirementHint } from '../../progress';
+import { computeMomentum, requirementHint } from '../../progress';
 import { resetRouterForTests, route, routeOf } from '../../router';
+import type { AttemptRecord } from '../../storage/schema';
+import { localUtcOffsetMinutes } from '../worlds/momentum-bars';
 import { activeProfile, attemptLog, bootError, bootPhase, snapshot } from '../../state/session';
 import { deviceSettings, settings } from '../../state/settings';
 import { DEFAULT_DEVICE_SETTINGS, DEFAULT_SETTINGS } from '../../state/settings-types';
@@ -225,17 +227,71 @@ describe('Home: the Continue card', () => {
 });
 
 describe('Home: the Momentum chip', () => {
+  /** Local noon, `days` calendar days ago (a DST change cannot move it to another day). */
+  const noonDaysAgo = (days: number, from = new Date()): string => {
+    const d = new Date(from);
+    d.setHours(12, 0, 0, 0);
+    d.setDate(d.getDate() - days);
+    return d.toISOString();
+  };
+  /** What the dashboard shows for this log right now (dashboard-model momentumView). */
+  const dashboardMomentum = (log: readonly AttemptRecord[]): number =>
+    Math.round(computeMomentum(log, Date.now(), { utcOffsetMinutes: localUtcOffsetMinutes() }));
+
   it('shows the number and seven bars, and opens the dashboard', async () => {
-    snapshot.value = { ...snapshotOf('foundations.01'), momentum: 37.6 };
+    const log = attemptsThrough('foundations.02').map((a, i) => ({ ...a, createdAt: noonDaysAgo(2 - i), durationSec: 900 }));
+    attemptLog.value = log;
+    snapshot.value = snapshotOf('foundations.02');
     const c = await showHome();
     const chip = byTestId<HTMLButtonElement>(c, 'momentum-chip')!;
-    expect(textOf(chip.querySelector('.wl-momentum__value'))).toBe('38');
+    const expected = dashboardMomentum(log);
+    expect(expected).toBeGreaterThan(0);
+    expect(textOf(chip.querySelector('.wl-momentum__value'))).toBe(String(expected));
     expect(chip.querySelectorAll('.wl-momentum__bar')).toHaveLength(7);
     expect(chip.querySelectorAll('.wl-momentum__bar--today')).toHaveLength(1);
-    expect(chip.getAttribute('aria-label')).toContain('Momentum 38 of 100');
+    expect(chip.getAttribute('aria-label')).toContain(`Momentum ${expected} of 100`);
 
     chip.click();
     expect(route.value).toEqual(routeOf('dashboard'));
+  });
+
+  it('agrees with the dashboard, not with a session snapshot computed days ago', async () => {
+    // The snapshot is recomputed only at boot and after a take: here it still holds the Momentum of the last session.
+    const log = attemptsThrough('foundations.02').map((a) => ({ ...a, createdAt: noonDaysAgo(14), durationSec: 1200 }));
+    attemptLog.value = log;
+    snapshot.value = { ...snapshotOf('foundations.02'), momentum: 63.2 };
+    const c = await showHome();
+    const value = textOf(byTestId(c, 'momentum-chip')!.querySelector('.wl-momentum__value'));
+    expect(value).toBe(String(dashboardMomentum(log)));
+    expect(value).not.toBe('63');
+  });
+
+  it('re-reads the clock when the app comes back into view after days away', async () => {
+    const start = new Date();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(start);
+      const log = attemptsThrough('foundations.02').map((a) => ({ ...a, createdAt: noonDaysAgo(0, start), durationSec: 1200 }));
+      attemptLog.value = log;
+      snapshot.value = snapshotOf('foundations.02');
+      const c = await showHome();
+      const valueNode = () => textOf(byTestId(c, 'momentum-chip')!.querySelector('.wl-momentum__value'));
+      const before = dashboardMomentum(log);
+      expect(valueNode()).toBe(String(before));
+
+      // Two weeks later the singer switches back to the app, which stayed open (no relaunch, no take).
+      vi.setSystemTime(new Date(start.getTime() + 14 * 86_400_000));
+      const after = dashboardMomentum(log);
+      expect(after).not.toBe(before); // the test means something: two weeks of rest moved Momentum
+      document.dispatchEvent(new Event('visibilitychange'));
+      await flush();
+      expect(valueNode()).toBe(String(after));
+      // The bars moved on too: today is a rest day now.
+      const bars = [...byTestId(c, 'momentum-chip')!.querySelectorAll('.wl-momentum__bar')];
+      expect(bars[6].classList.contains('wl-momentum__bar--rest')).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('fills the bars from the attempt log, today last', async () => {

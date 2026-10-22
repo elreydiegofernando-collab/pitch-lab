@@ -88,7 +88,8 @@ function singRoute(target: RunTarget): Route {
 /**
  * The report's actions for this outcome, exactly one primary. Level: pass -> "Next level" (primary; "World map"
  * when there is no next level) + "Retry"; miss -> "Retry" (primary) + "Back to level". A tempo-ladder take below the
- * pass tempo is a miss of the LEVEL even when it climbed a rung: "Retry" sings the next take at the new rung.
+ * pass tempo is a miss of the LEVEL even when it climbed a rung: then the retry sings the next take at the new rung,
+ * and says so ("Sing at 68 bpm").
  * Audition: pass with a next test -> "Next test" (+ "See your placement" to stop there); miss or last test ->
  * "See your placement". Workout: "Next take" / "Next item" / "Finish workout", with the next step as a secondary.
  * Record: "Retry" + "Back to level".
@@ -98,7 +99,9 @@ export function afterTakeActions(outcome: TakeOutcome): AfterTakeAction[] {
   const passed = outcome.attempt.passed;
   switch (target.kind) {
     case 'level': {
-      const retry = action('retry', 'Retry', !passed, singRoute(target));
+      const { nextBpm } = outcome;
+      const climbed = nextBpm !== null && nextBpm !== undefined && nextBpm > outcome.prepared.bpm;
+      const retry = action('retry', climbed ? `Sing at ${nextBpm} bpm` : 'Retry', !passed, singRoute(target));
       if (!passed) return [retry, action('level', 'Back to level', false, routeOf('level', { levelId: target.levelId }))];
       const next = nextOpenLevel(target.levelId, outcome.after);
       if (next) return [action('next-level', 'Next level', true, routeOf('level', { levelId: next.id })), retry];
@@ -121,6 +124,8 @@ export function afterTakeActions(outcome: TakeOutcome): AfterTakeAction[] {
       const last = w.itemIndex + 1 >= w.itemCount;
       const nextItem = (primary: boolean) =>
         last ? finish(primary) : action('next-item', 'Next item', primary, singRoute({ kind: 'workout', itemIndex: w.itemIndex + 1 }));
+      // A warm-up or cool-down where nothing came through was not done (the runner does not count it): sing it again.
+      if (outcome.prepared.level === null && outcome.analysis.tipContext.noVoice) return [action('retry', 'Retry', true, singRoute(target)), nextItem(false)];
       if (w.take < w.item.takes) return [action('next-take', 'Next take', true, singRoute(target)), nextItem(false)];
       return last ? [finish(true)] : [nextItem(true), finish(false)];
     }

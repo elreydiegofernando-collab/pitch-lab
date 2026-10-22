@@ -124,9 +124,33 @@
   gap: var(--sp-2);
   padding-left: max(var(--sp-2), env(safe-area-inset-left));
   padding-right: max(var(--sp-4), env(safe-area-inset-right));
-  background: var(--bg-1);
+  /* The strip under the iPhone status bar (black-translucent: white glyphs) is --status-strip: the app bar itself in the
+     dark theme, a dark band in the light theme so the clock and battery stay readable. Zero high off iOS. */
+  background:
+    linear-gradient(var(--status-strip), var(--status-strip)) top left / 100% env(safe-area-inset-top) no-repeat,
+    var(--bg-1);
   border-bottom: 1px solid var(--line);
   flex-shrink: 0;
+}
+
+/* The not-saving warning (app.tsx): above every screen and padded for the status bar, it sticks to the top; the app bar
+   sticks just below it (--global-banner-h) without padding for the status bar a second time. */
+.pl-global-banner {
+  position: sticky;
+  top: 0;
+  z-index: calc(var(--z-appbar) + 1);
+  padding: calc(env(safe-area-inset-top) + var(--sp-2)) max(var(--sp-4), env(safe-area-inset-right)) var(--sp-2)
+    max(var(--sp-4), env(safe-area-inset-left));
+  background:
+    linear-gradient(var(--status-strip), var(--status-strip)) top left / 100% env(safe-area-inset-top) no-repeat,
+    var(--bg-0);
+  flex-shrink: 0;
+}
+.pl-has-global-banner .pl-appbar {
+  top: var(--global-banner-h, 0px);
+  height: var(--appbar-h);
+  padding-top: 0;
+  background: var(--bg-1);
 }
 
 /* The root screen (Home) keeps no room for a back button: its title starts on the content edge. */
@@ -182,18 +206,19 @@
   height: 16px;
   flex-shrink: 0;
 }
+/* The pill's words are text: the text-safe hues (light theme: 4.5:1 on --bg-2); the border keeps the base hue. */
 .pl-status-pill--running {
-  color: var(--on);
+  color: var(--on-text);
   border-color: color-mix(in srgb, var(--on) 40%, var(--line));
 }
 .pl-status-pill--interrupted,
 .pl-status-pill--error {
-  color: var(--alert);
+  color: var(--alert-text);
   border-color: color-mix(in srgb, var(--alert) 40%, var(--line));
 }
 .pl-status-pill--starting,
 .pl-status-pill--suspended {
-  color: var(--tally);
+  color: var(--tally-text);
   border-color: color-mix(in srgb, var(--tally) 40%, var(--line));
 }
 
@@ -287,9 +312,10 @@
 .pl-bottombar__primary:active {
   transform: scale(0.96);
 }
+/* Stop: the page colour as ink on the alert fill (6.4:1 dark, 4.6:1 light), like .pl-danger-solid; --text-hi was 2.6:1. */
 .pl-bottombar__primary--running {
   background: var(--alert);
-  color: var(--text-hi);
+  color: var(--bg-0);
 }
 .pl-bottombar__primary:disabled {
   opacity: 0.5;
@@ -349,7 +375,7 @@
 }
 .pl-btn--danger {
   background: transparent;
-  color: var(--alert);
+  color: var(--alert-text);
 }
 
 .pl-btn__spinner {
@@ -466,6 +492,12 @@
 }
 .pl-list > .pl-row:last-child {
   border-bottom: none;
+}
+/* A list clips its rounded corners (overflow: hidden), and the note row scrolls sideways (overflow-x: auto): a ring drawn
+   outside a full-width row or a pill in them is cut off, so inside them the focus ring is drawn inset. */
+.pl-list :focus-visible,
+.pl-note-pill:focus-visible {
+  outline-offset: -2px;
 }
 button.pl-row:active {
   background: var(--bg-2);
@@ -717,6 +749,11 @@ button.pl-row:active {
   align-items: center;
   pointer-events: none;
 }
+/* A sheet is open: the toasts sit at the top, over the scrim, never over the sheet's actions at the bottom. */
+.pl-toast-region--top {
+  top: calc(env(safe-area-inset-top) + var(--sp-2));
+  bottom: auto;
+}
 .pl-toast {
   pointer-events: auto;
   max-width: 420px;
@@ -738,7 +775,7 @@ button.pl-row:active {
 .pl-toast__action {
   flex-shrink: 0;
   font-weight: 700;
-  color: var(--tally);
+  color: var(--tally-text);
   font-size: 14px;
   min-height: var(--target-min);
   padding: 0 var(--sp-2);
@@ -823,6 +860,15 @@ button.pl-row:active {
   width: 1px;
   background: var(--line);
 }
+/* The needle rides a lane as wide as the track: a translateX percentage on the lane is a percentage of the track, so
+   +-50c reaches the edges (on the 3 px needle itself, 100% was 3 px). The lane moves; the needle sits at its centre. */
+.pl-cents-gauge__lane {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transform: translateX(0);
+  will-change: transform;
+}
 .pl-cents-gauge__needle {
   position: absolute;
   top: 1px;
@@ -832,8 +878,6 @@ button.pl-row:active {
   margin-left: -1.5px;
   border-radius: var(--radius-pill);
   background: var(--text-hi);
-  transform: translateX(0);
-  will-change: transform;
 }
 .pl-cents-gauge__needle--on {
   background: var(--on);
@@ -859,10 +903,10 @@ button.pl-row:active {
   height: 14px;
 }
 .pl-cents-gauge__readout--on {
-  color: var(--on);
+  color: var(--on-text);
 }
 .pl-cents-gauge__readout--off {
-  color: var(--off);
+  color: var(--off-text);
 }
 
 /* ---------------------------------------------------------------- readout cluster */
@@ -1056,10 +1100,31 @@ button.pl-row:active {
 
 .pl-live-body {
   display: grid;
+  /* One column no wider than the screen: an auto column grew to its widest child's min-content (357 px). */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto 1fr auto;
   grid-template-areas: 'readouts' 'canvas' 'bottombar';
   flex: 1;
   min-height: 0;
+}
+
+/* A narrow phone (an iPhone SE is 320 px wide): the cents gauge takes its own row under the note and the meters, and
+   the cluster drops its side padding (the readouts row already has the safe-area gutter), so nothing scrolls sideways. */
+@media (max-width: 379px) {
+  .pl-readouts {
+    flex-wrap: wrap;
+    column-gap: var(--sp-3);
+    row-gap: var(--sp-1);
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .pl-readouts__note {
+    min-width: 0;
+  }
+  .pl-readouts__gauge {
+    order: 3;
+    flex: 1 1 100%;
+  }
 }
 .pl-live-body__readouts {
   grid-area: readouts;

@@ -271,7 +271,7 @@ class AudioEngineImpl implements AudioEngine {
         return;
       }
       try {
-        this.rewireMic(ctx, stream);
+        this.rewireMic(ctx, stream, gen);
       } catch (err) {
         stopTracks(stream);
         this.setState('error', this.mapGetUserMediaError(err));
@@ -624,17 +624,13 @@ class AudioEngineImpl implements AudioEngine {
     this.setState('running', null);
 
     const sentinel = await platform.requestWakeLock();
-    if (gen !== this.micGen) {
-      void platform.releaseWakeLock(sentinel); // stopped while the lock was being granted
-      return;
-    }
-    this.setWakeLock(sentinel);
+    if (!this.adoptWakeLock(sentinel, gen)) return; // stopped while the lock was being granted
     this.scheduleDetectorBenchmark();
   }
 
   /** Lighter recovery for a dead mic track: reuses the existing worklet node/registration,
    *  just swaps in a new MediaStreamAudioSourceNode and drops the worklet's buffered state. */
-  private rewireMic(ctx: AudioContext, stream: MediaStream): void {
+  private rewireMic(ctx: AudioContext, stream: MediaStream, gen: number): void {
     const track = stream.getAudioTracks()[0];
     if (!track) throw new Error('getUserMedia resolved with no audio track');
 
@@ -643,6 +639,15 @@ class AudioEngineImpl implements AudioEngine {
     } catch {
       // Already disconnected.
     }
+
+    // Release the muted or ended capture this replaces before adopting the new one (the new getUserMedia has already
+    // resolved, so the mic stays available): stop() only stops the CURRENT stream, so an old track left live here
+    // would keep the recording indicator on, and a late 'mute'/'ended' on it would still drive handleTrackEnded.
+    if (this.micTrack && this.micTrack !== track) {
+      this.micTrack.removeEventListener('ended', this.handleTrackEnded);
+      this.micTrack.removeEventListener('mute', this.handleTrackEnded);
+    }
+    if (this.mediaStream && this.mediaStream !== stream) stopTracks(this.mediaStream);
 
     this.mediaStream = stream;
     this.micTrack = track;
@@ -661,9 +666,7 @@ class AudioEngineImpl implements AudioEngine {
     this.micOpen = true;
     this.expectRunning = true;
     this.setState('running', null);
-    void platform.requestWakeLock().then((sentinel) => {
-      this.setWakeLock(sentinel);
-    });
+    void platform.requestWakeLock().then((sentinel) => this.adoptWakeLock(sentinel, gen));
   }
 
   private teardownNodes(
@@ -783,9 +786,8 @@ class AudioEngineImpl implements AudioEngine {
     if (!this.expectRunning) return;
 
     if (this.wakeLockSentinel === null) {
-      void platform.requestWakeLock().then((sentinel) => {
-        this.setWakeLock(sentinel);
-      });
+      const gen = this.micGen;
+      void platform.requestWakeLock().then((sentinel) => this.adoptWakeLock(sentinel, gen));
     }
 
     const trackDead = this.micTrack !== null && this.micTrack.readyState === 'ended';
@@ -887,10 +889,27 @@ class AudioEngineImpl implements AudioEngine {
    * fires again for the rest of the session.
    */
   private setWakeLock(sentinel: WakeLockSentinel | null): void {
+    // One lock at a time: a reset() or a reconnect asks for a new one while the old is still held, and stop()
+    // releases only the latest, so the one it replaces is released here (else the screen never auto-locks again).
+    const prev = this.wakeLockSentinel;
     this.wakeLockSentinel = sentinel;
     sentinel?.addEventListener('release', () => {
       if (this.wakeLockSentinel === sentinel) this.wakeLockSentinel = null;
     });
+    if (prev && prev !== sentinel) void platform.releaseWakeLock(prev);
+  }
+
+  /**
+   * Keep a wake lock granted for the mic opening `gen`, or release it when that opening was stopped (or superseded)
+   * while the lock was being granted. True when it was kept.
+   */
+  private adoptWakeLock(sentinel: WakeLockSentinel | null, gen: number): boolean {
+    if (gen !== this.micGen || !this.expectRunning) {
+      void platform.releaseWakeLock(sentinel);
+      return false;
+    }
+    this.setWakeLock(sentinel);
+    return true;
   }
 
   private warnRateLimited(message: string): void {

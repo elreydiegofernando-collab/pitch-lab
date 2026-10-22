@@ -218,7 +218,7 @@ describe('Audition: the results', () => {
   function sungAndMissed(): void {
     const before = snapshotOf('foundations.01');
     snapshot.value = before;
-    beginAuditionRun({ worldId: 'foundations', before, attempts: [], testIds: ['foundations.audition.1', 'foundations.audition.2'] });
+    beginAuditionRun({ worldId: 'foundations', profileId: 'profile-1',before, attempts: [], testIds: ['foundations.audition.1', 'foundations.audition.2'] });
     snapshot.value = snapshotOf('foundations.01', [passAudition('foundations', 1)]);
     attemptLog.value = [passAudition('foundations', 1), attempt({ kind: 'audition', exerciseId: 'foundations.audition.2', levelId: null, passed: false })];
     lastOutcome.value = missedTwo();
@@ -261,7 +261,7 @@ describe('Audition: the results', () => {
     const c = await arriveFromReport(() => {
       const before = snapshotOf('foundations.01');
       snapshot.value = before;
-      beginAuditionRun({ worldId: 'foundations', before, attempts: [], testIds: ['foundations.audition.1'] });
+      beginAuditionRun({ worldId: 'foundations', profileId: 'profile-1',before, attempts: [], testIds: ['foundations.audition.1'] });
       lastOutcome.value = fakeOutcome({ id: 'miss-1', target: { kind: 'audition', worldId: 'foundations' }, passed: false, exerciseId: 'foundations.audition.1' });
     });
     expect(textOf(byTestId(c, 'audition-placement'))).toBe('Pitch match');
@@ -333,7 +333,7 @@ describe('Audition: the results', () => {
     const c = await arriveFromReport(() => {
       const before = snapshotOf('foundations.01');
       snapshot.value = before;
-      beginAuditionRun({ worldId: 'foundations', before, attempts: [], testIds: ['foundations.audition.1'] });
+      beginAuditionRun({ worldId: 'foundations', profileId: 'profile-1',before, attempts: [], testIds: ['foundations.audition.1'] });
       snapshot.value = snapshotOf('foundations.01', [passAudition('foundations', 1)]);
       attemptLog.value = [passAudition('foundations', 1)];
       lastOutcome.value = fakeOutcome({ id: 'pass-1', target: { kind: 'audition', worldId: 'foundations' }, passed: true, exerciseId: 'foundations.audition.1' });
@@ -349,7 +349,7 @@ describe('Audition: the results', () => {
     const c = await arriveFromReport(() => {
       const before = snapshotOf('foundations.05');
       snapshot.value = before;
-      beginAuditionRun({ worldId: 'foundations', before, attempts: [], testIds: ['foundations.audition.3', 'foundations.audition.4'] });
+      beginAuditionRun({ worldId: 'foundations', profileId: 'profile-1',before, attempts: [], testIds: ['foundations.audition.3', 'foundations.audition.4'] });
       snapshot.value = snapshotOf('foundations.09');
       lastOutcome.value = fakeOutcome({ id: 'last', target: { kind: 'audition', worldId: 'foundations' }, passed: true, exerciseId: 'foundations.audition.4' });
     });
@@ -368,7 +368,7 @@ describe('Audition: the results', () => {
     installGuardOver(() => snapshot.peek());
     mount(<Audition />).unmount();
     const before = snapshotOf('foundations.01');
-    beginAuditionRun({ worldId: 'foundations', before, attempts: [], testIds: ['foundations.audition.1'] });
+    beginAuditionRun({ worldId: 'foundations', profileId: 'profile-1',before, attempts: [], testIds: ['foundations.audition.1'] });
     snapshot.value = snapshotOf('foundations.01', [passAudition('foundations', 1)]);
     lastOutcome.value = fakeOutcome({ id: 'pass-1', target: { kind: 'audition', worldId: 'foundations' }, passed: true, exerciseId: 'foundations.audition.1' });
     // The Sing screen and the report sit above the intro; Back from the report pops to the intro's own entry.
@@ -393,7 +393,7 @@ describe('Audition: the results', () => {
     const c = await arriveFromReport(() => {
       const before = snapshotOf('foundations.09');
       snapshot.value = before;
-      beginAuditionRun({ worldId: 'foundations', before, attempts: [], testIds: [] });
+      beginAuditionRun({ worldId: 'foundations', profileId: 'profile-1',before, attempts: [], testIds: [] });
       snapshot.value = snapshotOf('foundations.boss');
       lastOutcome.value = fakeOutcome({ id: 'done', target: { kind: 'audition', worldId: 'foundations' }, passed: true, exerciseId: 'foundations.audition.4' });
     });

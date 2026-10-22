@@ -422,10 +422,15 @@ describe('isExerciseOpenable', () => {
 describe('isRecordAttemptAllowed', () => {
   it('allows record attempts only on an exercise that has been passed', () => {
     const s = upTo('foundations.02');
-    expect(isRecordAttemptAllowed('foundations.01.ex', s, worlds)).toBe(true);
+    expect(isRecordAttemptAllowed('foundations.02.ex', s, worlds)).toBe(true);
     expect(isRecordAttemptAllowed('foundations.03.ex', s, worlds)).toBe(false); // current, not yet passed
     expect(isRecordAttemptAllowed('foundations.04.ex', s, worlds)).toBe(false);
     expect(isRecordAttemptAllowed('unknown', s, worlds)).toBe(false);
+  });
+
+  it('never on the Range finder, passed or not: a wider span is a strained one, not a record', () => {
+    expect(LEVEL_REFS.rangeFinder).toBe('foundations.01');
+    expect(isRecordAttemptAllowed('foundations.01.ex', upTo('foundations.boss'), worlds)).toBe(false);
   });
 });
 

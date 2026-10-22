@@ -34,6 +34,7 @@ import type { TargetNote, VibratoStyle } from '../core/types';
 import { CUE, DYNAMIC_CUES, VIBRATO_CUES, type DynamicShape } from '../exercises/cues';
 import { PLAN } from '../exercises/plan';
 import type { ExerciseDef, ExerciseKind } from '../exercises/types';
+import { musicalClickGain } from './synth';
 import type {
   MetronomeHandle,
   ReferenceSynth,
@@ -372,9 +373,14 @@ export function planDemoVoices(def: ExerciseDef, layout: DemoLayout, style: Vibr
   const plain: SequenceNote[] = [];
   const voices: DemoVoice[] = [];
 
-  // Reference audio first: tones the synth plays and the singer listens to.
+  // Reference audio first: tones the synth plays and the singer listens to. A reference tone that runs into a sung note
+  // (the starting pitch in the count-in, right up to the downbeat; a new key's first note) ends a release earlier, so
+  // it has faded out when the note begins: the two are the same pitch, and their overlap would sum up to twice the level.
+  const sungStarts = layout.notes.map((n) => n.start).sort((a, b) => a - b);
   for (const r of layout.reference) {
-    if (r.end - r.start > EPS) plain.push({ midi: r.midi, start: r.start, duration: r.end - r.start });
+    const next = sungStarts.find((s) => s > r.start + EPS && s < r.end + RELEASE_SEC - EPS);
+    const end = next === undefined ? r.end : Math.min(r.end, next - RELEASE_SEC);
+    if (end - r.start > EPS) plain.push({ midi: r.midi, start: r.start, duration: end - r.start });
   }
 
   const cueAt = (t: number): string | undefined => {
@@ -812,6 +818,9 @@ export function buildDemo(
   const peak = clamp01(opts.gain ?? DEFAULT_DEMO_GAIN);
   const bpm = realized.bpm ?? def.tempoBpm;
   const startAt = opts.startAt ?? ctx.currentTime + START_LEAD_SEC;
+  // The shaped voices join the synth's own mix (ahead of its soft limiter), so a swell under a click or a release is
+  // limited with everything else rather than summed past full scale at the output.
+  const shapedDest = synth.input ?? dest;
 
   let base = demoLayout(def, realized, bpm);
   if (opts.maxSec !== undefined && Number.isFinite(opts.maxSec)) base = truncateLayout(base, Math.max(0, opts.maxSec));
@@ -843,7 +852,8 @@ export function buildDemo(
     firstSound = Math.min(firstSound, downbeat - leadIn);
 
     if (def.metronome) {
-      const metro = synth.startMetronome(pass.bpm, { startAt: downbeat, countInBeats: Math.max(0, def.countInBeats) });
+      // The clicks follow the demo's level (the reference volume), well under the notes they keep time for.
+      const metro = synth.startMetronome(pass.bpm, { startAt: downbeat, countInBeats: Math.max(0, def.countInBeats), gain: musicalClickGain(peak) });
       metronomes.push(metro);
       const wait = Math.max(0, (passEnd - ctx.currentTime) * 1000);
       timers.push(setTimeout(() => metro.stop(), wait));
@@ -883,7 +893,7 @@ export function buildDemo(
           });
           break;
         case 'shaped':
-          h = playShapedVoice(ctx, dest, v, downbeat + v.start, peak);
+          h = playShapedVoice(ctx, shapedDest, v, downbeat + v.start, peak);
           break;
       }
       handles.push(h);

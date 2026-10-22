@@ -24,8 +24,19 @@ export interface CentsGaugeProps {
 
 const SPAN_CENTS = 50;
 
+/**
+ * The lane's transform for `cents`: the needle sits at the centre of a lane as wide as the track, so a percentage of the
+ * LANE is a percentage of the track (a percentage on the 3 px needle itself moved it 1.5 px at full scale). +-50c puts
+ * the needle on the track's edges. Transform-only, so it never triggers layout at 94 Hz.
+ */
+export function needleTransform(cents: number): string {
+  const clamped = Number.isFinite(cents) ? Math.max(-SPAN_CENTS, Math.min(SPAN_CENTS, cents)) : 0;
+  return `translateX(${(clamped / SPAN_CENTS) * 50}%)`;
+}
+
 export function CentsGauge(props: CentsGaugeProps): JSX.Element {
   const { toleranceCents = 25, testId } = props;
+  const laneRef = useRef<HTMLDivElement>(null);
   const needleRef = useRef<HTMLDivElement>(null);
   const readoutRef = useRef<HTMLSpanElement>(null);
   const textRef = useRef<HTMLSpanElement>(null);
@@ -36,19 +47,21 @@ export function CentsGauge(props: CentsGaugeProps): JSX.Element {
     props.ref ?? null,
     () => ({
       update(cents: number, inTolerance: boolean) {
+        const lane = laneRef.current;
         const needle = needleRef.current;
         const readout = readoutRef.current;
         const text = textRef.current;
-        if (!needle || !readout || !text) return;
+        if (!lane || !needle || !readout || !text) return;
         const voiced = Number.isFinite(cents);
-        const clamped = voiced ? Math.max(-SPAN_CENTS, Math.min(SPAN_CENTS, cents)) : 0;
         const color = !voiced ? 'var(--text-mid)' : inTolerance ? 'var(--on)' : 'var(--off)';
+        // The readout is text: in the light theme the out-of-band hue needs its text-safe variant (--off-text).
+        const textColor = !voiced ? 'var(--text-mid)' : inTolerance ? 'var(--on-text)' : 'var(--off-text)';
 
-        needle.style.transform = `translateX(${(clamped / SPAN_CENTS) * 50}%)`;
+        lane.style.transform = needleTransform(cents);
         needle.style.opacity = voiced ? '1' : '0';
         needle.style.background = color;
 
-        readout.style.color = color;
+        readout.style.color = textColor;
         text.textContent = voiced ? `${cents > 0 ? '+' : ''}${Math.round(cents)}¢` : '––';
         if (upRef.current) upRef.current.style.display = voiced && cents > 0.5 ? 'inline-block' : 'none';
         if (downRef.current) downRef.current.style.display = voiced && cents < -0.5 ? 'inline-block' : 'none';
@@ -68,7 +81,9 @@ export function CentsGauge(props: CentsGaugeProps): JSX.Element {
           style={{ left: `${50 - bandPct / 2}%`, width: `${bandPct}%` }}
         />
         <div class="pl-cents-gauge__center" aria-hidden="true" />
-        <div ref={needleRef} class="pl-cents-gauge__needle" aria-hidden="true" />
+        <div ref={laneRef} class="pl-cents-gauge__lane" aria-hidden="true">
+          <div ref={needleRef} class="pl-cents-gauge__needle" />
+        </div>
       </div>
       <div class="pl-cents-gauge__foot">
         <span class="pl-label">Cents</span>

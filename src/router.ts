@@ -181,7 +181,15 @@ export const canGoBack = computed<boolean>(() => stack.value.length > 1);
 /** True when `route` is at the root of the stack (Home). */
 export const isRoot = computed<boolean>(() => stack.value.length <= 1);
 
-function sameRoute(a: Route, b: Route): boolean {
+/**
+ * The entry right beneath the current one (where Back goes), or null at the root. A screen that offers to go "back to"
+ * a screen compares it with `sameRoute` and calls back() when it is that screen, instead of stacking a second copy of
+ * it (the take report's "Back to level" and "Finish workout").
+ */
+export const previousRoute = computed<Route | null>(() => (stack.value.length > 1 ? stack.value[stack.value.length - 2] : null));
+
+/** Same screen, same params. */
+export function sameRoute(a: Route, b: Route): boolean {
   if (a.name !== b.name) return false;
   const pa = a.params as Readonly<Record<string, string | undefined>>;
   const pb = b.params as Readonly<Record<string, string | undefined>>;
@@ -280,11 +288,23 @@ export function resetRouterForTests(initial: readonly Route[] = [HOME], waitingL
 
 let escBound = false;
 
+/**
+ * True when `Esc` belongs to what has focus, not to the screen: a key something already handled (a sheet closing
+ * itself), or one typed into a field (a text field clears or leaves itself; it must never throw the screen's work away).
+ */
+export function escapeBelongsToTarget(e: Pick<KeyboardEvent, 'defaultPrevented' | 'target'>): boolean {
+  if (e.defaultPrevented) return true;
+  const el = e.target as (Partial<HTMLElement> & { tagName?: string }) | null;
+  if (!el || typeof el.tagName !== 'string') return false;
+  const tag = el.tagName.toUpperCase();
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable === true;
+}
+
 /** Wire `Esc` = back on desktop. Idempotent; called once from app.tsx. */
 export function bindDesktopBackKey(): void {
   if (escBound || typeof window === 'undefined') return;
   escBound = true;
   window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') back();
+    if (e.key === 'Escape' && !escapeBelongsToTarget(e)) back();
   });
 }

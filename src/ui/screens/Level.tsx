@@ -90,7 +90,9 @@ function LevelView(props: { level: LevelDef; def: ExerciseDef }): JSX.Element {
   const recordHint = isUnlocked('records') ? `Pass ${levelName(world, level)} to chase personal records on it.` : requirementHint('records');
   const records = passed && isUnlocked('records') ? recordsForExercise(snap, def.id).filter((rec) => rec.metric in METRIC_INFO) : [];
   const noSavedRange = profile !== null && profile.range === null && level.id !== LEVEL_REFS.rangeFinder;
-  const attempted = progress !== undefined && progress.attempts > 0;
+  // "Best" is a score at the level's own tempo (progress/engine.ts): a Runs level sung only on its lower rungs has none yet.
+  const ladderOnly = progress !== undefined && progress.attempts > 0 && progress.bestScore === 0 && (def.tempoLadder?.length ?? 0) > 0;
+  const attempted = progress !== undefined && progress.attempts > 0 && !ladderOnly;
   const chain = boss ? bossChain(def) : [];
 
   return (
@@ -161,7 +163,7 @@ function LevelView(props: { level: LevelDef; def: ExerciseDef }): JSX.Element {
                     </span>
                   ) : (
                     <span class="pl-body pl-muted" data-testid="best-score">
-                      Not sung yet
+                      {ladderOnly ? `Not sung at ${def.tempoBpm} bpm yet` : 'Not sung yet'}
                     </span>
                   )}
                   <TallyLights lit={progress?.mastery ?? 0} />
@@ -187,7 +189,8 @@ function LevelView(props: { level: LevelDef; def: ExerciseDef }): JSX.Element {
                 </section>
               ) : null}
 
-              {recordAllowed ? (
+              {level.id === LEVEL_REFS.rangeFinder ? null : recordAllowed ? (
+                // The Range finder measures the voice: it has no records to chase (a wider span would be a strained one).
                 <Button variant="secondary" icon={Trophy} block onClick={chaseRecord} data-testid="chase-record">
                   Chase a record
                 </Button>

@@ -61,7 +61,7 @@ export function DangerZone(props: { storage: AppStorage | null }): JSX.Element {
     // Whatever the wipe managed, the app must now show what is really stored (a partial wipe stays partial).
     let reloadFailure: unknown = null;
     try {
-      await reloadSession();
+      await reloadSession({ pendingSettings: 'discard' }); // the profiles they were made for are gone
     } catch (err) {
       reloadFailure = err;
     }
@@ -89,7 +89,7 @@ export function DangerZone(props: { storage: AppStorage | null }): JSX.Element {
         Danger zone
       </h2>
       <p class="pl-body-s pl-muted pl-prose">
-        Delete every profile, attempt, recording and setting from this device. Backups you exported are not touched.
+        Delete every profile with its history, recordings, imported songs and settings from this device. This device’s latency calibration and audio setup are kept. Backups you exported are not touched.
       </p>
       <Button variant="danger" icon={Trash2} block disabled={!storage} onClick={() => setOpen(true)}>
         Delete all data
@@ -98,7 +98,10 @@ export function DangerZone(props: { storage: AppStorage | null }): JSX.Element {
       <Sheet open={open} title="Delete all data?" onClose={close}>
         <form class="pl-stack pl-profiles-form" onSubmit={wipe}>
           <p class="pl-body pl-prose">
-            This erases every profile, your whole practice history, every saved recording and all settings on this device. It cannot be undone.
+            This erases every profile, your whole practice history, every saved recording and imported song, and each profile’s settings. It cannot be undone.
+          </p>
+          <p class="pl-body-s pl-muted pl-prose" data-testid="delete-all-kept">
+            Kept: this device’s latency calibration and audio setup (headphones, microphone), so you do not have to calibrate again.
           </p>
           <TextField id="delete-all-confirm" label={`Type ${CONFIRM_WORD} to confirm`} value={typed} onInput={setTyped} literal disabled={busy} data-testid="delete-all-confirm" />
           {error ? <Banner kind="error" message={error} /> : null}

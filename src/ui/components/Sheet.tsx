@@ -7,6 +7,7 @@
 import { useEffect, useRef } from 'preact/hooks';
 import type { ComponentChildren, JSX } from 'preact';
 import { X } from 'lucide-preact';
+import { sheetOpened } from '../../state/toast';
 
 export interface SheetProps {
   open: boolean;
@@ -29,6 +30,9 @@ export function Sheet(props: SheetProps): JSX.Element | null {
   const { open, title, onClose, children, class: className, initialFocus = 'first' } = props;
   const sheetRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
+
+  // While open, toasts move clear of the sheet (src/state/toast.ts).
+  useEffect(() => (open ? sheetOpened() : undefined), [open]);
 
   useEffect(() => {
     if (!open) return undefined;

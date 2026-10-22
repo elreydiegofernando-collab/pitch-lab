@@ -12,15 +12,8 @@
   --wl-amber-ink: color-mix(in srgb, var(--tally) 72%, var(--text-hi));
 }
 
-/* World hues are graphics (rules, rings, the cable). On light surfaces the pale ones (yellow, sky blue, bluish green,
-   cream) fall under 3:1, so the light theme uses the contrast-adjusted tokens that already exist for the same hues. */
-:root[data-theme='light'] .wl-scope {
-  --world-vibrato: var(--on);
-  --world-inflections: var(--good);
-  --world-runs: var(--meh);
-  --world-dynamics: var(--off);
-  --world-song: var(--text-hi);
-}
+/* World hues are graphics (rules, rings, the cable). tokens.css gives the light theme its contrast-adjusted world hues
+   for every screen, so nothing here overrides them. */
 
 .wl-page {
   gap: var(--sp-6);

@@ -7,6 +7,10 @@
  * can be 3x slower than on a quiet box, while the best run is a stable
  * estimate of the real cost. The median is printed too (run with
  * --disableConsoleIntercept) and is what the build report quotes.
+ *
+ * Best-of-N is not enough on its own: with ~20 workers busy for the whole run, every one of the 25 samples was 5x slow
+ * and the budget failed with no bug. vitest.config.ts therefore runs this file as its own 'perf' project, in a later
+ * group than the rest of the suite, so it measures on a machine the suite itself is no longer loading.
  */
 import { describe, expect, it } from 'vitest';
 import { analyzeAccuracy } from './accuracy';

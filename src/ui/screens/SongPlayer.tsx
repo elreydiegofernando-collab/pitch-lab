@@ -24,7 +24,7 @@ import {
   type SongSpeed,
 } from '../../runtime/song-session';
 import { engineState } from '../../state/engine-store';
-import { snapshot } from '../../state/session';
+import { activeProfile, snapshot } from '../../state/session';
 import { getSong, songIndex, songsLoaded } from '../../state/songs';
 import { AppBar } from '../components/AppBar';
 import { Banner } from '../components/Banner';
@@ -51,8 +51,17 @@ interface Remembered {
   backingVolume: number;
 }
 
-/** Each song's player choices for this page visit (not stored: a new visit starts from the suggested key). */
+/**
+ * Each singer's player choices per song for this page visit (not stored: a new visit starts from the suggested key).
+ * Keyed by profile and song: the key, phrase and speed one singer chose never open another singer's player (a profile
+ * switch, a deleted profile and Delete all data, which makes a new profile id, all start from that singer's own key).
+ */
 const remembered = new Map<string, Remembered>();
+
+/** The remembered map's key for the active singer and `songId`. */
+export function rememberedKey(songId: string): string {
+  return `${activeProfile.peek()?.id ?? ''}:${songId}`;
+}
 
 function remember(session: SongSession): Remembered {
   return {
@@ -208,6 +217,8 @@ export function SongPlayer(): JSX.Element {
     if (!open) return undefined;
     let cancelled = false;
     let session: SongSession | null = null;
+    // Whose choices these are: fixed when the player opens, so leaving after a profile switch files them correctly.
+    const key = rememberedKey(songId);
     setLoaded({ status: 'loading' });
     void getSong(songId).then((song) => {
       if (cancelled) return;
@@ -216,13 +227,13 @@ export function SongPlayer(): JSX.Element {
         return;
       }
       session = createSongSession(song, { recordId });
-      restore(session, remembered.get(songId));
+      restore(session, remembered.get(key));
       setLoaded({ status: 'ready', session });
     });
     return () => {
       cancelled = true;
       if (session) {
-        remembered.set(songId, remember(session));
+        remembered.set(key, remember(session));
         session.dispose();
       }
     };

@@ -12,6 +12,7 @@
 import { useEffect, useRef } from 'preact/hooks';
 import type { JSX } from 'preact';
 import { Ellipsis, Mic, RotateCcw, Square, Volume2 } from 'lucide-preact';
+import { activatedBySpace, ignoresShortcuts } from '../components/keys';
 
 export type PrimaryKind = 'sing' | 'stop' | 'retry' | 'busy';
 
@@ -33,24 +34,6 @@ const PRIMARY_ARIA: Record<PrimaryKind, string | undefined> = {
   retry: 'Try again',
   busy: undefined,
 };
-
-const SPACE_ACTIVATED_ROLES: ReadonlySet<string> = new Set(['button', 'switch', 'radio', 'checkbox', 'tab', 'menuitem', 'option', 'link']);
-
-/** Shortcuts must not steal typing, a range slider, or anything inside an open sheet. */
-function ignoresShortcuts(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target.isContentEditable) return true;
-  if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return true;
-  return target.closest('[role="dialog"]') !== null;
-}
-
-/** Space already means "activate" on these: leave it to the browser. */
-function activatedBySpace(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target.tagName === 'BUTTON' || target.tagName === 'SUMMARY' || (target.tagName === 'A' && target.hasAttribute('href'))) return true;
-  const role = target.getAttribute('role');
-  return role !== null && SPACE_ACTIVATED_ROLES.has(role);
-}
 
 function PrimaryIcon({ kind }: { kind: PrimaryKind }): JSX.Element {
   if (kind === 'busy') return <span class="pl-btn__spinner" aria-hidden="true" />;

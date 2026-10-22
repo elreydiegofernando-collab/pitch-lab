@@ -9,7 +9,7 @@ import type { AfterTakeAction } from '../../runtime/types';
 import type { VocalRange } from '../../storage/schema';
 import { RangeCard, rangeLabel } from './RangeCard';
 import { ReportBar, splitActions } from './ReportBar';
-import { MetricTiles, TipCard, VerdictLine } from './ReportParts';
+import { MetricTiles, TipCard, VerdictLine, notJudgedLine } from './ReportParts';
 
 let container: HTMLElement;
 
@@ -41,16 +41,17 @@ const tile = (over: Partial<ReportTile> = {}): ReportTile => ({
 });
 
 describe('VerdictLine', () => {
-  it('pairs each verdict with a glyph and words', async () => {
+  it('pairs each verdict with a glyph and words, in a heading the report can move focus to', async () => {
     for (const [verdict, word] of [
       ['passed', 'Passed'],
       ['not-yet', 'Not yet'],
       ['not-judged', 'Not judged'],
+      ['done', 'Done'],
     ] as const) {
       await show(<VerdictLine verdict={verdict} word={word} caption="Sustain I" ladderLine={null} />);
       expect(container.querySelector('h2')?.textContent).toBe(word);
+      expect(container.querySelector('h2')?.getAttribute('tabindex')).toBe('-1');
       expect(container.querySelector('svg')).not.toBeNull();
-      expect(container.querySelector('.pl-verdict__line')?.getAttribute('role')).toBe('status');
       await act(() => {
         render(null, container);
       });
@@ -61,6 +62,15 @@ describe('VerdictLine', () => {
     await show(<VerdictLine verdict="not-judged" word="Not judged" caption="Interval jumps I" ladderLine="Next take at 104 bpm" />);
     expect(container.textContent).toContain('Not judged: this exercise doesn’t fit your saved range.');
     expect(container.textContent).toContain('Next take at 104 bpm');
+  });
+
+  it('says why: a folded range, or a take stopped part way (worded for a level or an audition test)', async () => {
+    expect(notJudgedLine('folded')).toBe('Not judged: this exercise doesn’t fit your saved range.');
+    expect(notJudgedLine('stopped')).toBe('Stopped early: practice only, not judged for the level.');
+    expect(notJudgedLine('stopped', true)).toBe('Stopped early: practice only, not judged as a test.');
+    await show(<VerdictLine verdict="not-judged" word="Not judged" caption="Sirens & glides" ladderLine={null} reasonLine={notJudgedLine('stopped')} />);
+    expect(container.querySelector('[data-testid="verdict-reason"]')?.textContent).toBe('Stopped early: practice only, not judged for the level.');
+    expect(container.textContent).not.toContain('saved range');
   });
 });
 

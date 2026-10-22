@@ -75,13 +75,23 @@ describe('Dashboard: skills show only with their world', () => {
   });
 
   it('shows the latest value and says when a skill has no takes yet', async () => {
-    show([attemptAt('foundations.01'), attemptAt('foundations.02', { metrics: { 'accuracy.inTolerancePct': 88 } })]);
+    show([attemptAt('foundations.01'), attemptAt('foundations.02', { metrics: { 'accuracy.medianAbsCents': 9, 'accuracy.inTolerancePct': 88 } })]);
     await mount();
     const rows = Array.from(container.querySelectorAll('.pl-dash-skill'));
     const accuracy = rows.find((r) => r.textContent?.includes('Accuracy'))!;
-    expect(accuracy.textContent).toContain('88%');
+    expect(accuracy.textContent).toContain('9¢'); // the typical miss: the same at every tolerance
+    expect(accuracy.textContent).toContain('lower is better');
     const crispness = rows.find((r) => r.textContent?.includes('Crispness'))!;
     expect(crispness.textContent).toContain('No takes in 30 days');
+  });
+
+  it('says which tolerance a Transitions line follows, since its figure is judged against one', async () => {
+    show([attemptAt('foundations.01'), attemptAt('foundations.09', { metrics: { 'transition.cleanRate': 0.75 } })]);
+    await mount();
+    const rows = Array.from(container.querySelectorAll('.pl-dash-skill'));
+    const transitions = rows.find((r) => r.textContent?.includes('Transitions'))!;
+    expect(transitions.textContent).toContain('Clean changes at ±10¢');
+    expect(transitions.textContent).toContain('75%');
   });
 });
 
@@ -89,8 +99,8 @@ describe('Dashboard: the numbers behind the charts', () => {
   it('expands a skill into a table of its last values', async () => {
     show([
       attemptAt('foundations.01'),
-      attemptAt('foundations.02', { daysAgo: 2, metrics: { 'accuracy.inTolerancePct': 70 } }),
-      attemptAt('foundations.02', { daysAgo: 0, metrics: { 'accuracy.inTolerancePct': 90 } }),
+      attemptAt('foundations.02', { daysAgo: 2, metrics: { 'accuracy.medianAbsCents': 17 } }),
+      attemptAt('foundations.02', { daysAgo: 0, metrics: { 'accuracy.medianAbsCents': 8 } }),
     ]);
     await mount();
     const head = Array.from(container.querySelectorAll<HTMLButtonElement>('.pl-dash-skill__head')).find((b) => b.textContent?.includes('Accuracy'))!;
@@ -103,8 +113,8 @@ describe('Dashboard: the numbers behind the charts', () => {
     expect(head.getAttribute('aria-label')).toContain('Hide the table');
     const rows = Array.from(container.querySelectorAll('#dash-skill-accuracy tbody tr')).map((tr) => tr.textContent);
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toContain('90%'); // newest first
-    expect(rows[1]).toContain('70%');
+    expect(rows[0]).toContain('8¢'); // newest first
+    expect(rows[1]).toContain('17¢');
   });
 
   it('gives Momentum a "Show as table" toggle that swaps the bars for the days', async () => {
@@ -200,7 +210,7 @@ describe('Dashboard: level map, range, bests, practice', () => {
     await act(() => {
       more.click();
     });
-    expect(rows()).toBe(9);
+    expect(rows()).toBe(8); // every passed level but the Range finder, whose span is a measurement, not a record
     expect(more.textContent).toBe('Show fewer');
   });
 

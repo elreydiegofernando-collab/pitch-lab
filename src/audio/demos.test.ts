@@ -27,6 +27,7 @@ import {
   type DemoOptions,
   type DemoRealized,
 } from './demos';
+import { musicalClickGain } from './synth';
 import type { GlideSpec, MetronomeHandle, NoteSpec, ReferenceSynth, ScheduledHandle, SequenceNote, Timbre } from './synth-types';
 
 // ---------------------------------------------------------------- fake Web Audio graph
@@ -344,7 +345,7 @@ describe('buildDemo: plain notes, count-in and reference audio', () => {
     const m = synth.of('startMetronome');
     expect(m).toHaveLength(1);
     expect(m[0].bpm).toBe(60);
-    expect(m[0].opts).toEqual({ startAt: START + 2, countInBeats: 2 }); // beat 0 = the downbeat
+    expect(m[0].opts).toEqual({ startAt: START + 2, countInBeats: 2, gain: musicalClickGain(PEAK) }); // beat 0 = the downbeat
     expect(h.startAt).toBe(START);
     // Nothing sounds past the end of the pattern (downbeat + totalSec), and the clicks run to it.
     expect(h.endAt).toBeCloseTo(START + 2 + 8, 9);
@@ -355,14 +356,44 @@ describe('buildDemo: plain notes, count-in and reference audio', () => {
     const seq = synth.of('playSequence');
     expect(seq).toHaveLength(1);
     expect(seq[0].opts).toEqual({ startAt: START, timbre: 'soft', gain: PEAK });
-    // Relative to the sequence start (the count-in tone at downbeat - 2).
-    expect(seq[0].notes).toEqual([
-      { midi: 60, start: 0, duration: 2 },
+    // Relative to the sequence start (the count-in tone at downbeat - 2). The count-in tone ends a release (60 ms)
+    // before the downbeat, so it has faded out when the first note, on the same pitch, begins.
+    expect(seq[0].notes).toHaveLength(3);
+    expect(seq[0].notes![0]).toMatchObject({ midi: 60, start: 0 });
+    expect(seq[0].notes![0].duration).toBeCloseTo(2 - 0.06, 9);
+    expect(seq[0].notes!.slice(1)).toEqual([
       { midi: 60, start: 2, duration: 4 },
       { midi: 64, start: 7, duration: 2 },
     ]);
     expect(synth.of('playNote')).toHaveLength(0);
     expect(ctx.oscs).toHaveLength(0); // no custom voices for plain material
+  });
+
+  it('never lets a reference tone sound under the note it leads into (the Range finder count-in), but keeps a tone with a rest after it whole', () => {
+    demo(def, realized({ notes: [note(60, 0, 2), note(64, 4, 6)], reference: [note(60, -2, 0), note(64, 2.5, 3.98)], countInSec: 2, totalSec: 6 }));
+    const notes = synth.of('playSequence')[0].notes!;
+    const ends = notes.map((n) => START + n.start + n.duration);
+    // The count-in tone (sequence start = START) releases before the downbeat at START + 2.
+    expect(ends[0] + 0.06).toBeLessThanOrEqual(START + 2 + 1e-9);
+    // The tone at 2.5 (sequence offset 4.5) that would still be releasing when the note at 4 starts ends a release before it.
+    const second = notes.find((n) => n.midi === 64 && Math.abs(n.start - 4.5) < 1e-9)!;
+    expect(second.duration).toBeLessThan(3.98 - 2.5);
+    expect(START + second.start + second.duration + 0.06).toBeLessThanOrEqual(START + 2 + 4 + 1e-9);
+    // A Listen tone with a rest after it (Pitch match) is untouched.
+    synth = new FakeSynth();
+    demo(makeDef({ kind: 'pitch-match' }), realized({ reference: [note(60, 0, 2)], notes: [note(60, 3, 6)] }));
+    expect(synth.of('playSequence')[0].notes![0].duration).toBe(2);
+  });
+
+  it('connects its own shaped voices to the synth\'s mix (ahead of its limiter) when the synth offers one', () => {
+    const swell = makeDef({ kind: 'swell', analyzers: ['dynamics'] });
+    const r2 = realized({ notes: [note(60, 0, 4)], cues: [cue(0, CUE.swell)] });
+    const bus = new FakeNode();
+    Object.assign(synth, { input: bus });
+    demo(swell, r2);
+    expect(ctx.oscs.length).toBeGreaterThan(0);
+    expect(ctx.gains.some((g) => g.connections.includes(bus))).toBe(true);
+    expect(ctx.gains.some((g) => g.connections.includes(dest))).toBe(false);
   });
 
   it('a pattern without a metronome starts no metronome, and an exercise with nothing before the downbeat starts at startAt', () => {
@@ -906,10 +937,10 @@ describe('buildDemo: slow pass first', () => {
     expect(seq[0].notes![2].duration).toBeCloseTo(sixteenth(60), 9);
     const metros = synth.of('startMetronome');
     expect(metros.map((m) => m.bpm)).toEqual([60, 120]);
-    expect(metros[0].opts).toEqual({ startAt: START + 2, countInBeats: 2 });
+    expect(metros[0].opts).toEqual({ startAt: START + 2, countInBeats: 2, gain: musicalClickGain(PEAK) });
     // Pass 2 begins after pass 1's pattern end (2 * 2 s) plus the gap, then its own 1 s count-in.
     const downbeat2 = START + 2 + 4 + PASS_GAP_SEC + 1;
-    expect(metros[1].opts).toEqual({ startAt: downbeat2, countInBeats: 2 });
+    expect(metros[1].opts).toEqual({ startAt: downbeat2, countInBeats: 2, gain: musicalClickGain(PEAK) });
     expect(seq[1].opts!.startAt).toBeCloseTo(downbeat2 - 1, 9);
     expect(seq[1].notes![1]).toMatchObject({ midi: 64, start: 1 });
     expect(seq[1].notes![2].start).toBeCloseTo(1 + sixteenth(120), 9);
