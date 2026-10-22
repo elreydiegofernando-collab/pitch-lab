@@ -1,0 +1,56 @@
+#VERSION:1.1.0
+#TITLE:Holy, Holy, Holy! Lord God Almighty
+#ARTIST:John B. Dykes (Nicaea)
+#BPM:88
+#GAP:0
+#LANGUAGE:English
+#COMMENT:Public domain. Words: Reginald Heber, 1826. Melody NICAEA: John B. Dykes, Hymns Ancient and Modern, 1861. Chart by the Pitch Lab project (MIT licence).
+: 0 4 0 Ho
+: 4 4 0 ly,
+: 8 4 4  ho
+: 12 4 4 ly,
+: 16 8 7  ho
+: 24 8 7 ly!
+: 32 8 9  Lord
+: 40 4 9  God
+: 44 4 9  Al
+: 48 8 7 might
+: 56 8 4 y!
+- 64
+: 64 6 7 Ear
+: 70 2 7 ly
+: 72 4 7  in
+: 76 4 7  the
+: 80 8 12  morn
+: 88 4 11 ing
+: 92 4 7  our
+: 96 4 2  song
+: 100 4 7  shall
+: 104 6 9  rise
+: 110 2 7  to
+: 112 16 7  Thee;
+- 128
+: 128 4 0 Ho
+: 132 4 0 ly,
+: 136 4 4  ho
+: 140 4 4 ly,
+: 144 8 7  ho
+: 152 8 7 ly!
+: 160 6 9  Mer
+: 166 2 9 ci
+: 168 4 9 ful
+: 172 4 9  and
+: 176 8 7  might
+: 184 8 7 y!
+- 192
+: 192 8 12 God
+: 200 4 7  in
+: 204 4 7  three
+: 208 8 9  Per
+: 216 8 4 sons,
+: 224 4 5  bless
+: 228 4 2 ed
+: 232 6 2  Tri
+: 238 2 0 ni
+: 240 16 0 ty!
+E

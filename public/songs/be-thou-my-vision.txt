@@ -1,0 +1,58 @@
+#VERSION:1.1.0
+#TITLE:Be Thou My Vision
+#ARTIST:Traditional Irish (Slane)
+#BPM:80
+#GAP:0
+#LANGUAGE:English
+#COMMENT:Public domain. Words: attributed to Dallan Forgaill, translated by Mary E. Byrne, 1905, versified by Eleanor H. Hull, 1912. Melody SLANE: traditional Irish (Joyce, Old Irish Folk Music and Songs, 1909), as set in the Irish Church Hymnal, 1919. Chart by the Pitch Lab project (MIT licence).
+: 0 4 0 Be
+: 4 4 0  Thou
+: 8 2 2  my
+: 10 2 0 ~
+: 12 4 -3  Vi
+: 16 4 -5 sion,
+: 20 2 -5  O
+: 22 2 -3 ~
+: 24 4 0  Lord
+: 28 4 0  of
+: 32 4 2  my
+: 36 12 4  heart;
+- 48
+: 48 4 2 Naught
+: 52 4 2  be
+: 56 4 2  all
+: 60 4 2  else
+: 64 4 4  to
+: 68 4 7  me,
+: 72 4 9  save
+: 76 4 7  that
+: 80 4 4  Thou
+: 84 12 7  art.
+- 96
+: 96 4 9 Thou
+: 100 2 9  my
+: 102 2 11 ~
+: 104 2 12 ~
+: 106 2 11 ~
+: 108 4 9  best
+: 112 4 7  thought,
+: 116 4 4  by
+: 120 4 7  day
+: 124 4 0  or
+: 128 4 -1  by
+: 132 8 -3  night,
+: 140 4 -5 ~
+- 144
+: 144 4 0 Wak
+: 148 4 4 ing
+: 152 4 7  or
+: 156 2 9  sleep
+: 158 2 7 ~
+: 160 4 4 ing,
+: 164 2 0  Thy
+: 166 2 4 ~
+: 168 4 2  pres
+: 172 4 0 ence
+: 176 4 0  my
+: 180 12 0  light.
+E

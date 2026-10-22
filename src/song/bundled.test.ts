@@ -40,13 +40,19 @@ const TENOR: VocalRange = { comfortable: { low: 48, high: 72 }, extended: { low:
 const BARITONE: VocalRange = { comfortable: { low: 43, high: 67 }, extended: { low: 40, high: 71 }, measuredAt: '2026-10-21T00:00:00.000Z' };
 const BEGINNER: VocalRange = { comfortable: { low: 48, high: 64 }, extended: { low: 45, high: 69 }, measuredAt: '2026-10-21T00:00:00.000Z' };
 
-/** The intended spread: one new song per world step, and two Foundations starters (SPEC §11.2). */
+/** The intended spread: Foundations starters first, then songs at every later world, so each Boss Recital opens something (SPEC §11.2). */
 const EXPECTED_WORLD: Record<string, { world: WorldId; reasons: string[] }> = {
-  'twinkle-twinkle': { world: 'foundations', reasons: [] },
   'auld-lang-syne': { world: 'foundations', reasons: [] },
+  'the-holy-city': { world: 'foundations', reasons: [] },
+  'twinkle-twinkle': { world: 'foundations', reasons: [] },
   'amazing-grace': { world: 'vibrato', reasons: ['sustained-style'] },
-  'silent-night': { world: 'inflections', reasons: ['wide-range'] },
+  'holy-holy-holy': { world: 'vibrato', reasons: ['sustained-style'] },
+  'it-is-well': { world: 'vibrato', reasons: ['sustained-style'] },
+  'o-holy-night': { world: 'vibrato', reasons: ['sustained-style'] },
+  'panis-angelicus': { world: 'vibrato', reasons: ['sustained-style'] },
+  'be-thou-my-vision': { world: 'inflections', reasons: ['wide-range'] },
   'danny-boy': { world: 'inflections', reasons: ['wide-range'] },
+  'silent-night': { world: 'inflections', reasons: ['wide-range'] },
   'ave-maria': { world: 'runs', reasons: ['fast-run'] },
 };
 
@@ -62,9 +68,9 @@ describe('public/songs index', () => {
     expect(Object.keys(EXPECTED_WORLD).sort()).toEqual(index.songs.map((s) => s.id).sort());
   });
 
-  it('ships between 4 and 6 songs (the brief)', () => {
+  it('ships between 4 and 16 songs (a small starter library that is precached for offline use: raise the cap on purpose)', () => {
     expect(index.songs.length).toBeGreaterThanOrEqual(4);
-    expect(index.songs.length).toBeLessThanOrEqual(6);
+    expect(index.songs.length).toBeLessThanOrEqual(16);
   });
 });
 
@@ -122,7 +128,7 @@ describe.each(BUNDLED_EXPECTED)('bundled chart: $id', (expected) => {
     expect(song.phrases[song.phrases.length - 1].end).toBeCloseTo(last.start + last.duration, 9);
     const seconds = last.start + last.duration;
     expect(seconds).toBeGreaterThan(20);
-    expect(seconds).toBeLessThan(120);
+    expect(seconds).toBeLessThan(240); // a whole song, not an excerpt: the full Panis Angelicus (both statements) is 178 s
   });
 
   it('sits in a tenor-friendly default key (C3 to C5)', () => {

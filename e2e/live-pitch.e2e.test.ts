@@ -137,7 +137,7 @@ describe('live pitch — A3 220 Hz tone', () => {
         }
         return sizes;
       }, base);
-      expect(Object.keys(charts).length).toBeGreaterThanOrEqual(6);
+      expect(Object.keys(charts).length).toBeGreaterThanOrEqual(12);
       for (const [id, size] of Object.entries(charts)) expect(size, `${id} chart served offline`).toBeGreaterThan(200);
 
       // navigateFallback serves index.html for any precached route while offline.

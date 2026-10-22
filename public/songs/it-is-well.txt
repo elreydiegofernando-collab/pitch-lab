@@ -1,0 +1,69 @@
+#VERSION:1.1.0
+#TITLE:It Is Well with My Soul
+#ARTIST:Philip P. Bliss (Ville du Havre)
+#BPM:76
+#GAP:0
+#LANGUAGE:English
+#COMMENT:Public domain. Words: Horatio G. Spafford, 1873. Melody VILLE DU HAVRE: Philip P. Bliss, Gospel Hymns No. 2, 1876. Chart by the Pitch Lab project (MIT licence).
+: 0 4 5 When
+: 4 8 5  peace,
+: 12 4 3  like
+: 16 4 2  a
+: 20 8 2  riv
+: 28 4 0 er,
+: 32 4 2  at
+: 36 4 3 tend
+: 40 4 7 ~
+: 44 4 5 eth
+: 48 4 3  my
+: 52 12 2  way,
+- 64
+: 64 4 5 When
+: 68 8 10  sor
+: 76 4 9 rows
+: 80 4 7  like
+: 84 8 7  sea
+: 92 4 5  bil
+: 96 4 4 lows
+: 100 12 5  roll;
+- 112
+: 112 4 5 What
+: 116 8 10 ev
+: 124 4 10 er
+: 128 4 9  my
+: 132 8 7  lot,
+: 140 4 7  Thou
+: 144 4 7  hast
+: 148 8 12  taught
+: 156 4 12  me
+: 160 4 10  to
+: 164 8 9  say,
+- 172
+: 172 4 7 It
+: 176 4 5  is
+: 180 8 10  well,
+: 188 4 10  it
+: 192 4 10  is
+: 196 8 10  well
+: 204 6 9  with
+: 210 2 10  my
+: 212 12 10  soul.
+- 224
+: 224 4 5 It
+: 228 4 5  is
+: 232 24 5  well,
+- 256
+: 256 4 5 with
+: 260 4 5  my
+: 264 24 5  soul,
+- 288
+: 288 4 2 It
+: 292 4 5  is
+: 296 8 7  well,
+: 304 4 7  it
+: 308 4 10  is
+: 312 8 10  well
+: 320 6 9  with
+: 326 2 10  my
+: 328 12 10  soul.
+E

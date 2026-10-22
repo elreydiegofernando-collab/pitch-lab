@@ -50,6 +50,22 @@ function memoryStore(initial: Record<string, string> = {}) {
 
 const BASE = '/pitch-lab/';
 
+/** Every bundled song, in songs/index.json order (unlock world, then title): the library loads exactly these, in this order. */
+const BUNDLED_IDS = [
+  'auld-lang-syne',
+  'the-holy-city',
+  'twinkle-twinkle',
+  'amazing-grace',
+  'holy-holy-holy',
+  'it-is-well',
+  'o-holy-night',
+  'panis-angelicus',
+  'be-thou-my-vision',
+  'danny-boy',
+  'silent-night',
+  'ave-maria',
+];
+
 beforeEach(() => clearBundledLibraryCache());
 
 describe('songsUrl', () => {
@@ -104,7 +120,7 @@ describe('loading the library', () => {
     const { fetch, calls } = fakeFetch(REAL, BASE);
     const lib = await loadBundledLibrary({ fetch, baseUrl: BASE, store: null });
     expect(lib.errors).toEqual([]);
-    expect(lib.songs.map((s) => s.id)).toEqual(['twinkle-twinkle', 'auld-lang-syne', 'amazing-grace', 'silent-night', 'danny-boy', 'ave-maria']);
+    expect(lib.songs.map((s) => s.id)).toEqual(BUNDLED_IDS);
     expect(calls[0]).toBe('/pitch-lab/songs/index.json');
     expect(new Set(calls.slice(1))).toEqual(new Set(lib.songs.map((s) => `/pitch-lab/songs/${s.id}.txt`)));
     expect(lib.songs.every((s) => s.source === 'bundled' && s.difficulty.rangeSemitones > 0)).toBe(true);
@@ -122,7 +138,7 @@ describe('loading the library', () => {
     served.delete('silent-night.txt');
     const { fetch } = fakeFetch(served, BASE);
     const lib = await loadBundledLibrary({ fetch, baseUrl: BASE, store: null });
-    expect(lib.songs.map((s) => s.id)).toEqual(['twinkle-twinkle', 'auld-lang-syne', 'amazing-grace', 'ave-maria']);
+    expect(lib.songs.map((s) => s.id)).toEqual(BUNDLED_IDS.filter((id) => id !== 'danny-boy' && id !== 'silent-night'));
     expect(lib.errors.map((e) => e.id).sort()).toEqual(['danny-boy', 'silent-night']);
     expect(lib.errors.find((e) => e.id === 'silent-night')!.message).toMatch(/HTTP 404/);
     expect(lib.errors.find((e) => e.id === 'danny-boy')!.message).toMatch(/#BPM|Unrecognized/);
@@ -171,7 +187,7 @@ describe('getBundledLibrary (memoised)', () => {
   it('does not cache a failed load, so a retry can succeed', async () => {
     await expect(getBundledLibrary({ fetch: fakeFetch(new Map(), BASE).fetch, baseUrl: BASE, store: null })).rejects.toThrow();
     const lib = await getBundledLibrary({ fetch: fakeFetch(REAL, BASE).fetch, baseUrl: BASE, store: null });
-    expect(lib.songs).toHaveLength(6);
+    expect(lib.songs).toHaveLength(BUNDLED_IDS.length);
   });
 });
 
@@ -192,14 +208,14 @@ describe('offline mirror', () => {
     };
     const lib = await loadBundledLibrary({ fetch: offline, baseUrl: BASE, store });
     expect(lib.errors).toEqual([]);
-    expect(lib.songs).toHaveLength(6);
+    expect(lib.songs).toHaveLength(BUNDLED_IDS.length);
   });
 
   it('also falls back to the store on an HTTP error, but still reports a file the store never had', async () => {
     const { store } = memoryStore({ [`${BASE}songs/index.json`]: REAL.get('index.json') as string, [`${BASE}songs/amazing-grace.txt`]: REAL.get('amazing-grace.txt') as string });
     const lib = await loadBundledLibrary({ fetch: fakeFetch(new Map(), BASE).fetch, baseUrl: BASE, store });
     expect(lib.songs.map((s) => s.id)).toEqual(['amazing-grace']);
-    expect(lib.errors).toHaveLength(5);
+    expect(lib.errors).toHaveLength(BUNDLED_IDS.length - 1);
   });
 
   it('never lets a failing store break an online load', async () => {
@@ -212,7 +228,7 @@ describe('offline mirror', () => {
       },
     };
     const lib = await loadBundledLibrary({ fetch: fakeFetch(REAL, BASE).fetch, baseUrl: BASE, store: broken });
-    expect(lib.songs).toHaveLength(6);
+    expect(lib.songs).toHaveLength(BUNDLED_IDS.length);
     const down = async (): Promise<Res> => {
       throw new TypeError('offline');
     };

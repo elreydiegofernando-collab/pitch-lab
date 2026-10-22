@@ -1,0 +1,118 @@
+#VERSION:1.1.0
+#TITLE:The Holy City
+#ARTIST:Stephen Adams (Michael Maybrick)
+#BPM:240
+#GAP:0
+#LANGUAGE:English
+#COMMENT:Public domain. Music: Michael Maybrick writing as Stephen Adams, 1892. Words: Frederic Weatherly, 1892 (verse 1 and refrain). Chart by the Pitch Lab project (MIT licence).
+: 0 6 -4 Last
+: 6 9 1  night
+: 15 3 1  I
+: 18 6 1  lay
+: 24 6 1  a
+: 30 6 0  sleep
+: 36 6 0 ing,
+- 42 48
+: 48 6 0 There
+: 54 6 -2  came
+: 60 6 -2  a
+: 66 9 0  dream
+: 75 3 -2  so
+: 78 12 -4  fair,
+- 90 96
+: 96 6 -4 I
+: 102 6 -4  stood
+: 108 6 -4  in
+: 114 9 1  old
+: 123 3 0  Je
+: 126 9 0 ru
+: 135 3 -2 sa
+: 138 6 -2 lem
+- 144
+: 144 6 -2 Be
+: 150 9 -2 side
+: 159 3 -2  the
+: 162 6 0  tem
+: 168 6 1 ple
+: 174 12 0  there.
+- 186 192
+: 192 6 -4 I
+: 198 9 1  heard
+: 207 3 1  the
+: 210 6 1  chil
+: 216 6 1 dren
+: 222 6 0  sing
+: 228 6 0 ing,
+- 234 240
+: 240 6 0 And
+: 246 6 -2  e
+: 252 6 -2 ver
+: 258 9 0  as
+: 267 3 -2  they
+: 270 12 -4  sang,
+- 282 288
+: 288 6 -4 Me
+: 294 9 -4 thought
+: 303 3 -4  the
+: 306 6 -5  voice
+: 312 6 -4  of
+: 318 12 0  An
+: 330 6 -2 gels
+- 336
+: 336 6 -4 From
+: 342 9 1  Heav'n
+: 351 3 1  in
+: 354 6 0  an
+: 360 6 -2 swer
+: 366 12 3  rang;
+- 378 384
+: 384 6 3 Me
+: 390 12 3 thought
+: 402 12 3  the
+: 414 18 7  voice
+: 432 6 5  of
+: 438 12 3  An
+: 450 12 0 ~
+: 462 6 -4 gels
+- 468 474
+: 474 12 1 From
+: 486 18 0  Heav'n
+: 504 6 0  in
+: 510 12 0  an
+: 522 12 -2 swer
+: 534 24 -4  rang.
+- 558 570
+: 570 12 -4 Je
+: 582 18 1 ru
+: 600 6 -4 sa
+: 606 12 -4 lem!
+: 618 12 -4  Je
+: 630 18 5 ru
+: 648 6 3 sa
+: 654 12 1 lem!
+- 666 678
+: 678 12 1 Lift
+: 690 8 1  up
+: 698 4 0  your
+: 702 12 1  gates
+: 714 12 6  and
+: 726 24 5  sing,
+- 750 762
+: 762 12 5 Ho
+: 774 24 3 san
+: 798 12 -4 na
+: 810 4 -4  in
+: 814 4 0 ~
+: 818 4 3  the
+: 822 24 8  high
+: 846 6 1 est!
+- 852 858
+: 858 12 6 Ho
+: 870 12 5 san
+: 882 4 5 na
+: 886 4 3 ~
+: 890 4 1 ~
+: 894 12 3  to
+: 906 12 5  your
+: 918 24 1  King!
+E

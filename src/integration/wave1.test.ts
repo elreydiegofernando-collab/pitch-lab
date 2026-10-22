@@ -476,7 +476,9 @@ describe('the catalog and the engines are wired together', () => {
 
   it('gates the bundled songs on worlds that exist, and every starter song loads', () => {
     expect(library.errors).toEqual([]);
-    expect(library.songs.map((s) => s.id).sort()).toEqual(['amazing-grace', 'ave-maria', 'auld-lang-syne', 'danny-boy', 'silent-night', 'twinkle-twinkle'].sort());
+    expect(library.songs.map((s) => s.id).sort()).toEqual(
+      ['amazing-grace', 'auld-lang-syne', 'ave-maria', 'be-thou-my-vision', 'danny-boy', 'holy-holy-holy', 'it-is-well', 'o-holy-night', 'panis-angelicus', 'silent-night', 'the-holy-city', 'twinkle-twinkle'].sort(),
+    );
     for (const song of library.songs) expect(bossOf(song.difficulty.requiredWorld), song.id).toBeDefined();
   });
 });
@@ -755,7 +757,7 @@ describe('a tenor from first launch to the last Boss Recital', () => {
     expect(continueLevel(s, WORLDS)?.id).toBe('vibrato.01');
 
     // Songs open with the world their difficulty needs: the Foundations-rated ones now, nothing harder.
-    expect(openSongs(s).sort()).toEqual(['auld-lang-syne', 'twinkle-twinkle']);
+    expect(openSongs(s).sort()).toEqual(['auld-lang-syne', 'the-holy-city', 'twinkle-twinkle']);
     expect(library.songs.find((x) => x.id === 'ave-maria')!.difficulty.requiredWorld).toBe('runs');
     studio.nextDay();
   });
@@ -854,7 +856,7 @@ describe('a tenor from first launch to the last Boss Recital', () => {
     expect(isWorldUnlocked('inflections', s)).toBe(true);
     expect(s.levels['inflections.01'].status).toBe('current');
     expect(isWorldUnlocked('runs', s)).toBe(false);
-    expect(openSongs(s).sort()).toEqual(['amazing-grace', 'auld-lang-syne', 'twinkle-twinkle']);
+    expect(openSongs(s).sort()).toEqual(['amazing-grace', 'auld-lang-syne', 'holy-holy-holy', 'it-is-well', 'o-holy-night', 'panis-angelicus', 'the-holy-city', 'twinkle-twinkle']);
     studio.nextDay();
   });
 
@@ -881,7 +883,19 @@ describe('a tenor from first launch to the last Boss Recital', () => {
     const boss = await studio.singLevel('inflections.boss');
     expect(boss.evaluation.passed).toBe(true);
     expect(isWorldUnlocked('runs', boss.snapshot)).toBe(true);
-    expect(openSongs(boss.snapshot).sort()).toEqual(['amazing-grace', 'auld-lang-syne', 'danny-boy', 'silent-night', 'twinkle-twinkle']);
+    expect(openSongs(boss.snapshot).sort()).toEqual([
+      'amazing-grace',
+      'auld-lang-syne',
+      'be-thou-my-vision',
+      'danny-boy',
+      'holy-holy-holy',
+      'it-is-well',
+      'o-holy-night',
+      'panis-angelicus',
+      'silent-night',
+      'the-holy-city',
+      'twinkle-twinkle',
+    ]);
     studio.nextDay();
   });
 

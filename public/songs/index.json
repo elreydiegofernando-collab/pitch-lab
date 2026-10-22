@@ -1,11 +1,17 @@
 {
   "version": 1,
   "songs": [
-    { "id": "twinkle-twinkle", "file": "twinkle-twinkle.txt" },
     { "id": "auld-lang-syne", "file": "auld-lang-syne.txt" },
+    { "id": "the-holy-city", "file": "the-holy-city.txt" },
+    { "id": "twinkle-twinkle", "file": "twinkle-twinkle.txt" },
     { "id": "amazing-grace", "file": "amazing-grace.txt" },
-    { "id": "silent-night", "file": "silent-night.txt" },
+    { "id": "holy-holy-holy", "file": "holy-holy-holy.txt" },
+    { "id": "it-is-well", "file": "it-is-well.txt" },
+    { "id": "o-holy-night", "file": "o-holy-night.txt" },
+    { "id": "panis-angelicus", "file": "panis-angelicus.txt" },
+    { "id": "be-thou-my-vision", "file": "be-thou-my-vision.txt" },
     { "id": "danny-boy", "file": "danny-boy.txt" },
+    { "id": "silent-night", "file": "silent-night.txt" },
     { "id": "ave-maria", "file": "ave-maria.txt" }
   ]
 }

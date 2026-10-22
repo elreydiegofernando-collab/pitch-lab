@@ -1,0 +1,147 @@
+#VERSION:1.1.0
+#TITLE:Panis Angelicus
+#ARTIST:Cesar Franck
+#BPM:60
+#GAP:0
+#LANGUAGE:Latin
+#COMMENT:Public domain. Music: Cesar Franck, Panis angelicus (Messe a trois voix, Op. 12, FWV 61), 1872. Words: Latin hymn of St Thomas Aquinas, 13th century. Chart by the Pitch Lab project (MIT licence).
+: 0 8 1 Pa
+: 8 4 1 nis
+: 12 4 -1  an
+: 16 3 -1 ge
+: 19 1 -3 li
+: 20 4 -3 cus
+- 24 32
+: 32 8 1 fit
+: 40 4 1  pa
+: 44 4 -1 nis
+: 48 3 -1  ho
+: 51 1 -3 mi
+: 52 4 -3 num,
+- 56 64
+: 64 8 6 dat
+: 72 4 6  pa
+: 76 4 4 nis
+: 80 6 2  coe
+: 86 2 2 li
+: 88 4 2 cus
+: 92 4 1  fi
+: 96 6 -1 gu
+: 102 2 -1 ris
+: 104 4 -1  ter
+: 108 4 -3 mi
+: 112 16 4 num:
+- 128
+: 128 8 1 O
+: 136 4 1  res
+: 140 4 -1  mi
+: 144 3 -1 ra
+: 147 1 -3 bi
+: 148 4 -3 lis,
+- 152 160
+: 160 8 4 man
+: 168 4 4 du
+: 172 4 3 cat
+: 176 3 3  Do
+: 179 1 1 mi
+: 180 4 1 num
+- 184 192
+: 192 8 1 pau
+: 200 4 -1 per,
+: 208 8 4  pau
+: 216 4 -1 per,
+- 220 224
+: 224 4 6 ser
+: 228 2 -3 vus
+: 230 2 -1  et
+: 232 6 1  hu
+: 238 2 -3 mi
+: 240 8 -4 lis,
+- 248 256
+: 256 8 1 pau
+: 264 4 -4 per,
+: 272 6 2  pau
+: 278 2 -1 ~
+: 280 4 -3 per,
+- 284 288
+: 288 4 3 ser
+: 292 2 4 vus
+: 294 2 6  et
+: 296 6 1  hu
+: 302 2 3 mi
+: 304 8 4 lis.
+- 312 384
+: 384 8 1 Pa
+: 392 4 1 nis
+: 396 4 -1  an
+: 400 3 -1 ge
+: 403 1 -3 li
+: 404 4 -3 cus
+- 408 416
+: 416 8 1 fit
+: 424 4 1  pa
+: 428 4 -1 nis
+: 432 3 -1  ho
+: 435 1 -3 mi
+: 436 4 -3 num,
+- 440 448
+: 448 8 6 dat
+: 456 4 6  pa
+: 460 4 4 nis
+: 464 6 2  coe
+: 470 2 2 li
+: 472 4 2 cus
+: 476 4 1  fi
+: 480 6 -1 gu
+: 486 2 -1 ris
+: 488 4 -1  ter
+: 492 4 -3 mi
+: 496 8 4 num:
+- 504 512
+: 512 8 4 O
+: 520 4 2  res
+: 524 4 1  mi
+: 528 3 1 ra
+: 531 1 -1 bi
+: 532 4 -1 lis,
+- 536 544
+: 544 8 4 man
+: 552 4 6 du
+: 556 4 2 cat
+: 560 3 1  Do
+: 563 1 -1 mi
+: 564 4 -1 num
+- 568 576
+: 576 10 4 pau
+: 586 2 1 ~
+: 588 2 -1 per,
+: 590 2 -3 ~
+: 592 6 2  pau
+: 598 2 -1 ~
+: 600 4 1 per,
+- 604
+: 604 8 1 ser
+: 612 2 -1 vus
+: 614 2 -3  et
+: 616 6 -1  hu
+: 622 2 1 mi
+: 624 8 -3 lis,
+- 632 640
+: 640 10 6 pau
+: 650 2 2 ~
+: 652 2 1 per,
+: 654 2 -1 ~
+: 656 6 4  pau
+: 662 2 1 ~
+: 664 4 2 per,
+- 668
+: 668 8 2 ser
+: 676 2 -1 vus,
+: 678 2 2 ~
+: 680 4 1  ser
+: 684 2 -1 vus
+: 686 2 -3  et
+: 688 14 -1  hu
+: 702 2 -3 mi
+: 704 8 -3 lis.
+E
