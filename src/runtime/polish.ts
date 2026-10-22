@@ -3,7 +3,8 @@
  * to light and a place to move on to. Whether either exists depends on what the take was for, which only the runner
  * knows: a lower rung of a tempo ladder lights no tally and leads to the next rung, a passed audition test closes (it
  * opens levels and has no tallies), a warm-up or cool-down is completion, and a take that lit all three tallies has
- * none left to light. Pure.
+ * none left to light. The line reaches the singer as written (the take report's coaching card), so it is in plain
+ * words: "a step faster" and "full speed" (the top rung, where a Runs level counts), never a tempo number. Pure.
  */
 import { POLISH_TIP, canPassAtTempo } from '../exercises';
 import type { PreparedRun } from './types';
@@ -25,14 +26,13 @@ export function polishLine(
   // A warm-up or cool-down of the daily workout: completion, with no tally and no level.
   if (level === null) return `${def.title} done. Easy, unforced sound is all it asks.`;
   if (!canPassAtTempo(def, bpm)) {
-    // A lower rung of a tempo ladder: practice on the way to the tempo where the level counts.
-    const pass = def.tempoBpm;
+    // A lower rung of a tempo ladder: practice on the way to full speed (the level's pass tempo, its top rung).
     if (nextBpm !== null && nextBpm > bpm) {
-      return nextBpm >= pass
-        ? `Clean at ${bpm} bpm. The next take is at ${nextBpm} bpm, where the level counts.`
-        : `Clean at ${bpm} bpm. The next take is at ${nextBpm} bpm, a step closer to ${pass} bpm, where the level counts.`;
+      return nextBpm >= def.tempoBpm
+        ? 'Clean at this speed. The next take is at full speed, where the level counts.'
+        : 'Clean at this speed. The next take is a step faster, on the way to full speed, where the level counts.';
     }
-    return `Clean at ${bpm} bpm. The level counts at ${pass} bpm.`;
+    return 'Clean at this speed. The level counts at full speed.';
   }
   if (attempt.mastery >= ALL_TALLIES) return 'Clean take. Every tally is lit: move on when you’re ready.';
   // The last take of a workout item: its report offers no replay, only the next step.

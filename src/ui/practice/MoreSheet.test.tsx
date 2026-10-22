@@ -76,6 +76,28 @@ describe('MoreSheet', () => {
     expect(resetAudio).toHaveBeenCalledTimes(1);
   });
 
+  it('offers Send to Claude only where a screen asks for it: it closes itself, then hands over', async () => {
+    await mount();
+    expect(buttonNamed('Send to Claude')).toBeUndefined();
+    await act(() => {
+      render(null, container);
+    });
+    container.remove();
+    const onClose = vi.fn();
+    const onSendToClaude = vi.fn();
+    resetRouterForTests([routeOf('home'), routeOf('level', { levelId: 'foundations.03' })]);
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    await act(() => {
+      render(<MoreSheet open onClose={onClose} onSendToClaude={onSendToClaude} />, container);
+    });
+    expect(document.body.textContent).toContain('Save a file of your last takes of this exercise, for a closer look in chat.');
+    buttonNamed('Send to Claude')!.click();
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onSendToClaude).toHaveBeenCalledTimes(1);
+    expect(onClose.mock.invocationCallOrder[0]).toBeLessThan(onSendToClaude.mock.invocationCallOrder[0]);
+  });
+
   it('closes itself and opens Setup & calibration', async () => {
     const onClose = vi.fn();
     await mount({ onClose });

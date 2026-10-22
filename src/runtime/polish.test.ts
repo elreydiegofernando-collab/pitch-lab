@@ -25,21 +25,31 @@ function item(takes: number): WorkoutItem {
 }
 
 describe('polishLine', () => {
-  it('a clean lower rung of a tempo ladder names the next rung and where the level counts, not a tally', () => {
+  it('a clean lower rung of a tempo ladder says a step faster and where the level counts, in plain words, not a tally', () => {
     expect(rung1).toBeLessThanOrEqual(passBpm);
     const line = polishLine(levelTake('runs.01', rung0), { passed: false, mastery: 0 }, rung1);
     expect(line).not.toContain('tally');
     expect(line).not.toContain('move on');
-    if (rung1 === passBpm) expect(line).toBe(`Clean at ${rung0} bpm. The next take is at ${rung1} bpm, where the level counts.`);
-    else expect(line).toBe(`Clean at ${rung0} bpm. The next take is at ${rung1} bpm, a step closer to ${passBpm} bpm, where the level counts.`);
+    if (rung1 === passBpm) expect(line).toBe('Clean at this speed. The next take is at full speed, where the level counts.');
+    else expect(line).toBe('Clean at this speed. The next take is a step faster, on the way to full speed, where the level counts.');
     // The rung below the pass tempo: the next take is where the level counts.
     const ladder = runs.tempoLadder!;
     const below = ladder[ladder.length - 2];
     expect(polishLine(levelTake('runs.01', below), { passed: false, mastery: 0 }, passBpm)).toBe(
-      `Clean at ${below} bpm. The next take is at ${passBpm} bpm, where the level counts.`,
+      'Clean at this speed. The next take is at full speed, where the level counts.',
     );
-    // No climb reported: still no tally, just the tempo that counts.
-    expect(polishLine(levelTake('runs.01', rung0), { passed: false, mastery: 0 }, rung0)).toBe(`Clean at ${rung0} bpm. The level counts at ${passBpm} bpm.`);
+    // No climb reported: still no tally, just where the level counts.
+    expect(polishLine(levelTake('runs.01', rung0), { passed: false, mastery: 0 }, rung0)).toBe('Clean at this speed. The level counts at full speed.');
+  });
+
+  it('never quotes a tempo: the coaching card shows the line to a singer relearning music', () => {
+    const ladder = runs.tempoLadder!;
+    for (const bpm of ladder) {
+      for (const next of [null, ...ladder]) {
+        const line = polishLine(levelTake('runs.01', bpm), { passed: bpm === passBpm, mastery: bpm === passBpm ? 1 : 0 }, next);
+        expect(line, `${bpm} -> ${next}`).not.toMatch(/\d|\bbpm\b/i);
+      }
+    }
   });
 
   it('a passed audition test opens levels: no tally, no replay', () => {

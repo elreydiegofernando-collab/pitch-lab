@@ -7,8 +7,8 @@ recovery rules) that a browser tab will not reproduce. Sections N–O additional
 cover Windows Chrome and Edge.
 
 Sections A–O cover Phase 1. The owner waived per-phase sign-off on 2026-10-21, so
-the Phase 2–7 sections below (P, Q, V, R, S, X, and the owner decisions D) are the one
-end-to-end test at the end.
+the Phase 2–7 sections below (P, Q, V, R, S, X, the coaching rows T, and the owner
+decisions D) are the one end-to-end test at the end.
 
 ### What `npm run e2e` already proves (do not repeat it by hand)
 
@@ -327,6 +327,23 @@ trip once on the iPhone, then restore the same file on the Windows laptop.
 | X21 | Delete all data when you have nothing to lose: type DELETE. | It says what really happened; Home shows a fresh default profile and asks for the voice-care note again. The phone's latency calibration and audio route are kept (known limit: the sheet's copy says "all settings"). | Data & backup, Home | | |
 | X22 | A **daily workout** from start to summary (one item early with End workout, once all the way). | Each take goes through the Sing and Report screens with "Workout · N of M"; the summary shows items, minutes and Momentum before → after. | Workout | | |
 | X23 | Sing for about 30 minutes in one session. | A gentle break reminder appears. | Any screen | | |
+
+### Coaching and Send to Claude (added 2026-10-22)
+
+The coaching card that replaced the one tip (DESIGN.md §13.5), "Last time" on the Level
+screen, and the coaching file for a look in chat (docs/COACHING.md). Use a level you
+cannot pass yet; Sirens & glides (05) is a good one.
+
+| # | Steps | Expected | Where to look | Result | Notes |
+|---|---|---|---|---|---|
+| T1 | Miss the same level five times in a row (Retry from the report each time). | Each report's coaching card says what went wrong and where, in plain words: no ¢, Hz, dB, ms or bpm anywhere on the card. It grows with each miss: "Try this" alone at first; "Why it happens" on the 2nd miss in a row; a numbered "Step by step" and **Send to Claude** on the 3rd; "An easier way in" and **Listen again** (or **Listen slowly**) on the 5th, each with a line saying which try it is. Only the report's own action is amber. | Take report | | |
+| T2 | On a report with spot chips ("0:08, near G♯3"), tap a chip, then tap it again. | The replay comes into view and an amber line marks that moment; the second tap clears it. The marked moment matches what you remember singing there. | Take report | | |
+| T3 | After a miss, go back to the Level screen. Then pass the level once and open it again. | After the miss: a "Last time" card above the pass lines, with the same advice as that report, before you sing. After the pass: no "Last time" card. | Level | | |
+| T4 | Level → **More** → **Send to Claude**. Close the sheet, open it again. Tap **Share**. | The sheet says what the file holds; **Include audio** is off, and is off again after reopening; it says how many takes are ready. Share opens the iOS share sheet **straight from the tap** (no second tap needed); Save to Files or OneDrive saves `pitch-lab-coach-<level>-<date>-<time>.json`. If it asks to tap Share once more, note it. | Level, share sheet | | |
+| T5 | Turn **Include audio** on and Share again. Then open Settings. | The file is much bigger (it carries the sound of each kept take). Settings' privacy line names Export WAV and Send to Claude with Include audio as the two ways audio leaves the phone. | Share sheet, Settings | | |
+| T6 | On the PC, after OneDrive syncs: `npm run coach -- --list`, then `npm run coach -- "<the path it printed>"`. | The file from T4 is listed first, with its full path. The read names the level, each take's verdict, where the problem is, and what changed across the takes. | Terminal | | |
+| T7 | Sing eight takes of anything within twenty minutes, or miss one level six times in a row. | The coaching card adds a rest note: rest a few minutes, sip some water, stop if anything hurts, scratches or goes hoarse. It is a note, not a button. | Take report | | |
+| T8 | Miss a level whose notes you sing some a little sharp and some a little flat. | The card does not tell you that you sang sharp (or flat): it says the notes landed off the middle both ways, or how much of the time you were in tune, with spots on both sides. | Take report | | |
 
 ### Decisions the builders left to the owner
 

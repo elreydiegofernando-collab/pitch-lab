@@ -789,7 +789,7 @@ describe('sing: what a take counts for', () => {
     expect(r.flow.afterTakeActions(outcome).find((a) => a.primary)).toMatchObject({ kind: 'retry', label: `Sing at ${r1} bpm` });
     // A clean rung lights no tally and leads to the next rung: its line says so, never "Replay to light the next tally".
     expect(outcome.tip.id).toBe('general.polish');
-    expect(outcome.tip.text).toMatch(new RegExp(`^Clean at ${r0} bpm\\. The next take is at ${r1} bpm`));
+    expect(outcome.tip.text).toMatch(/^Clean at this speed\. The next take is (at full speed|a step faster)/);
     expect(outcome.tip.text).not.toContain('tally');
     runner.dispose();
     expect(r.runnerMod.createRunner({ kind: 'level', levelId: 'runs.01' }).prepared.value?.bpm).toBe(r1);

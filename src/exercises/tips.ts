@@ -1,7 +1,12 @@
 /**
  * Coaching tips (SPEC §12): a rule table mapping analyzer findings to one
- * short, specific, coach-like tip. The take report shows exactly ONE tip,
- * chosen by pickTip() for the part of the take that cost the most.
+ * short, specific, coach-like tip. Each take gets exactly ONE tip, chosen by
+ * pickTip() for the part of the take that cost the most. The take report shows
+ * it through src/coaching: the tip id picks a plain-language ladder of help
+ * (src/coaching/content) and the problem is located in the take, so a singer
+ * reads no units. The text here is the analyst's line, units and all
+ * (scripts/coach.mjs prints it); only the polish line reaches the singer as
+ * written (runtime/polish.ts words it in plain terms).
  *
  * Text placeholders: {v} = the rule metric's value (rounded), {pct} = the
  * value x 100 (0..1 rates). Copy rules (DESIGN §11): numbers over adjectives,
@@ -14,7 +19,7 @@ import { CONFIG } from '../config';
 import type { DynamicsResult, InflectionKind, MetricKey, Metrics } from '../analysis/types';
 import { RANGE_MIN_SPAN } from './catalog/scoring';
 import { INFLECTION_CUES } from './cues';
-import { evaluate, gateHolds, passRequirements, reachHolds, termScore, type NoteReach } from './evaluate';
+import { evaluate, gateHolds, notesNeeded, passRequirements, reachHolds, termScore, type NoteReach } from './evaluate';
 import type { CoachingTip, ExerciseDef } from './types';
 
 /** A CoachingTip plus optional qualifiers. The extra fields are optional, so a TipRule IS a CoachingTip. */
@@ -62,6 +67,13 @@ const SIGNED_CONTEXT: Partial<Record<MetricKey, 'biasCents' | 'driftCentsPerSec'
   'accuracy.absDriftCentsPerSec': 'driftCentsPerSec',
   'vibrato.absCenteringCents': 'centeringCents',
 };
+
+/**
+ * A direction rule (sharp, flat) speaks only when the signed lean explains at least this share of the typical offset
+ * (the rule metric, a median of per-note offsets): notes that miss both ways average out near zero, and naming one
+ * direction would teach half of them the wrong fix. Such a take falls to the rules that name no direction.
+ */
+const DIRECTION_SHARE = 0.5;
 
 const Z = CONFIG.vibrato.styles;
 const ZONE_RATE = `${Math.min(Z.pop.rateHz[0], Z.classical.rateHz[0])}–${Math.max(Z.pop.rateHz[1], Z.classical.rateHz[1])}`;
@@ -309,10 +321,20 @@ export const STOPPED_TIP: CoachingTip = {
   priority: 0,
 };
 
-/** UNSUNG_TIP with the count: "You sang 6 of the 14 notes. ..." */
+/** The tip of a failed take that no rule explains: pickTip names its first failed requirement. */
+export const RETRY_TIP_ID = 'general.retry';
+
+/**
+ * The ids a take's tip can have besides the rule table's: the general tips above and RETRY_TIP_ID. The coaching
+ * content holds a ladder for each of them as for every rule (src/coaching/content/index.test.ts).
+ */
+export const GENERAL_TIP_IDS: readonly string[] = [POLISH_TIP.id, NO_VOICE_TIP.id, UNFIT_RANGE_TIP.id, UNSUNG_TIP.id, STOPPED_TIP.id, RETRY_TIP_ID];
+
+/** UNSUNG_TIP with the count: "You sang 6 of the 14 notes. ... at least 13 of them are sung." */
 function unsungText(def: Pick<ExerciseDef, 'kind'>, reach: NoteReach): string {
-  const all = def.kind === 'boss-recital' ? 'every note' : 'nearly every note';
-  return `You sang ${reach.reached} of the ${reach.total} notes. Keep singing to the end of the exercise: a take passes only when ${all} is sung.`;
+  const needed = notesNeeded(def, reach.total);
+  const rule = needed >= reach.total ? 'every note is sung' : `at least ${needed} of them are sung`;
+  return `You sang ${reach.reached} of the ${reach.total} notes. Keep singing to the end of the exercise: a take passes only when ${rule}.`;
 }
 
 /** A passed take that lost less than this share of the score on its costliest metric counts as polished (PROPOSED CONFIG.tips). */
@@ -392,6 +414,8 @@ function applies(rule: TipRule, metrics: Metrics, ctx: TipContext | undefined, k
     const signed = key ? ctx?.[key] : undefined;
     if (signed === undefined || signed === null || !Number.isFinite(signed) || signed === 0) return false;
     if ((signed > 0) !== (rule.direction === 'sharp')) return false;
+    const typical = metrics[rule.when.metric];
+    if (typical !== undefined && Number.isFinite(typical) && Math.abs(signed) < DIRECTION_SHARE * Math.abs(typical)) return false;
   }
   if (rule.inflection) {
     if (!kinds.has(rule.inflection)) return false;
@@ -459,7 +483,7 @@ export function pickTip(metrics: Metrics, def: ExerciseDef, ctx?: TipContext): P
     const reqs = passRequirements(def);
     const req = failedGates.length > 0 ? reqs[failedGates[0] + 1] : reqs[0];
     return {
-      id: 'general.retry',
+      id: RETRY_TIP_ID,
       text: `Not there yet: ${req.text}. Listen to the demo once more, then aim for that.`,
       metric: req.metric,
       value: req.metric ? (metrics[req.metric] ?? null) : null,

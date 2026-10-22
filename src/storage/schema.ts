@@ -4,7 +4,8 @@
  *  - attempts are APPEND-ONLY (one row per attempt); progress is derived from them;
  *  - large binaries (take audio, backing tracks) live in OPFS, referenced by path;
  *  - SYNCABLE lists the only fields a future v2 sync may send (nothing audio-derived).
- * Audio never leaves the device; it may be stored locally for playback (owner can delete).
+ * Audio never leaves the device unless the singer exports it (Export WAV, or Send to Claude with Include audio on); it
+ * may be stored locally for playback (owner can delete).
  */
 import type { Metrics } from '../analysis/types';
 import type { Mastery } from '../progress/types';
@@ -44,7 +45,10 @@ export interface AttemptRecord extends RecordBase {
   tonicMidi: number | null;
   /** The tempo actually sung (a Runs ladder rung), not the exercise's pass tempo. */
   tempoBpm: number | null;
-  /** The saved take (local audio and pitch track), if kept. Never leaves the device: a backup carries it as null. */
+  /**
+   * The saved take (local audio and pitch track), if kept. A backup carries it as null; the take leaves the device only
+   * in an explicit export (Export WAV; Send to Claude's coaching file: its pitch line, and its audio with Include audio on).
+   */
   takeId: string | null;
   songId?: string | null;
 }

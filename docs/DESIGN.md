@@ -126,6 +126,8 @@ Progression is **linear and earned, like a video game**. There's no picking "beg
 
 Coach-like, specific, brief. Use numbers over adjectives, and no exclamation spam. For example, write "Landed 12¢ flat. Aim a hair higher on the onset," not "Great job!!!" Neutral facts stay neutral: "Straight tone — no vibrato detected" is information, not criticism.
 
+**Coaching is the exception to "numbers with units"** (owner, 2026-10-22: "assume that I am just relearning how to sing ... a little bit more layman's terms"). Everything the coaching card says (§13.5, `src/coaching`) is written to the singer as "you", in plain words and plain numbers: "a little flat", "about a quarter of the way to the next note", "about six wobbles a second", "0:04", never cents, Hz, dB, semitones, bpm or singing jargon, no exclamation marks, never "push", "force" or "strain" as advice, and "stop if anything hurts, scratches or goes hoarse". The rules live in `src/coaching/types.ts` and are tested (`src/coaching/content/index.test.ts`, `src/coaching/plain.ts`). The tiles, chips and live readouts keep their units.
+
 ## 12. Pre-delivery checklist (every UI change)
 
 - [ ] Contrast ≥ 4.5:1 for text (both themes); graphics ≥ 3:1
@@ -200,6 +202,8 @@ From the `ui-ux-pro-max` rules (accessibility and touch first, then performance,
   - The header area has a static radial spotlight (`radial-gradient` from `--bg-2` at top centre to `--bg-0`, no animation).
   - The label reads `BOSS RECITAL · one continuous take`, with the skills it chains as a list.
 - **Passed levels** offer "Sing again" for mastery, plus "Chase a record" once Personal records unlock.
+- **Last time:** when the latest take of this level's exercise missed, its coaching card (§13.5, titled "Last time") sits above the pass lines, so the advice comes before the next try. It is the saved take read back and re-analyzed against the notes it was sung against (from its numbers alone when its pitch line was not kept), at the same depth as its report: the spots are plain text here, since there is no replay to mark. It disappears once a take passes.
+- **More › Send to Claude** (always offered): a sheet that saves this exercise's coaching file through the share sheet: the last five takes with their pitch lines and scores, for a closer look in chat (docs/COACHING.md). **Include audio** adds each kept take's sound; it is off every time the sheet opens. The file is made when the sheet opens, so the Share tap opens the share sheet at once (iOS needs the fresh tap).
 
 ### 13.4 Sing screen (the take)
 - **Layout:** the Live layout (§7): app bar (level title, mic pill), readout cluster, the canvas with target bars and tolerance band, and the bottom bar.
@@ -224,14 +228,23 @@ Top to bottom:
 3. **The three tally lights.**
 4. **Metric tiles:** 2–4 in a two-column grid. Each tile has a `label`, the value in `data` style, the target ("≥ 70%"), and a met/unmet glyph (`Check` / `Minus`). It is never colour-only.
 5. **Trace replay:** a static canvas with the targets, the trace, crack ticks and per-note run verdict glyphs (§3). It spans the full width and is 160 px tall.
-6. **The one coaching tip:** a Card with a `Lightbulb` glyph.
+6. **Coaching (CoachCard):** a Card with a `Lightbulb` glyph, under the replay. Still one problem per take (the tip that cost the most), now located and in plain words (§11):
+   - **What went wrong**, one sentence with plain numbers: "Your voice broke 5 times on the way up (this level allows up to 3)."
+   - **Where:** up to four spot chips, worst first ("0:08, near G♯3"). Tapping one marks that moment on the replay with an amber line (and scrolls the replay into view); tapping it again clears it.
+   - **Try this:** the tip.
+   - **More help with each miss in a row** on this exercise, with a line saying why ("Third try in a row, so here is a step-by-step."): why it happens from the second miss, a numbered step-by-step from the third, an easier way in from the fourth (one step deeper with each miss).
+   - **Since last time:** the same measures on the previous take and this one, in the same words, each marked better, not as good or about the same with a glyph and words (a measure one take could not read is left out; the score stands in when nothing else compares).
+   - **Moves**, all secondary buttons (the report's own action stays the one amber button): Send to Claude from the third miss; from the fourth, Listen slowly (or Listen again, without a slow demo) and "Practise" an earlier level, offered only when the help names a level that comes before this one and is already passed (never the Range finder).
+   - **Rest:** after six misses in a row, or eight takes in twenty minutes, a voice-care note: rest a few minutes, sip some water, stop if anything hurts, scratches or goes hoarse.
+   - **A pass** shows "Next" with the take's own line (the next rung, every tally lit) and nothing more.
+   - If the coaching ever fails to build, the take's own tip still shows: the report never goes blank over it.
 7. **Playback:** "Play take", "Slow (0.5×)", and for runs "Slow + target".
 
 **Actions** come from `afterTakeActions`: exactly one primary, in the bottom bar.
 
 **Special cases:**
 - **Celebration (pass only, §9):** the ring count-up, the tally lights in a 120 ms stagger, and an **Unlocked** strip listing what opened (`LockOpen` glyph and the unlock event titles). Reduced motion makes it instant.
-- **Folded take:** "Not judged: this exercise doesn't fit your saved range", the score greyed, and the unfit-range tip.
+- **Folded take:** "Not judged: this exercise doesn't fit your saved range", the score greyed, and the unfit-range coaching.
 - **Range finder pass:** a range card showing comfortable C3–A4 and extended A2–C5 on a mini keyboard strip.
 - **Ladder:** "Next take at 104 bpm" under the verdict when the tempo climbed.
 - **Memorable thing:** the ring and the three lights lighting in sequence, the app's one celebration.

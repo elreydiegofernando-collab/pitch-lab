@@ -9,3 +9,7 @@ corpus/
 .DS_Store
 Thumbs.db
 .vite/
+# The owner's own exports from the phone (coaching files, backups, take audio): never commit (docs/COACHING.md)
+pitch-lab-coach-*.json
+pitch-lab-backup-*.json
+pitch-lab-take-*.wav

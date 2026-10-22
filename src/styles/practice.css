@@ -725,3 +725,199 @@
 .pl-level__pass--plain svg {
   margin-top: 3px;
 }
+
+/* ---------------------------------------------------------------- Coaching (CoachCard, LastTimeCard, Send to Claude) */
+
+/* The coaching card: calm and plain, no alarm colours; its buttons are secondary (the screen keeps its one amber primary). */
+.pl-coach {
+  gap: var(--sp-3);
+}
+.pl-coach__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+}
+.pl-coach__titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-top: var(--sp-2);
+}
+.pl-coach__part {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.pl-coach__where {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.pl-coach__spots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+/* A spot is a control (it marks the moment on the replay): a 48 px target that wraps its label rather than overflow. */
+.pl-coach__spot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--target-min);
+  max-width: 100%;
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--radius-control);
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--text-hi);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.3;
+  text-align: left;
+  transition: transform var(--dur-micro) var(--ease-standard);
+}
+.pl-coach__spot svg {
+  flex: none;
+  color: var(--text-mid);
+}
+.pl-coach__spot:active {
+  transform: scale(0.98);
+}
+/* The marked spot: the replay's amber line is its twin; a heavier border and weight say "marked" without the colour. */
+.pl-coach__spot[aria-pressed='true'] {
+  border: 2px solid var(--tally);
+  font-weight: 600;
+}
+.pl-coach__spot[aria-pressed='true'] svg {
+  color: var(--tally-text);
+}
+/* On the Level screen there is no replay to mark: the spots are information, like a chip. */
+.pl-coach__spot--static {
+  min-height: 32px;
+}
+.pl-coach__steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.pl-coach__steps li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+}
+.pl-coach__step-n {
+  flex: none;
+  min-width: 20px;
+  text-align: right;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--text-hi);
+}
+.pl-coach__progress {
+  display: flex;
+  flex-direction: column;
+}
+.pl-coach__line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px var(--sp-3);
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--line);
+}
+.pl-coach__line:last-child {
+  border-bottom: 0;
+}
+.pl-coach__line-label {
+  grid-column: 1 / -1;
+  font-size: 15px;
+  font-weight: 600;
+}
+.pl-coach__line-values {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 15px;
+  line-height: 1.35;
+  color: var(--text-mid);
+}
+.pl-coach__line-values svg {
+  flex: none;
+}
+.pl-coach__line-now {
+  color: var(--text-hi);
+}
+.pl-coach__line-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: center;
+  font-size: 13px;
+  white-space: nowrap;
+  color: var(--text-mid);
+}
+.pl-coach__line--better .pl-coach__line-mark {
+  color: var(--on-text);
+}
+.pl-coach__rest {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-radius: var(--radius-control);
+  background: var(--bg-2);
+}
+.pl-coach__rest svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--text-mid);
+}
+.pl-coach__moves {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.pl-coach__moves .pl-btn {
+  flex: 1 1 160px;
+}
+/* "Last time" while the saved take is read back: a block the card's size, so nothing below it jumps. */
+.pl-coach__skeleton {
+  height: 120px;
+  border-radius: var(--radius-control);
+  background: var(--bg-2);
+}
+
+/* The replay's marked moment (a coaching spot): an amber line with a soft band, the way the live view marks "now". */
+.pl-replay__scroll {
+  position: relative;
+}
+.pl-replay__mark {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--tally);
+  pointer-events: none;
+}
+.pl-replay__mark::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -11px;
+  width: 24px;
+  background: color-mix(in srgb, var(--tally) 16%, transparent);
+}
+
+/* Send to Claude: the Include audio row. */
+.pl-send__audio {
+  align-items: center;
+}
+.pl-send__audio-label {
+  gap: 2px;
+  min-width: 0;
+}

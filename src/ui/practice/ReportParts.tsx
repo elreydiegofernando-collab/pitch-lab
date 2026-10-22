@@ -1,13 +1,11 @@
 /**
- * The plain parts of the take report (docs/DESIGN.md §13.5): the verdict line, the metric tiles and the coaching tip.
- * Pass or miss is always a glyph plus words ("Passed", "Not yet", "Not judged"), a miss is never alarm copy, and a tile
- * says met or unmet with a glyph and text as well as its colour.
+ * The plain parts of the take report (docs/DESIGN.md §13.5): the verdict line and the metric tiles (the coaching is
+ * CoachCard.tsx). Pass or miss is always a glyph plus words ("Passed", "Not yet", "Not judged"), a miss is never alarm
+ * copy, and a tile says met or unmet with a glyph and text as well as its colour.
  */
 import type { JSX } from 'preact';
-import { Check, CircleCheck, Info, Lightbulb, Minus, RotateCcw } from 'lucide-preact';
+import { Check, CircleCheck, Info, Minus, RotateCcw } from 'lucide-preact';
 import type { NotJudgedReason, ReportTile } from '../../exercises/evaluate';
-import type { PickedTip } from '../../exercises/tips';
-import { Card } from '../components/Card';
 
 export type Verdict = 'passed' | 'not-yet' | 'not-judged' | 'done';
 
@@ -82,15 +80,5 @@ export function MetricTiles(props: { tiles: readonly ReportTile[] }): JSX.Elemen
         );
       })}
     </ul>
-  );
-}
-
-export function TipCard(props: { tip: PickedTip }): JSX.Element {
-  return (
-    <Card icon={Lightbulb} title="Coaching tip" class="pl-tip">
-      <p class="pl-body" data-testid="tip">
-        {props.tip.text}
-      </p>
-    </Card>
   );
 }

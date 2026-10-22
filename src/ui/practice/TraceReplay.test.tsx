@@ -205,6 +205,36 @@ describe('TraceReplay: the report', () => {
     expect(q('.pl-replay__swatch')).toBeNull();
   });
 
+  it('marks a coaching spot at its take time, and names it for a screen reader', async () => {
+    await mount({ mark: { t: 2, label: '0:02, near E4' } });
+    const mark = q<HTMLElement>('[data-testid="replay-mark"]')!;
+    expect(mark).not.toBeNull();
+    expect(mark.getAttribute('aria-hidden')).toBe('true');
+    // The same x the canvas draws take time 2 at: past the lead-in, inside the plotted width.
+    const x = Number.parseFloat(mark.style.left);
+    expect(x).toBeGreaterThan(8);
+    expect(x).toBeLessThan(340);
+    expect(mark.style.height).toBe(`${REPLAY_HEIGHT}px`);
+    expect(q('[data-testid="replay-mark-text"]')?.textContent).toBe('Marked on the replay: 0:02, near E4');
+    // A later moment sits further right.
+    await act(() => {
+      render(<TraceReplay notes={NOTES} totalSec={3.5} toleranceCents={25} track={TRACK} mark={{ t: 3, label: '0:03' }} />, container);
+    });
+    expect(Number.parseFloat(q<HTMLElement>('[data-testid="replay-mark"]')!.style.left)).toBeGreaterThan(x);
+  });
+
+  it('draws no mark without one, and never on the preview', async () => {
+    await mount();
+    expect(q('[data-testid="replay-mark"]')).toBeNull();
+    expect(q('[data-testid="replay-mark-text"]')?.textContent).toBe('');
+    await act(() => {
+      render(null, container);
+    });
+    container.remove();
+    await mount({ mode: 'preview', track: undefined, window: { low: 56, high: 68 }, padLeft: 40, mark: { t: 1, label: '0:01' } });
+    expect(q('[data-testid="replay-mark"]')).toBeNull();
+  });
+
   it('repaints when the theme changes', async () => {
     await mount();
     const before = painted.length;

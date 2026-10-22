@@ -13,11 +13,15 @@ vi.mock('../../runtime/runner', async () => (await import('../practice/test-fake
 vi.mock('../../state/session', async () => (await import('../practice/test-fakes')).sessionModule());
 vi.mock('../../state/settings', async () => (await import('../practice/test-fakes')).settingsModule());
 vi.mock('../../state/audio', async () => (await import('../practice/test-fakes')).audioModule());
+const exportMock = vi.hoisted(() => ({ build: vi.fn() }));
+vi.mock('../../coaching/export', async (importOriginal) => ({ ...(await importOriginal<typeof import('../../coaching/export')>()), buildCoachingFile: exportMock.build }));
 
 import { back, installRouteGuard, resetRouterForTests, route, routeOf } from '../../router';
+import { coachTake } from '../../coaching/coach';
+import { attempt } from '../../progress/test-fixtures';
 import type { AfterTakeAction, TakeOutcome } from '../../runtime/types';
 import { makeOutcome } from '../practice/outcome-fixture';
-import { lastOutcomeSignal, resetRunner, resetSession, session, settingsSignal, snapshotAfter, synthMocks } from '../practice/test-fakes';
+import { createRunnerMock, lastOutcomeSignal, resetRunner, resetSession, runnerState, session, settingsSignal, snapshotAfter, synthMocks, type FakeRunner } from '../practice/test-fakes';
 import { DEFAULT_SETTINGS } from '../../state/settings-types';
 import { Report } from './Report';
 
@@ -54,6 +58,7 @@ const MISS = makeOutcome({ singer: { offsetSemis: 2 }, audio: true });
 beforeEach(() => {
   resetSession(['foundations.01', 'foundations.02']);
   resetRunner();
+  exportMock.build.mockReset();
   flow.afterTakeActions.mockReset();
   document.documentElement.dataset.reducedMotion = 'on';
 });
@@ -222,7 +227,7 @@ describe('Report: tiles, replay, tip', () => {
     expect(text()).toContain('In the band');
     expect(text()).toContain('Outside the band');
     expect(container.querySelectorAll('[data-testid="tip"]')).toHaveLength(1);
-    expect(q('[data-testid="tip"]')?.textContent).toBe(PASSING.tip.text);
+    expect(q('[data-testid="tip"]')?.textContent).toBe(coachTake(PASSING, [], { notation: 'sharps' }).tip);
   });
 
   it('counts the crack ticks and the run verdicts in the legend', async () => {
@@ -485,5 +490,97 @@ describe('Report: progress snapshots are not needed to render', () => {
     session.snapshot.value = snapshotAfter([]);
     await mount(PASSING);
     expect(q('[data-testid="report-screen"]')).not.toBeNull();
+  });
+});
+
+describe('Report: the coaching', () => {
+  /** `n` earlier misses of the take's exercise in the log, then the take itself. */
+  function logWith(outcome: TakeOutcome, n: number): void {
+    const earlier = Array.from({ length: n }, (_, i) =>
+      attempt({ profileId: outcome.attempt.profileId, exerciseId: outcome.prepared.def.id, levelId: 'foundations.03', passed: false, score: 0.3, createdAt: new Date(Date.parse(outcome.attempt.createdAt) - (n - i) * 600_000).toISOString() }),
+    );
+    session.attemptLog.value = [...earlier, outcome.attempt];
+  }
+
+  it('replaces the tip card with the coaching card: where it slipped, in plain words, then the tip', async () => {
+    logWith(MISS, 0);
+    await mount(MISS, MISSED);
+    const card = q('[data-testid="coach-card"]')!;
+    expect(card).not.toBeNull();
+    const coaching = coachTake(MISS, session.attemptLog.value, { notation: 'sharps' });
+    expect(card.getAttribute('data-depth')).toBe('1');
+    expect(q('[data-testid="coach-what"]')?.textContent).toBe(coaching.problem.what);
+    expect(q('[data-testid="tip"]')?.textContent).toBe(coaching.tip);
+    expect(text()).not.toContain('Coaching tip');
+    // It sits under the replay, as the one tip did (docs/DESIGN.md §13.5).
+    expect(q('.pl-replay')!.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('marks a spot on the replay when its chip is tapped, and clears it on a second tap', async () => {
+    logWith(MISS, 0);
+    await mount(MISS, MISSED);
+    const chips = [...container.querySelectorAll<HTMLButtonElement>('[data-testid="coach-spot"]')];
+    expect(chips.length).toBeGreaterThan(0);
+    expect(q('[data-testid="replay-mark"]')).toBeNull();
+    await act(() => {
+      chips[0].click();
+    });
+    expect(chips[0].getAttribute('aria-pressed')).toBe('true');
+    expect(q('[data-testid="replay-mark-text"]')?.textContent).toBe(`Marked on the replay: ${chips[0].textContent}`);
+    await act(() => {
+      chips[0].click();
+    });
+    expect(chips[0].getAttribute('aria-pressed')).toBe('false');
+    expect(q('[data-testid="replay-mark-text"]')?.textContent).toBe('');
+  });
+
+  it('deepens with the misses in a row in the log, and keeps the report’s own action the one amber button', async () => {
+    logWith(MISS, 4);
+    await mount(MISS, MISSED);
+    expect(q('[data-testid="coach-card"]')?.getAttribute('data-depth')).toBe('4');
+    expect(q('[data-testid="coach-depth"]')?.textContent).toBe('Fifth try in a row, so here is a gentler way in.');
+    expect(q('[data-testid="coach-send"]')).not.toBeNull();
+    expect(q('[data-testid="coach-listen"]')?.textContent).toBe('Listen again');
+    expect(container.querySelectorAll('.pl-btn--primary')).toHaveLength(1);
+    expect(q('.pl-btn--primary')?.closest('nav')).not.toBeNull();
+  });
+
+  it('plays the level’s demo again from the listen move, made inside the tap', async () => {
+    logWith(MISS, 4);
+    await mount(MISS, MISSED);
+    q<HTMLButtonElement>('[data-testid="coach-listen"]')!.click();
+    expect(createRunnerMock).toHaveBeenCalledWith({ kind: 'level', levelId: 'foundations.03' });
+    const runner = runnerState.last as FakeRunner;
+    expect(runner.listen).toHaveBeenCalledTimes(1);
+    await act(() => {
+      runner.phase.value = 'listening';
+    });
+    expect(q('[data-testid="coach-listen"]')?.textContent).toBe('Stop');
+    await act(() => {
+      render(null, container);
+    });
+    expect(runner.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens Send to Claude from the coaching, with the file made for this exercise', async () => {
+    exportMock.build.mockResolvedValue({ level: { id: 'foundations.03' }, exercise: MISS.prepared.def, exportedAt: '2026-10-22T14:05:00.000Z', takes: [] });
+    logWith(MISS, 2);
+    await mount(MISS, MISSED);
+    expect(q('[data-testid="coach-card"]')?.getAttribute('data-depth')).toBe('3');
+    await act(() => {
+      q<HTMLButtonElement>('[data-testid="coach-send"]')!.click();
+    });
+    await flush(0);
+    expect(q('[role="dialog"][aria-label="Send to Claude"]')).not.toBeNull();
+    expect(exportMock.build).toHaveBeenCalledWith(MISS.prepared.def.id, { includeAudio: false });
+  });
+
+  it('after a pass: the polish or next-step tip, with no deeper help and no moves', async () => {
+    logWith(PASSING, 3);
+    await mount(PASSING);
+    expect(q('[data-testid="coach-card"]')?.getAttribute('data-depth')).toBe('1');
+    expect(q('[data-testid="coach-depth"]')).toBeNull();
+    expect(q('[data-testid="coach-why"]')).toBeNull();
+    expect(q('[data-testid="coach-send"]')).toBeNull();
   });
 });

@@ -9,10 +9,18 @@ vi.mock('../../runtime/runner', async () => (await import('../practice/test-fake
 vi.mock('../../state/session', async () => (await import('../practice/test-fakes')).sessionModule());
 vi.mock('../../state/settings', async () => (await import('../practice/test-fakes')).settingsModule());
 vi.mock('../../state/audio', async () => (await import('../practice/test-fakes')).audioModule());
+const exportMock = vi.hoisted(() => ({ build: vi.fn() }));
+vi.mock('../../coaching/export', async (importOriginal) => ({ ...(await importOriginal<typeof import('../../coaching/export')>()), buildCoachingFile: exportMock.build }));
 
-import { getExercise, getLevel } from '../../exercises';
+import { getExercise, getLevel, realize } from '../../exercises';
+import { GOOD_SINGER, singTake } from '../../exercises/test-singer';
+import { attempt } from '../../progress/test-fixtures';
 import { bindDesktopBackKey, installRouteGuard, resetRouterForTests, route, routeOf } from '../../router';
+import type { AppStorage } from '../../storage';
+import type { AttemptRecord, TakeRecord } from '../../storage/schema';
+import { encodeTrack } from '../../storage/track-codec';
 import {
+  TENOR_RANGE,
   createRunnerMock,
   levelsBefore,
   resetRunner,
@@ -45,6 +53,7 @@ const buttonNamed = (name: string): HTMLButtonElement | undefined => [...contain
 beforeEach(() => {
   resetSession(['foundations.01', 'foundations.02']);
   resetRunner();
+  exportMock.build.mockReset();
   bindDesktopBackKey();
 });
 
@@ -328,5 +337,93 @@ describe('Level: the Range finder, in plain words', () => {
     await mount('foundations.03');
     expect(q('[data-testid="level-steps"]')).toBeNull();
     expect(text()).toContain('±50¢');
+  });
+});
+
+describe('Level: "Last time", before the next try', () => {
+  const def = getExercise(getLevel('foundations.03')!.exerciseId)!;
+  const realized = realize(def, TENOR_RANGE, 'tenor');
+  /** A take of Sustain I sung a whole step sharp: it misses. */
+  const sharpTrack = singTake(realized, { ...GOOD_SINGER, offsetSemis: 2 });
+  const flush = () => act(async () => void (await new Promise((r) => setTimeout(r, 0))));
+
+  function row(over: Partial<AttemptRecord>): AttemptRecord {
+    return attempt({ profileId: 'singer-1', exerciseId: def.id, levelId: 'foundations.03', tonicMidi: realized.tonicMidi, tempoBpm: def.tempoBpm, ...over });
+  }
+
+  function takesStore(records: TakeRecord[]): void {
+    session.appStorage.value = { takes: { get: vi.fn(async (id: string) => records.find((r) => r.id === id)) } } as unknown as AppStorage;
+  }
+
+  const saved: TakeRecord = {
+    id: 'take-1',
+    profileId: 'singer-1',
+    createdAt: '2026-10-22T12:00:00.000Z',
+    updatedAt: '2026-10-22T12:00:00.000Z',
+    deletedAt: null,
+    exerciseId: def.id,
+    track: encodeTrack(sharpTrack),
+    audioRef: null,
+    sampleRate: 48000,
+    latencyMs: 0,
+  };
+
+  it('brings the last missed take’s coaching here, read back from its saved pitch line', async () => {
+    takesStore([saved]);
+    session.attemptLog.value = [row({ passed: false, score: 0.2, takeId: null }), row({ passed: false, score: 0.2, takeId: 'take-1' })];
+    await mount('foundations.03');
+    await flush();
+    const card = q('[data-testid="last-time"]')!;
+    expect(card).not.toBeNull();
+    expect(card.textContent).toContain('Last time');
+    expect(q('[data-testid="coach-card"]')?.getAttribute('data-depth')).toBe('2');
+    expect(q('[data-testid="coach-what"]')?.textContent).toMatch(/sharp/);
+    // The spots are listed (there is no replay here to mark).
+    expect(q('[data-testid="coach-spot"]')?.tagName).toBe('SPAN');
+    expect(q('[data-testid="coach-why"]')).not.toBeNull();
+    // Before the pass lines: the advice comes first.
+    expect(card.compareDocumentPosition(q('section[aria-label="To pass"]')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('falls back to the take’s numbers when its pitch line was not saved', async () => {
+    takesStore([]);
+    const sharp = { 'accuracy.inTolerancePct': 0, 'accuracy.medianAbsCents': 200, 'accuracy.sdCents': 4, 'accuracy.absBiasCents': 200, 'accuracy.absDriftCentsPerSec': 0.5 };
+    session.attemptLog.value = [row({ passed: false, score: 0.1, takeId: 'missing', metrics: sharp })];
+    await mount('foundations.03');
+    await flush();
+    expect(q('[data-testid="last-time"]')).not.toBeNull();
+    expect(q('[data-testid="coach-what"]')?.textContent?.length).toBeGreaterThan(0);
+    expect(q('[data-testid="coach-spot"]')).toBeNull();
+  });
+
+  it('says nothing before the first take, or after a pass', async () => {
+    await mount('foundations.03');
+    expect(q('[data-testid="last-time"]')).toBeNull();
+    expect(q('[data-testid="last-time-loading"]')).toBeNull();
+    await act(() => {
+      render(null, container);
+    });
+    container.remove();
+    session.attemptLog.value = [row({ passed: false, score: 0.2 }), row({ passed: true, score: 0.9, mastery: 2 })];
+    await mount('foundations.03');
+    await flush();
+    expect(q('[data-testid="last-time"]')).toBeNull();
+  });
+
+  it('offers Send to Claude in More, always, and it makes the file for this level’s exercise', async () => {
+    exportMock.build.mockResolvedValue({ level: { id: 'foundations.03' }, exercise: def, exportedAt: '2026-10-22T14:05:00.000Z', takes: [] });
+    await mount('foundations.03');
+    await act(() => {
+      q<HTMLButtonElement>('[data-testid="more-button"]')!.click();
+    });
+    const send = [...document.querySelectorAll<HTMLButtonElement>('[data-testid="more-send"] button')].find((b) => b.textContent?.includes('Send to Claude'))!;
+    expect(send).toBeDefined();
+    await act(() => {
+      send.click();
+    });
+    await flush();
+    expect(document.querySelector('[role="dialog"][aria-label="More"]')).toBeNull();
+    expect(document.querySelector('[role="dialog"][aria-label="Send to Claude"]')).not.toBeNull();
+    expect(exportMock.build).toHaveBeenCalledWith(def.id, { includeAudio: false });
   });
 });

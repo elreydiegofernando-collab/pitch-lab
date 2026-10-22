@@ -2,28 +2,34 @@
  * Level: one level before singing (docs/DESIGN.md §13.3). The goal in a sentence, the pass lines, the tolerance and tempo
  * chips, the best score with its tally lights, then Listen / Sing / More in the thumb zone. A Boss Recital gets a stage
  * header and lists the sections of its one continuous take. A passed level offers "Sing again" for the next tally light
- * and, once Personal records open, "Chase a record"; until then that is shown locked, never hidden. Everything here is
- * gated by src/progress: a level that is not open shows its requirement and no way in.
+ * and, once Personal records open, "Chase a record"; until then that is shown locked, never hidden. When the latest take
+ * of the level missed, "Last time" brings its coaching here, before the next try; More always offers "Send to Claude".
+ * Everything here is gated by src/progress: a level that is not open shows its requirement and no way in.
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import { Target, Trophy } from 'lucide-preact';
 import { back, navigate, route } from '../../router';
 import { CONFIG } from '../../config';
+import { lastTakeMissed, latestTake, type LastTimeSources } from '../../coaching/last-time';
+import type { CoachMove } from '../../coaching/types';
 import { METRIC_INFO, WORLDS, formatMetric, getExercise, getLevel, getWorld, passRequirements } from '../../exercises';
 import type { MetricKey } from '../../analysis/types';
 import type { ExerciseDef, LevelDef, WorldDef } from '../../exercises/types';
 import { LEVEL_REFS, isLevelOpenable, isRecordAttemptAllowed, levelRequirementHint, recordsForExercise, requirementHint } from '../../progress';
 import { paramsForTarget } from '../../runtime/targets';
 import type { ExerciseRunner } from '../../runtime/types';
-import { activeProfile, isUnlocked, snapshot } from '../../state/session';
+import { activeProfile, appStorage, attemptLog, isUnlocked, snapshot } from '../../state/session';
 import { AppBar } from '../components/AppBar';
 import { Banner } from '../components/Banner';
 import { Button } from '../components/Button';
 import { Locked } from '../components/Locked';
 import { TallyLights } from '../components/TallyLights';
+import { hasSlowDemo } from '../practice/CoachCard';
+import { LastTimeCard } from '../practice/LastTimeCard';
 import { MoreSheet } from '../practice/MoreSheet';
 import { PracticeBar } from '../practice/PracticeBar';
+import { SendToClaudeSheet } from '../practice/SendToClaudeSheet';
 import { Unavailable } from '../practice/Unavailable';
 import { bossChain, levelNumber, percent, tempoLabel, toleranceLabel } from '../practice/copy';
 import { rangeLabel } from '../practice/RangeCard';
@@ -59,6 +65,7 @@ function LevelView(props: { level: LevelDef; def: ExerciseDef }): JSX.Element {
   const [runner, setRunner] = useState<ExerciseRunner | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
   useEffect(() => () => runnerRef.current?.dispose(), []);
 
   const listening = runner?.phase.value === 'listening';
@@ -101,6 +108,27 @@ function LevelView(props: { level: LevelDef; def: ExerciseDef }): JSX.Element {
   const ladderOnly = progress !== undefined && progress.attempts > 0 && progress.bestScore === 0 && (def.tempoLadder?.length ?? 0) > 0;
   const attempted = progress !== undefined && progress.attempts > 0 && !ladderOnly;
   const chain = boss ? bossChain(def) : [];
+
+  // "Last time": the latest take of this exercise missed, so its coaching comes here before the next try.
+  const log = attemptLog.value;
+  const latest = open ? latestTake(def.id, log) : null;
+  const lastTime: LastTimeSources | null =
+    latest && lastTakeMissed(def, log)
+      ? {
+          def,
+          log,
+          profile: profile ?? { range: null, voiceType: 'unknown' },
+          takes: appStorage.value?.takes ?? null,
+          notation: settings.value.notation,
+          vibratoStyle: settings.value.vibratoStyle,
+          isLevelPassed: (id) => snap.levels[id]?.status === 'passed',
+          now: Date.now(),
+        }
+      : null;
+  const onMove = (move: CoachMove): void => {
+    if (move.kind === 'practise-level') navigate('level', { levelId: move.levelId });
+    else if (move.kind === 'send-to-claude') setSendOpen(true);
+  };
 
   return (
     <div class="pl-screen pl-level" data-testid="level-screen" style={{ '--level-accent': `var(${world?.accent ?? '--tally'})` }}>
@@ -150,6 +178,15 @@ function LevelView(props: { level: LevelDef; def: ExerciseDef }): JSX.Element {
           </header>
 
           {!open ? <Locked hint={levelRequirementHint(level.id, snap, WORLDS) ?? 'Not available yet.'} /> : null}
+
+          {lastTime && latest ? (
+            <LastTimeCard
+              sources={lastTime}
+              latestId={latest.id}
+              listen={{ slow: hasSlowDemo(def), playing: listening, onClick: handleListen }}
+              onMove={onMove}
+            />
+          ) : null}
 
           {open && noSavedRange ? <Banner kind="info" message="Using a default range until you pass the Range finder." /> : null}
           {failure ? <Banner kind="error" message={failure} /> : null}
@@ -257,7 +294,8 @@ function LevelView(props: { level: LevelDef; def: ExerciseDef }): JSX.Element {
           more={{ onClick: () => setMoreOpen(true) }}
         />
       ) : null}
-      <MoreSheet open={moreOpen} onClose={() => setMoreOpen(false)} />
+      <MoreSheet open={moreOpen} onClose={() => setMoreOpen(false)} onSendToClaude={() => setSendOpen(true)} />
+      <SendToClaudeSheet open={sendOpen} onClose={() => setSendOpen(false)} exerciseId={def.id} />
     </div>
   );
 }

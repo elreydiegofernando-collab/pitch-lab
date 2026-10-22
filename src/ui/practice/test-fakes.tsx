@@ -17,7 +17,8 @@ import { attempt } from '../../progress/test-fixtures';
 import type { FeatureId, ProgressSnapshot } from '../../progress/types';
 import type { ExerciseRunner, PreparedRun, RunError, RunPhase, RunTarget, TakeOutcome } from '../../runtime/types';
 import { DEFAULT_DEVICE_SETTINGS, DEFAULT_SETTINGS, type Settings } from '../../state/settings-types';
-import type { ProfileRecord, VocalRange } from '../../storage/schema';
+import type { AppStorage } from '../../storage';
+import type { AttemptRecord, ProfileRecord, VocalRange } from '../../storage/schema';
 import type { PitchViewHostProps } from '../pitch-view/PitchViewHost';
 import type { PitchView } from '../pitch-view/types';
 
@@ -135,11 +136,17 @@ export function snapshotAfter(passed: readonly string[] = [], opts: { score?: nu
 export const session = {
   snapshot: signal<ProgressSnapshot>(snapshotAfter([])),
   activeProfile: signal<ProfileRecord | null>(makeProfile()),
+  /** The active profile's attempt log, oldest first (the coaching on the Report and Level screens reads it). */
+  attemptLog: signal<readonly AttemptRecord[]>([]),
+  /** The open storage, or null (the Level screen's "Last time" reads saved takes from it). */
+  appStorage: signal<AppStorage | null>(null),
 };
 
 export const sessionModule = () => ({
   snapshot: session.snapshot,
   activeProfile: session.activeProfile,
+  attemptLog: session.attemptLog,
+  appStorage: session.appStorage,
   isUnlocked: (id: FeatureId): boolean => isFeatureUnlocked(id, session.snapshot.value),
 });
 
@@ -167,10 +174,12 @@ export const settingsModule = () => ({
   settingsReady: Promise.resolve(),
 });
 
-/** Back to a fresh singer with nothing passed and a saved range; call from beforeEach. */
+/** Back to a fresh singer with nothing passed, a saved range, an empty log and no storage; call from beforeEach. */
 export function resetSession(passed: readonly string[] = [], range: VocalRange | null = TENOR_RANGE): void {
   session.snapshot.value = snapshotAfter(passed);
   session.activeProfile.value = makeProfile(range);
+  session.attemptLog.value = [];
+  session.appStorage.value = null;
   settingsSignal.value = DEFAULT_SETTINGS;
   updateSettingsMock.mockClear();
   engineRig.mocks.start.mockClear();

@@ -64,6 +64,8 @@ export interface TraceReplayProps {
   /** Preview: width of the live view's note-name column. */
   padLeft?: number;
   notation?: Notation;
+  /** The report: a moment to mark (a coaching spot), drawn as a line at its take time and named for screen readers. */
+  mark?: { t: number; label: string } | null;
 }
 
 /** Backing-store scale: the device ratio, at most 2, and small enough for the widest canvas iOS allows. */
@@ -176,6 +178,15 @@ export function TraceReplay(props: TraceReplayProps): JSX.Element {
     scroller.scrollLeft = Math.max(0, padLeft + (glyphs[0].t - t0) * layout.pxPerSec - RUN_LEAD_PX);
   }, [hostRef, preview, layout, glyphs, padLeft, t0]);
 
+  // A marked moment sits where the canvas draws that take time; a replay that scrolls brings it to the middle.
+  const mark = preview ? null : (props.mark ?? null);
+  const markX = mark && Number.isFinite(mark.t) ? padLeft + (mark.t - t0) * layout.pxPerSec : null;
+  useEffect(() => {
+    const scroller = hostRef.current;
+    if (!scroller || markX === null || !layout.scrolls) return;
+    scroller.scrollLeft = Math.max(0, markX - scroller.clientWidth / 2);
+  }, [hostRef, markX, layout.scrolls]);
+
   if (preview) {
     return (
       <div ref={hostRef} class="pl-replay pl-replay--preview" aria-hidden="true">
@@ -210,8 +221,14 @@ export function TraceReplay(props: TraceReplayProps): JSX.Element {
           aria-label={layout.scrolls ? 'Take replay, scrolls sideways' : undefined}
         >
           <canvas ref={canvasRef} role="img" aria-label={label} />
+          {markX !== null && host.w > 0 ? (
+            <div class="pl-replay__mark" style={{ left: `${markX}px`, height: `${REPLAY_HEIGHT}px` }} aria-hidden="true" data-testid="replay-mark" />
+          ) : null}
         </div>
       </div>
+      <p class="pl-visually-hidden" aria-live="polite" data-testid="replay-mark-text">
+        {mark ? `Marked on the replay: ${mark.label}` : ''}
+      </p>
       <figcaption class="pl-replay__legend">
         {segments.length > 0 ? (
           <ul class="pl-replay__keys">

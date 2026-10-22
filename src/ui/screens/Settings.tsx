@@ -182,7 +182,7 @@ export function Settings(): JSX.Element {
               />
             </div>
             <p class="pl-body-s pl-muted pl-prose" data-testid="audio-privacy">
-              Your voice audio never leaves this device. The only way it gets out is an Export WAV that you tap in Data &amp; backup.
+              Your voice audio never leaves this device unless you export it: Export WAV in Data &amp; backup, or Send to Claude with Include audio turned on.
             </p>
           </section>
 

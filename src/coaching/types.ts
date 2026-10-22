@@ -16,6 +16,7 @@
 import type { MetricKey } from '../analysis/types';
 import type { Notation } from '../core/music';
 import type { TargetNote, VibratoStyle } from '../core/types';
+import type { DetectorKind } from '../dsp/detector-types';
 import type { ExerciseDef } from '../exercises/types';
 import type { AttemptRecord, TakeRecord, VocalRange } from '../storage/schema';
 
@@ -121,7 +122,13 @@ export interface CoachingFile {
   /** The exercise as defined at export (patterns, pass rule, analyzers), so the script needs no catalog. */
   exercise: ExerciseDef;
   profile: { name: string; voiceType: string; range: VocalRange | null };
-  settings: { vibratoStyle: VibratoStyle; notation: Notation; keepTakeAudio: boolean };
+  settings: {
+    vibratoStyle: VibratoStyle;
+    notation: Notation;
+    keepTakeAudio: boolean;
+    /** The pitch detector the takes were sung with (Settings), so audio is rebuilt with the same one; absent in older files (MPM, the default). */
+    detector?: DetectorKind;
+  };
   device: { route: string; latencyMs: number | null; userAgent: string };
   /** Newest first: up to 5 takes of this exercise. */
   takes: Array<{

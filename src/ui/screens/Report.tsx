@@ -1,28 +1,35 @@
 /**
  * Report: the take, from the runner's last outcome (docs/DESIGN.md §13.5). The verdict as a glyph and words, the score
  * ring counting up (and, after a pass, the three tally lights in sequence), what the take unlocked, the metric tiles,
- * the replay of the trace against the targets, the one coaching tip and playback of the take. Its next steps come from
+ * the replay of the trace against the targets, the coaching (CoachCard: where it slipped, marked on the replay from its
+ * spot chips, with more help the more misses in a row) and playback of the take. Its next steps come from
  * afterTakeActions and open with replace, so Back from the next screen skips the report. Nothing here is colour-only.
  */
-import { useEffect, useMemo, useRef } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import { MicOff } from 'lucide-preact';
 import { back, previousRoute, replace, sameRoute } from '../../router';
 import { CONFIG } from '../../config';
+import { coachTake, tipOnly } from '../../coaching/coach';
+import type { CoachMove } from '../../coaching/types';
 import { canPassAtTempo, rangeFromMeasurement } from '../../exercises';
 import { afterTakeActions } from '../../runtime/flow';
 import { lastOutcome } from '../../runtime/runner';
-import type { AfterTakeAction, TakeOutcome } from '../../runtime/types';
+import type { AfterTakeAction, ExerciseRunner, TakeOutcome } from '../../runtime/types';
 import { finishWorkout } from '../../runtime/workout';
-import { activeProfile } from '../../state/session';
+import { activeProfile, attemptLog } from '../../state/session';
 import { settings } from '../../state/settings';
 import { AppBar } from '../components/AppBar';
 import { Banner } from '../components/Banner';
+import { CoachCard, hasSlowDemo } from '../practice/CoachCard';
 import { PlaybackControls } from '../practice/PlaybackControls';
 import { RangeCard } from '../practice/RangeCard';
 import { ReportBar } from '../practice/ReportBar';
-import { MetricTiles, TipCard, VerdictLine, notJudgedLine, type Verdict } from '../practice/ReportParts';
+import { MetricTiles, VerdictLine, notJudgedLine, type Verdict } from '../practice/ReportParts';
+import { prefersReducedMotion } from '../practice/motion';
+import { tryCreateRunner } from '../practice/runner-handle';
 import { ScoreReveal } from '../practice/ScoreReveal';
+import { SendToClaudeSheet } from '../practice/SendToClaudeSheet';
 import { TraceReplay } from '../practice/TraceReplay';
 import { Unavailable } from '../practice/Unavailable';
 import { UnlockedStrip } from '../practice/UnlockedStrip';
@@ -103,6 +110,55 @@ function ReportView(props: { outcome: TakeOutcome }): JSX.Element {
       rangeFromMeasurement(analysis.details.range?.lowestMidi ?? null, analysis.details.range?.highestMidi ?? null, outcome.attempt.createdAt))
     : null;
 
+  // The coaching: this take against the log it was written into (the session's, which already holds it). Should it ever
+  // fail, the take's own tip still shows: the report never goes blank over its coaching.
+  const log = attemptLog.value;
+  const vibratoStyle = settings.value.vibratoStyle;
+  const coaching = useMemo(() => {
+    try {
+      return coachTake(outcome, log, { notation, vibratoStyle });
+    } catch {
+      return tipOnly(outcome.tip, evaluation.passed);
+    }
+  }, [outcome, log, notation, vibratoStyle, evaluation.passed]);
+  const [spot, setSpot] = useState<number | null>(null);
+  const mark = spot !== null ? (coaching.problem.spots[spot] ?? null) : null;
+  const replayRef = useRef<HTMLDivElement>(null);
+  const selectSpot = (index: number | null): void => {
+    setSpot(index);
+    // The replay sits above the card: bring the marked moment into view.
+    if (index !== null) replayRef.current?.scrollIntoView?.({ block: 'nearest', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+  };
+
+  // "Listen slowly" plays the level's demo again. Its runner is made on the first tap (inside the gesture, for iOS
+  // audio) and disposed on leaving; an audition test or a routine has no level to play.
+  const listenRef = useRef<ExerciseRunner | null>(null);
+  const [listener, setListener] = useState<ExerciseRunner | null>(null);
+  const [listenFailure, setListenFailure] = useState<string | null>(null);
+  useEffect(() => () => listenRef.current?.dispose(), []);
+  const listenLevel = prepared.level;
+  const handleListen = (): void => {
+    if (!listenLevel) return;
+    let current = listenRef.current;
+    if (!current) {
+      const handle = tryCreateRunner({ kind: 'level', levelId: listenLevel.id });
+      if (!handle.runner) {
+        setListenFailure(handle.failure);
+        return;
+      }
+      current = handle.runner;
+      listenRef.current = current;
+      setListener(current);
+    }
+    current.listen();
+  };
+  const listenError = listenFailure ?? listener?.error.value?.message ?? null;
+  const [sendOpen, setSendOpen] = useState(false);
+  const onMove = (move: CoachMove): void => {
+    if (move.kind === 'practise-level') replace('level', { levelId: move.levelId });
+    else if (move.kind === 'send-to-claude') setSendOpen(true);
+  };
+
   const act = (action: AfterTakeAction): void => {
     // "Finish workout" ends the workout first, so the Workout screen opens on its summary (finishWorkout is idempotent)
     // rather than on the list of items, where the singer would have to end it a second time.
@@ -155,17 +211,27 @@ function ReportView(props: { outcome: TakeOutcome }): JSX.Element {
           {/* A saved range already says what the Range finder measured; its tile is for a take that fell short. */}
           {verdict.kind !== 'not-judged' && !savedRange ? <MetricTiles tiles={outcome.tiles} /> : null}
 
-          <TraceReplay
-            notes={prepared.realized.notes}
-            totalSec={prepared.realized.totalSec}
-            toleranceCents={CONFIG.tolerance[def.tolerance]}
-            track={take.track}
-            cracks={analysis.details.cracks}
-            runs={runs}
-            notation={notation}
-          />
+          <div ref={replayRef} class="pl-report__replay">
+            <TraceReplay
+              notes={prepared.realized.notes}
+              totalSec={prepared.realized.totalSec}
+              toleranceCents={CONFIG.tolerance[def.tolerance]}
+              track={take.track}
+              cracks={analysis.details.cracks}
+              runs={runs}
+              notation={notation}
+              mark={mark}
+            />
+          </div>
 
-          <TipCard tip={outcome.tip} />
+          <CoachCard
+            coaching={coaching}
+            selectedSpot={spot}
+            onSelectSpot={selectSpot}
+            listen={listenLevel ? { slow: hasSlowDemo(def), playing: listener?.phase.value === 'listening', onClick: handleListen } : null}
+            onMove={onMove}
+          />
+          {listenError ? <Banner kind="error" message={listenError} /> : null}
 
           {take.audio ? (
             <PlaybackControls audio={take.audio} targetNotes={runNotes} timbre={def.demo.timbre} gain={settings.value.referenceVolume} />
@@ -179,6 +245,7 @@ function ReportView(props: { outcome: TakeOutcome }): JSX.Element {
       </div>
 
       <ReportBar actions={actions} onAct={act} />
+      <SendToClaudeSheet open={sendOpen} onClose={() => setSendOpen(false)} exerciseId={def.id} />
     </div>
   );
 }

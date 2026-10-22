@@ -178,6 +178,8 @@ describe('Settings: take audio and its privacy line', () => {
     const privacy = container.querySelector('[data-testid="audio-privacy"]')!.textContent ?? '';
     expect(privacy).toContain('never leaves this device');
     expect(privacy).toContain('Export WAV');
+    // The coaching file can carry audio too, when the singer turns Include audio on (review R3).
+    expect(privacy).toContain('Send to Claude with Include audio');
   });
 });
 

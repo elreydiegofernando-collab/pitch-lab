@@ -86,9 +86,17 @@ export const MIN_REACH_SHARE = 0.9;
  * the voice passes it), so it is exempt; a take with no notes has nothing to miss.
  */
 export function reachHolds(def: Pick<ExerciseDef, 'kind'>, reach: NoteReach): boolean {
-  if (def.kind === 'range-finder' || reach.total <= 0) return true;
-  if (def.kind === 'boss-recital') return reach.reached >= reach.total;
-  return reach.reached >= MIN_REACH_SHARE * reach.total - 1e-9;
+  return reach.reached >= notesNeeded(def, reach.total);
+}
+
+/**
+ * How many of `total` target notes a take must sing to pass (reachHolds): every note of a Boss Recital or of an
+ * exercise with fewer than ten notes, at least MIN_REACH_SHARE of a longer one; none for the Range finder.
+ */
+export function notesNeeded(def: Pick<ExerciseDef, 'kind'>, total: number): number {
+  if (def.kind === 'range-finder' || total <= 0) return 0;
+  if (def.kind === 'boss-recital') return total;
+  return Math.ceil(MIN_REACH_SHARE * total - 1e-9);
 }
 
 /** True when `take` was not the exercise as written: folded by octaves, or with figures dropped. */

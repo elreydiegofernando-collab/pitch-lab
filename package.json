@@ -2,7 +2,7 @@
   "name": "pitch-lab",
   "version": "0.1.0",
   "private": true,
-  "description": "Free, open-source, mobile-first singing technique trainer with real-time pitch feedback. Runs entirely in the browser; voice audio never leaves the device.",
+  "description": "Free, open-source, mobile-first singing technique trainer with real-time pitch feedback. Runs entirely in the browser; your voice never leaves the device unless you export it.",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -15,6 +15,7 @@
     "test:watch": "vitest",
     "e2e": "vitest run --config vitest.e2e.config.ts",
     "icons": "node scripts/make-icons.mjs",
+    "coach": "node scripts/coach.mjs",
     "check": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {

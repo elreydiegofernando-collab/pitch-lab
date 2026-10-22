@@ -166,7 +166,7 @@ Wave 2 rules (on top of the Wave 1 integration rules and must-dos below):
   - Workout takes go through the same runner (`{ kind: 'workout', itemIndex }`), auditions too (`{ kind: 'audition', worldId }`: the runner sings that world's NEXT test).
 - **Live readouts are progressive**: `live.cracks`, `live.onset` and `live.vibrato` gate what the Live screen draws, and `setting.vibratoStyle` gates the setting.
 - **The mic runs only on the screen that turned it on.** The runner (its own takes), the song session (its own takes) and Live, the Vibrato meter, Setup and Diagnostics (`useReleaseMicOnLeave`, src/ui/practice/use-mic-release.ts) stop the mic they started when they are left, so the recording indicator goes off and `stop()` puts the audio session back to playback for the next screen. The engine reports `'running'` only once the mic graph and its worklet are wired, `start()` is a no-op while it runs, and `stop()` abandons a start still in flight.
-- **Audio stays on the device**: take audio is kept only when `settings.keepTakeAudio` is on, played back locally, and leaves the device only through an explicit WAV export on the Data screen.
+- **Audio stays on the device**: take audio is kept only when `settings.keepTakeAudio` is on, played back locally, and leaves the device only through an explicit export: a WAV on the Data screen, or a coaching file ("Send to Claude", `src/coaching/export.ts`) with Include audio turned on.
 - **Styles**: each builder writes its CSS only in its own stylesheet (all four are imported by `main.tsx`) and uses the tokens in `tokens.css`. No new hues and no new fonts.
 
 ### Wave 3: integration, review, e2e, deploy

@@ -9,7 +9,8 @@ controlled dynamics.
 It runs entirely in your browser. **Your voice audio never leaves your
 device** — there's no server, no account, no analytics, and no third-party
 requests at runtime. The only way audio ever leaves the device is if you
-explicitly export a take as a WAV file.
+explicitly export it: a take as a WAV file, or a coaching file with
+**Include audio** turned on.
 
 Primary target: **Safari on iPhone**, installed via *Share → Add to Home
 Screen*. It also runs in Chrome and Edge on a Windows laptop.
@@ -35,8 +36,12 @@ Screen*. It also runs in Chrome and Edge on a Windows laptop.
   is placed inside it.
 - **A report after every take.** A score ring, pass or "Not yet", two to four
   metric tiles against their targets, the trace replayed over the target notes
-  (for runs, each note marked defined, smeared or missed), **one** coaching tip
-  aimed at the weakest thing, and playback of your take at normal or half speed.
+  (for runs, each note marked defined, smeared or missed), **coaching** aimed at
+  the weakest thing, and playback of your take at normal or half speed. The
+  coaching says where in the take it went wrong, in plain words, and gives more
+  help each time you miss the same exercise in a row: why it happens, then a
+  step-by-step, then an easier way in. **Send to Claude** saves a file of your
+  last takes for a closer look in chat ([`docs/COACHING.md`](docs/COACHING.md)).
 - **What it measures.** Pitch accuracy and stability, crisp onsets (settle time,
   scoop, overshoot), clean transitions, sirens and cracks, vibrato (rate, extent,
   regularity and centring, against a pop or a classical zone), intentional scoops,
@@ -77,9 +82,12 @@ but its own origin.
   storage durable. None of it is sent anywhere.
 - **What can leave, and only when you tap for it.** *Export backup* writes one
   JSON file with your profiles, attempts and settings. It carries **no audio**.
-  *Export WAV* writes one take's audio. On an iPhone these go through the share
-  sheet (Save to Files, AirDrop, Mail); on a computer they download. Nothing else
-  in the app can export audio.
+  *Export WAV* writes one take's audio. *Send to Claude* (a level's **More**)
+  writes a coaching file: your last five takes of that exercise with their pitch
+  lines and scores, and their audio only if you turn on **Include audio** (off
+  each time). On an iPhone these go through the share sheet (Save to Files,
+  OneDrive, AirDrop, Mail); on a computer they download. Nothing else in the app
+  can export audio.
 - **What you can delete.** One recording, one profile together with its
   recordings, or everything, from **Data & backup**. A delete that cannot finish
   says so and keeps the item; the app never reports a deletion that did not happen.
@@ -174,6 +182,7 @@ test mic capture on a real phone before deploying.
 | `npm test` | Unit tests (Vitest, synthesized-signal tests for DSP/analyzers, pure-module tests elsewhere). |
 | `npm run e2e` | End-to-end tests: builds the app (as `NODE_ENV=production`), serves it, and drives its real UI in a **real, desktop Chrome** fed a synthesized WAV as a fake microphone: a first session from the first-run sheets to a passed Range finder, locked deep links, persistence and offline use, backups and WAV export, profiles, Song Stage from a restored backup and a sung song phrase, and every screen's layout (see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)). Takes about four minutes. Needs Chrome installed; not run in every CI environment. |
 | `npm run icons` | Generates the PWA icon set from the source artwork. |
+| `npm run coach -- <file...>` | Reads a coaching file ("Send to Claude"), a backup or a take WAV and prints a diagnosis of the takes; `npm run coach -- --list` finds the newest ones (see [`docs/COACHING.md`](docs/COACHING.md)). |
 | `npm run check` | `typecheck` + `test` + `build`, the quick "is this phase still green" command. |
 
 ## Deploying to GitHub Pages
@@ -207,6 +216,9 @@ does all of its audio work in a single AudioWorklet instead (see
   real-device checklist for the end-to-end test on an iPhone: what only a phone
   and a real voice can show, a real-voice check for every provisional threshold,
   the backup round trip, WAV export, song mode and profile switching.
+- [`docs/COACHING.md`](docs/COACHING.md) — "Send to Claude": how a singer's
+  coaching file is exported from the phone and read in chat with
+  `scripts/coach.mjs`, and how to answer in plain words.
 
 ## License
 

@@ -1,6 +1,7 @@
 /**
  * Hand a file to the singer. Exporting is the ONLY way backups or audio leave the device (SPEC §4, §12), and only
- * when they tap an Export button. On an iPhone or iPad that is the system share sheet (Save to Files, AirDrop,
+ * when they tap for it: Export backup, Export WAV, or Share in Send to Claude (the coaching file, which carries audio
+ * only with Include audio on). On an iPhone or iPad that is the system share sheet (Save to Files, AirDrop,
  * Mail): a home-screen app has no download manager to rely on. Everywhere else it is an ordinary file download.
  * The share sheet needs a fresh tap, and a file made after a wait (a backup read from storage) is past the tap that
  * asked for it: the first attempt then reports 'needs-tap', the caller parks the file behind a Share button, and

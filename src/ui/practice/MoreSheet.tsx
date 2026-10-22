@@ -2,11 +2,12 @@
  * MoreSheet: what the "More" button of the Level, Sing and Vibrato meter screens opens (docs/DESIGN.md §13.3). The
  * demo option every screen shares is the Listen volume; screens add their own sections above it. Setup & calibration is
  * here too, and "Reset audio" on the screens that open the microphone (the iOS escape hatch for output stuck on the
- * earpiece). These are non-skill preferences, so they are always available (SPEC §11.1).
+ * earpiece). The Level screen also offers "Send to Claude" here, always (the coaching file of its exercise). These are
+ * non-skill preferences and tools, so they are always available (SPEC §11.1).
  */
 import { useState } from 'preact/hooks';
 import type { ComponentChildren, JSX } from 'preact';
-import { RotateCcw, SlidersHorizontal } from 'lucide-preact';
+import { RotateCcw, Send, SlidersHorizontal } from 'lucide-preact';
 import { navigate } from '../../router';
 import { resetAudio } from '../../state/audio';
 import { settings, updateSettings } from '../../state/settings';
@@ -19,12 +20,14 @@ export interface MoreSheetProps {
   onClose: () => void;
   /** Offer "Reset audio" (screens that open the microphone). */
   showReset?: boolean;
+  /** Offer "Send to Claude": the sheet closes, then this opens the coaching-file sheet (the Level screen). */
+  onSendToClaude?: () => void;
   /** Screen-specific sections, above the shared ones. */
   children?: ComponentChildren;
 }
 
 export function MoreSheet(props: MoreSheetProps): JSX.Element {
-  const { open, onClose, showReset = false, children } = props;
+  const { open, onClose, showReset = false, onSendToClaude, children } = props;
   const [resetBusy, setResetBusy] = useState(false);
   const volume = settings.value.referenceVolume;
 
@@ -38,6 +41,21 @@ export function MoreSheet(props: MoreSheetProps): JSX.Element {
   return (
     <Sheet open={open} title="More" onClose={onClose}>
       {children}
+      {onSendToClaude ? (
+        <div class="pl-stack" data-testid="more-send">
+          <Button
+            variant="secondary"
+            icon={Send}
+            onClick={() => {
+              onClose();
+              onSendToClaude();
+            }}
+          >
+            Send to Claude
+          </Button>
+          <p class="pl-body-s pl-muted pl-prose">Save a file of your last takes of this exercise, for a closer look in chat.</p>
+        </div>
+      ) : null}
       <div class="pl-stack">
         <div class="pl-row-flex">
           <span class="pl-label">Listen volume</span>

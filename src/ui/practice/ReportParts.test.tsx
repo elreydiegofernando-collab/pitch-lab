@@ -9,7 +9,7 @@ import type { AfterTakeAction } from '../../runtime/types';
 import type { VocalRange } from '../../storage/schema';
 import { RangeCard, rangeLabel } from './RangeCard';
 import { ReportBar, splitActions } from './ReportBar';
-import { MetricTiles, TipCard, VerdictLine, notJudgedLine } from './ReportParts';
+import { MetricTiles, VerdictLine, notJudgedLine } from './ReportParts';
 
 let container: HTMLElement;
 
@@ -103,15 +103,6 @@ describe('MetricTiles', () => {
   it('is absent without tiles', async () => {
     await show(<MetricTiles tiles={[]} />);
     expect(container.querySelector('.pl-tiles')).toBeNull();
-  });
-});
-
-describe('TipCard', () => {
-  it('shows the one tip with a Lightbulb', async () => {
-    await show(<TipCard tip={{ id: 'acc.sharp', text: 'You sat 12¢ sharp on average.', metric: null, value: null }} />);
-    expect(container.querySelector('[data-testid="tip"]')?.textContent).toBe('You sat 12¢ sharp on average.');
-    expect(container.querySelector('svg')).not.toBeNull();
-    expect(container.textContent).toContain('Coaching tip');
   });
 });
 

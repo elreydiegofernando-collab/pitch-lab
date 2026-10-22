@@ -205,14 +205,16 @@ Model:
 ## 12. Feedback, progress & coaching **[scoped]**
 
 - **Live view:** the canvas plus a readout cluster (note, cents gauge, Hz, dB). Exercise-specific overlays (target bars, tolerance band, vibrato zone, markers). Live status chips such as "settling…" or "vibrato 5.8 Hz ±38¢".
-- **Take report:** an overall score, pass/fail, and 2–4 metric tiles (value versus pass threshold). It includes a trace replay with markers and a per-note breakdown (runs) or per-phrase breakdown (songs). It gives **one** coaching tip, aimed at the weakest metric. Actions are Retry and Next, plus playback of the take at normal or slowed speed.
+- **Take report:** an overall score, pass/fail, and 2–4 metric tiles (value versus pass threshold). It includes a trace replay with markers and a per-note breakdown (runs) or per-phrase breakdown (songs). It gives **one** coaching tip, aimed at the weakest metric, located in the take (where it happened, marked on the replay) and in plain words, with more help each time the same exercise is missed in a row (decided 2026-10-22; DESIGN §13.5, `src/coaching`). Actions are Retry and Next, plus playback of the take at normal or slowed speed.
 - **Progress dashboard:** level-map completion, a per-skill trend (Accuracy, Stability, Crispness, Transitions, Vibrato, Inflections, Runs, Dynamics) as 30-day sparklines, and a range-over-time chart (lowest and highest clean notes). It also shows personal bests, practice minutes and **Momentum**. Only unlocked skills appear.
 - **Momentum (replaces a daily streak, decided 2026-10-21):** a score that decays slowly and **never resets to zero**. It treats scheduled rest days as healthy and gives a small recovery bonus after 1–3 rest days. A hard-reset streak would push people to sing on days their voice should rest, contradicting the app's own voice-care advice.
 - **Daily workout:** an auto-built 5/10/20-minute session. Warm-up (gentle sirens in the comfortable range) → 2–3 items from the current world → 1 review of the weakest *unlocked* skill → cool-down glides. Completing it builds Momentum.
 - **Profiles:** several local profiles on one device (for example the tenor and the beginner). Each has its own range, progress, history and settings. Latency calibration is **per device and route**, shared across profiles. Accounts and sync are v2.
 - **Export / import:**
   - A JSON backup of a profile (versioned schema) to restore it or move it to a new device.
-  - A take's audio as WAV. This is the **only** way audio leaves the device, and only when the user taps Export.
+  - A take's audio as WAV, only when the user taps Export.
+  - A coaching file ("Send to Claude", from a level's More): the last five takes of one exercise with their pitch lines and scores, for a closer look in chat (docs/COACHING.md). It carries their audio only when the user turns on Include audio, which is off each time the sheet opens.
+  - These two are the **only** ways audio leaves the device.
   - Diagnostics JSON for bug reports.
 - **Voice-health note:** shown at first run and in Help. It covers warming up, hydrating, never pushing through pain or hoarseness, resting, and not straining for range. After about 30 minutes of active singing, a gentle break reminder appears. A clear "not medical advice" line is included.
 - **Coaching tips:** a rule table mapping analyzer findings to short, specific tips. For example, a scoop above 40¢ gets "start the note on the pitch — hear it before you sing", and sharp-when-loud gets "keep the breath steady as you crescendo; don't push".

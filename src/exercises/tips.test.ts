@@ -131,6 +131,28 @@ describe('pickTip', () => {
     expect(pickTip(m, def).id).not.toMatch(/acc\.(sharp|flat)/);
   });
 
+  it('names no direction when the notes missed both ways: the lean must explain half the typical offset (review R1)', () => {
+    const def = ex('foundations.intervals.1');
+    // Notes about 30 off each way: the typical offset is 30, the signed average near zero.
+    const m = { ...clean(def), 'accuracy.absBiasCents': 30, 'accuracy.inTolerancePct': 20 };
+    for (const biasCents of [1.8, -4, 14.9]) expect(pickTip(m, def, { biasCents }).id, String(biasCents)).not.toMatch(/acc\.(sharp|flat)/);
+    expect(pickTip(m, def, { biasCents: 15 }).id).toBe('acc.sharp');
+    // The same for drift and vibrato centring: no direction tip for a lean that explains little.
+    const sustain = ex('foundations.sustain.1');
+    const drift = { ...clean(sustain), 'accuracy.absDriftCentsPerSec': 8 };
+    expect(pickTip(drift, sustain, { driftCentsPerSec: -1 }).id).not.toMatch(/acc\.drift-(flat|sharp)/);
+    expect(pickTip(drift, sustain, { driftCentsPerSec: -6 }).id).toBe('acc.drift-flat');
+  });
+
+  it('says how many notes a take needs: every one on a short exercise, a count on a long one (review R7)', () => {
+    const sirens = ex('foundations.siren.1');
+    expect(pickTip(clean(sirens), sirens, { reach: { reached: 8, total: 9 } }).text).toBe(
+      'You sang 8 of the 9 notes. Keep singing to the end of the exercise: a take passes only when every note is sung.',
+    );
+    const legato = ex('foundations.legato.1');
+    expect(pickTip(clean(legato), legato, { reach: { reached: 12, total: 20 } }).text).toMatch(/a take passes only when at least 18 of them are sung\.$/);
+  });
+
   it('coaches sharp-when-loud from the dynamics verdict', () => {
     const def = ex('dynamics.swell.3');
     const tip = pickTip({ ...clean(def), 'dynamics.absSlopeCentsPerDb': 3 }, def, { dynamicsVerdict: 'sharp-when-loud' });
