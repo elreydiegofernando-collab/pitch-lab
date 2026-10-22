@@ -1,0 +1,127 @@
+/**
+ * Exercise, level and world definitions (Phase 3+). Every exercise is DATA:
+ * target notes and timings (relative to a tonic so they auto-transpose to the
+ * singer's saved range), tempo, which analyzers score it, tolerance, pass rules.
+ */
+import type { ToleranceLevel } from '../core/types';
+import type { MetricKey } from '../analysis/types';
+import type { Timbre, VibratoSpec } from '../audio/synth-types';
+
+export type WorldId = 'foundations' | 'vibrato' | 'inflections' | 'runs' | 'dynamics' | 'song-stage';
+
+export type ExerciseKind =
+  // Foundations
+  | 'range-finder' | 'pitch-match' | 'sustain' | 'siren' | 'staccato' | 'intervals' | 'legato'
+  // Vibrato
+  | 'vibrato-meter' | 'pulse-builder' | 'oscillation' | 'straight-to-bloom' | 'vibrato-switch'
+  // Inflections
+  | 'scoop' | 'fall' | 'slide' | 'turn' | 'flip'
+  // Runs & riffs
+  | 'run'
+  // Dynamics
+  | 'swell'
+  // Capstones
+  | 'boss-recital' | 'audition';
+
+export type AnalyzerId =
+  | 'accuracy' | 'onset' | 'vibrato' | 'glide' | 'cracks' | 'transitions' | 'inflection' | 'run' | 'dynamics' | 'range' | 'pulse' | 'switch';
+
+/** One step of material, relative to the tonic (so it transposes). */
+export interface PatternStep {
+  /** Semitones above (+) or below (-) the tonic. Omit for a rest. */
+  semis?: number;
+  /** Duration in beats at the exercise tempo. */
+  beats: number;
+  /** For glides/slides/sirens: arrive at this offset by the end of the step. */
+  glideToSemis?: number;
+  /** On-screen cue for the singer (e.g. "straight", "bloom", "vibrato on", "swell"). */
+  cue?: string;
+  /** Sung syllable/vowel hint (e.g. "ah", "nee"). */
+  syllable?: string;
+}
+
+/** Where to place the tonic inside the saved range before transposing. */
+export type TonicPlacement = 'low' | 'mid' | 'high' | 'passaggio' | 'fit-span';
+
+export interface ScoreTerm {
+  metric: MetricKey;
+  weight: number;
+  /** Value that maps to a perfect 1.0 ... */
+  best: number;
+  /** ... and the value that maps to 0 (linear in between, clamped). best may be < worst. */
+  worst: number;
+}
+
+export interface PassRule {
+  /** Minimum overall score 0..1. */
+  score: number;
+  /** Hard gates that must also hold. */
+  gates?: Array<{ metric: MetricKey; op: '<=' | '>='; value: number }>;
+}
+
+export interface ExerciseDef {
+  id: string; //                         e.g. "foundations.sustain.2"
+  worldId: WorldId;
+  kind: ExerciseKind;
+  title: string;
+  /** One sentence, shown before singing. */
+  goal: string;
+  pattern: PatternStep[];
+  tempoBpm: number;
+  tonicPlacement: TonicPlacement;
+  /** Repeat the pattern N times, moving the tonic by `stepSemis` each time (e.g. ascending scales). */
+  repeats?: { count: number; stepSemis: number };
+  /** Count-in beats before singing (metronome clicks). */
+  countInBeats: number;
+  metronome: boolean;
+  /** How the Listen demo is synthesized. 'style' = use the vibrato style zone midpoint. */
+  demo: { timbre: Timbre; vibrato?: VibratoSpec | 'style' | null; slowFirst?: boolean };
+  analyzers: AnalyzerId[];
+  scoring: ScoreTerm[];
+  pass: PassRule;
+  tolerance: ToleranceLevel;
+  /** Score thresholds for mastery tally lights 2 (solid) and 3 (studio). Light 1 = pass. */
+  tiers: { solid: number; studio: number };
+  /** Tempo ladder (runs): bpm values; auto-advances when run.score >= CONFIG.runs.tempoAdvanceScore. */
+  tempoLadder?: number[];
+  /** Coaching-tip ids relevant to this exercise (see coaching tips table). */
+  tipIds?: string[];
+}
+
+export interface LevelDef {
+  id: string; //                         e.g. "foundations.03"
+  worldId: WorldId;
+  index: number;
+  title: string;
+  exerciseId: string;
+  kind: 'level' | 'boss';
+}
+
+export interface AuditionDef {
+  id: string;
+  worldId: WorldId;
+  /** Short sung tests drawn from the world's levels, at their pass rules. */
+  exerciseIds: string[];
+  /** Passing exercise i unlocks levels up to and including unlockThrough[i] (level ids) — never beyond the world. */
+  unlockThrough: string[];
+}
+
+export interface WorldDef {
+  id: WorldId;
+  title: string;
+  /** Quiet hue accent token name (DESIGN.md §10). */
+  accent: string;
+  summary: string;
+  levels: LevelDef[]; // last one is the Boss Recital (kind 'boss')
+  audition: AuditionDef | null;
+  /** World unlocked when this level id is passed (null = available at start). */
+  unlockedBy: string | null;
+}
+
+export interface CoachingTip {
+  id: string;
+  /** When this tip applies: a metric condition on the attempt. */
+  when: { metric: MetricKey; op: '<=' | '>='; value: number };
+  text: string; //  coach-like, specific, one or two sentences
+  priority: number;
+}

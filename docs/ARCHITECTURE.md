@@ -88,3 +88,31 @@ Cross-module imports go only through the contract types plus each module's docum
 - Signals: synthesized in `src/dsp/test-signals.ts` (sine, harmonic-rich voice-like tones, vibrato, glides, cracks, noise, silence) at 44.1 and 48 kHz.
 - E2E (`npm run e2e`): build, `vite preview`, then the installed Chrome launched by playwright-core with `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream --use-file-for-fake-audio-capture=<synth.wav>`. It asserts the detected pitch, frame rate, and offline relaunch.
 - Manual: docs/MANUAL-TEST-CHECKLIST.md on a real iPhone, **as an installed home-screen app** (standalone mode has its own bugs).
+
+## Phases 2–7 module map
+
+The owner waived per-phase sign-off on 2026-10-21; the end-to-end test happens at the end.
+
+Contract files owned by the orchestrator (read-only for builders):
+- `src/analysis/types.ts`
+- `src/analysis/fixtures.ts`
+- `src/exercises/types.ts`
+- `src/progress/types.ts`
+- `src/song/types.ts`
+- `src/storage/schema.ts`
+
+### Wave 1: engines (pure, tested)
+| Agent | Owns |
+|---|---|
+| analysis-core | `src/analysis/{track,accuracy,onset,vibrato,pulse,switch,range,dynamics,score}.ts` + tests |
+| analysis-advanced | `src/analysis/{transitions,glide,cracks,inflections,runs,dtw,segment,phrases}.ts` + tests |
+| exercises | `src/exercises/**` except `types.ts`: catalog for every world, auditions, bosses, transpose, validation, coaching tips |
+| progress | `src/progress/**` except `types.ts`: unlock registry, engine, auditions, mastery, momentum, records, workout builder, weakness |
+| storage | `src/storage/**` except `schema.ts`, `kv*`: IndexedDB stores, HLC, OPFS binaries, repos, migration, backup export/import |
+| song | `src/song/**` except `types.ts`, plus `public/songs/**`: UltraStar and MIDI import, transpose/fold, phrases, difficulty, bundled public-domain charts |
+| dsp-ext | `src/dsp/wsola.ts`, `src/audio/{demos,take-recorder,wav}.ts` + tests |
+
+### Wave 2: experience (UI and runtime)
+Exercise runner, world map, take report, per-world views, song mode, dashboard, workout, profiles, export, auditions and recitals.
+
+### Wave 3: integration, review, e2e, deploy
