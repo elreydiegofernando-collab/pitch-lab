@@ -1,0 +1,55 @@
+#VERSION:1.1.0
+#TITLE:Twinkle, Twinkle, Little Star
+#ARTIST:Traditional
+#BPM:100
+#GAP:0
+#LANGUAGE:English
+#COMMENT:Public domain. Melody: French folk song "Ah! vous dirai-je, maman", 1761. Words: Jane Taylor, 1806. Chart by the Pitch Lab project (MIT licence).
+: 0 4 -7 Twin
+: 4 4 -7 kle,
+: 8 4 0  twin
+: 12 4 0 kle,
+: 16 4 2  lit
+: 20 4 2 tle
+: 24 8 0  star,
+- 32
+: 32 4 -2 How
+: 36 4 -2  I
+: 40 4 -3  won
+: 44 4 -3 der
+: 48 4 -5  what
+: 52 4 -5  you
+: 56 8 -7  are!
+- 64
+: 64 4 0 Up
+: 68 4 0  a
+: 72 4 -2 bove
+: 76 4 -2  the
+: 80 4 -3  world
+: 84 4 -3  so
+: 88 8 -5  high,
+- 96
+: 96 4 0 Like
+: 100 4 0  a
+: 104 4 -2  dia
+: 108 4 -2 mond
+: 112 4 -3  in
+: 116 4 -3  the
+: 120 8 -5  sky.
+- 128
+: 128 4 -7 Twin
+: 132 4 -7 kle,
+: 136 4 0  twin
+: 140 4 0 kle,
+: 144 4 2  lit
+: 148 4 2 tle
+: 152 8 0  star,
+- 160
+: 160 4 -2 How
+: 164 4 -2  I
+: 168 4 -3  won
+: 172 4 -3 der
+: 176 4 -5  what
+: 180 4 -5  you
+: 184 8 -7  are!
+E

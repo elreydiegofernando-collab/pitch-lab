@@ -144,7 +144,7 @@ Analyzers are **pure functions over a pitch track plus a target**, and **each on
 
 ### 9.4 Runs & riffs
 - **Pattern library:** pentatonic and blues fragments of **3, 5 and 7 notes**, descending and ascending.
-- Practice starts at a **low tempo**. The **tempo auto-advances when the run score is 85% or higher.**
+- Practice starts at a **low tempo**. The **tempo auto-advances when a take passes the level's own pass rule at that tempo** (score and gates, so a fast but smeared run never advances), and only a take at the level's top tempo can pass the level. **[open]** The brief said "when the run score is 85% or higher". A fixed 85% trapped every studio-tolerance ladder (a singer 15-20¢ off who passes at the top tempo sits near 80% on every rung, and no tier's entry singer reaches 85%) and advanced smeared takes that failed the gates (fast but smeared runs score 86-88%), so the Wave 1 build advances on the level's own pass rule, which is calibrated per tier. The owner's 85% still triggers the "run score" coaching tip (`CONFIG.runs.tempoAdvanceScore`). Owner to confirm.
 - **Note-by-note feedback on the trace:** green = defined, yellow = smeared, red = missed. These are color-blind-safe tints plus shapes; see DESIGN.md §3.
 - **Slow-it-down playback** of the user's take, next to the target.
 

@@ -72,9 +72,11 @@ export default defineConfig(({ mode }) => ({
       },
       workbox: {
         // Everything the built app can ship, including the AudioWorklet chunk
-        // (emitted from `?worker&url`, a plain hashed .js file like any other) and
-        // the self-hosted variable font files.
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2,webmanifest}'],
+        // (emitted from `?worker&url`, a plain hashed .js file like any other),
+        // the self-hosted variable font files and the bundled public-domain song
+        // charts (public/songs: an index.json plus UltraStar .txt files, a few KB
+        // each, so a first launch offline still has its starter songs).
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2,webmanifest}', 'songs/**/*.{txt,json}'],
         navigateFallback: `${BASE}index.html`,
         cleanupOutdatedCaches: true,
         // No runtime caching: every request the app makes at runtime is same-origin

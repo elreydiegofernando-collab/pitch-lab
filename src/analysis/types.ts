@@ -33,7 +33,11 @@ export type AnalyzeAccuracy = (track: PitchTrack, note: TargetNote, ctx: Analyze
 // ---------------------------------------------------------------- 8.2 onset crispness
 export type OnsetType = 'breathy' | 'balanced' | 'hard' | 'unknown';
 export interface OnsetResult {
-  /** Take time of voice onset (first voiced frame after silence), null if never voiced. */
+  /**
+   * Take time of voice onset (first voiced frame after silence), null if never voiced. For a note landed without a
+   * silence before it (a legato leap) it is the frame where the pitch leaves the previous note's band, and
+   * `riseMs` is null with onsetType 'unknown' (there is no pre-onset floor to measure a rise from).
+   */
   onsetT: number | null;
   /** ms from onset until pitch stays within tolerance for CONFIG.onset.settleHoldMs; null = never settled. */
   settleMs: number | null;
@@ -51,7 +55,11 @@ export type AnalyzeOnset = (track: PitchTrack, note: TargetNote, ctx: AnalyzeCon
 // ---------------------------------------------------------------- 8.3 vibrato
 export type VibratoFlag = 'wobble' | 'bleat' | 'straight' | 'irregular' | 'sagging-flat' | 'sharp-centred';
 export interface VibratoResult {
-  /** True when >= CONFIG.vibrato.minCycles cycles over >= minDurationSec with extent above the straight threshold. */
+  /**
+   * True when >= CONFIG.vibrato.minCycles cycles over >= minDurationSec with extent above the straight threshold.
+   * When false, rateHz/regularity/rateSdHz/extentSdCents are null (extentCents still reports the residual wobble
+   * of a straight tone when an oscillation could be measured).
+   */
   present: boolean;
   rateHz: number | null;
   /** Half peak-to-trough, cents (median). */
@@ -74,11 +82,12 @@ export type AnalyzeVibrato = (track: PitchTrack, note: TargetNote | null, ctx: A
 export interface CrackEvent {
   t: number;
   kind: 'jump' | 'dropout';
-  /** For jumps: size in cents. */
+  /** For jumps: the whole jump's size in cents, unsigned (direction is not kept). Also set on a dropout whose two sides differ by more than the jump threshold. */
   cents?: number;
   durationMs: number;
 }
 export interface GlideResult {
+  /** Linear-equivalent ramp time: the 10%-90% span / 0.8, so an S-shaped portamento reads about 0.75 of its nominal length. */
   durationMs: number | null;
   startErrorCents: number | null;
   endErrorCents: number | null;
@@ -93,7 +102,10 @@ export type AnalyzeGlide = (track: PitchTrack, glide: TargetNote, ctx: AnalyzeCo
 /** detectCracks(track) — over a whole take (sirens). */
 export type DetectCracks = (track: PitchTrack) => CrackEvent[];
 export interface TransitionResult {
-  /** Per note-to-note change: time from leaving note A's band to settling in note B's. */
+  /**
+   * Per note-to-note change: time from leaving note A's band to settling in note B's. `clean` judges it against a
+   * tempo-relative budget derived from the two notes' own durations (there is no absolute norm, RESEARCH 6).
+   */
   transitions: Array<{ fromIndex: number; toIndex: number; durationMs: number | null; overshootCents: number; clean: boolean }>;
   cleanRate: number;
 }
@@ -104,16 +116,22 @@ export type InflectionKind = 'scoop' | 'fall' | 'slide' | 'turn' | 'flip';
 export interface InflectionResult {
   kind: InflectionKind;
   detected: boolean;
-  /** Scoop: cents below at start; fall: cents dropped; slide: glide error; turn: neighbour interval; flip: jump size. */
+  /** Scoop: cents below at start; fall: cents dropped; slide: glide error (direction-normalised, negative = fell short); turn: neighbour interval; flip: jump size. */
   sizeCents: number | null;
   /** Scoop: arrival time on target; fall: release duration; slide: glide duration; turn: ornament duration; flip: transition time. */
   timeMs: number | null;
-  /** Accuracy of the landing/target note after the inflection (cents, abs median). */
+  /** Accuracy of the landing/target note after the inflection: the median of the absolute errors over the held part of the note (cents). */
   landingAbsCents: number | null;
   /** 0..1 score vs the exercise's requested shape. */
   score: number;
   notes: string[];
 }
+/**
+ * analyzeInflection(track, kind, targets, ctx). `targets` follows a per-kind convention (documented at the top of
+ * inflections.ts; exercises/plan.ts builds exactly these): scoop = the rising glide (+ the hold it lands on);
+ * fall = the held note (+ the downward glide after it); slide = the glide (+ the holds before and after it);
+ * turn = the main note spanning the figure + one neighbour, once per neighbour; flip = the low note + the high note.
+ */
 export type AnalyzeInflection = (track: PitchTrack, kind: InflectionKind, targets: readonly TargetNote[], ctx: AnalyzeContext) => InflectionResult;
 
 // ---------------------------------------------------------------- 8.5 runs & riffs
@@ -130,6 +148,7 @@ export interface RunNoteResult {
   verdict: RunNoteVerdict;
 }
 export interface RunResult {
+  /** One entry per target note, in order: colour the trace by index against the target notes' nominal times. */
   notes: RunNoteResult[];
   /** 0..1 combination per CONFIG.runs.weights. */
   score: number;

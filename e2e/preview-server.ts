@@ -2,12 +2,19 @@
 import { execFileSync, spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { PREVIEW_PORT, PREVIEW_URL, ROOT_DIR, SERVER_READY_TIMEOUT_MS } from './config';
 
-/** Runs `npm run build`; throws with the failing exit code if it doesn't succeed. */
+/**
+ * Runs `npm run build`; throws with the failing exit code if it doesn't succeed.
+ *
+ * NODE_ENV is forced to "production": vitest sets NODE_ENV=test for itself and its children inherit it, and a
+ * build under "test" pulls Preact's debug/devtools code into the bundle (150 KB instead of 120), so the suite
+ * would be testing a different app from the one that ships.
+ */
 export function buildApp(): void {
   const result = spawnSync('npm', ['run', 'build'], {
     cwd: ROOT_DIR,
     shell: true,
     stdio: 'inherit',
+    env: { ...process.env, NODE_ENV: 'production' },
   });
   if (result.status !== 0) {
     const reason = result.error ? result.error.message : `exit code ${result.status ?? `signal ${result.signal}`}`;

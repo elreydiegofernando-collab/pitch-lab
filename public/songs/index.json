@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "songs": [
+    { "id": "twinkle-twinkle", "file": "twinkle-twinkle.txt" },
+    { "id": "auld-lang-syne", "file": "auld-lang-syne.txt" },
+    { "id": "amazing-grace", "file": "amazing-grace.txt" },
+    { "id": "silent-night", "file": "silent-night.txt" },
+    { "id": "danny-boy", "file": "danny-boy.txt" },
+    { "id": "ave-maria", "file": "ave-maria.txt" }
+  ]
+}

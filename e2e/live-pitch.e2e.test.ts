@@ -125,6 +125,21 @@ describe('live pitch — A3 220 Hz tone', () => {
       await page.reload({ waitUntil: 'load' });
       await page.getByTestId('home-screen').waitFor({ state: 'visible', timeout: 10_000 });
 
+      // The bundled public-domain song charts are precached with the app, so Song Stage has its starter songs on a
+      // first launch with no network (public/songs: songs/index.json plus one UltraStar .txt per song).
+      const base = new URL(PREVIEW_URL).pathname;
+      const charts = await page.evaluate(async (root) => {
+        const index = (await (await fetch(`${root}songs/index.json`)).json()) as { songs: Array<{ id: string; file: string }> };
+        const sizes: Record<string, number> = {};
+        for (const song of index.songs) {
+          const res = await fetch(`${root}songs/${song.file}`);
+          sizes[song.id] = res.ok ? (await res.text()).length : -1;
+        }
+        return sizes;
+      }, base);
+      expect(Object.keys(charts).length).toBeGreaterThanOrEqual(6);
+      for (const [id, size] of Object.entries(charts)) expect(size, `${id} chart served offline`).toBeGreaterThan(200);
+
       // navigateFallback serves index.html for any precached route while offline.
       await page.goto(`${PREVIEW_URL}?debug=1#/live`, { waitUntil: 'load' });
       await page.getByTestId('sing-button').click();

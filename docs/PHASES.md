@@ -54,7 +54,7 @@ The riskiest part (the iPhone audio path) gets proven first.
 - Intentional scoop, falls, slides/portamento, turns, flips.
 
 ## Phase 5 — Runs & Riffs and Dynamics worlds
-- Pattern library (pentatonic and blues, 3/5/7 notes, ascending and descending). Tempo ladder auto-advances at ≥ 85%. Note-by-note colored feedback. Slow-down playback next to the target.
+- Pattern library (pentatonic and blues, 3/5/7 notes, ascending and descending). Tempo ladder auto-advances when a take passes the level's own pass rule at that tempo (SPEC §9.4). Note-by-note colored feedback. Slow-down playback next to the target.
 - Messa di voce / swell.
 
 ## Phase 6 — Song mode

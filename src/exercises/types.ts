@@ -82,15 +82,21 @@ export interface ExerciseDef {
   tolerance: ToleranceLevel;
   /** Score thresholds for mastery tally lights 2 (solid) and 3 (studio). Light 1 = pass. */
   tiers: { solid: number; studio: number };
-  /** Tempo ladder (runs): bpm values; auto-advances when run.score >= CONFIG.runs.tempoAdvanceScore. */
+  /**
+   * Tempo ladder (runs): bpm values, slowest first, the last being `tempoBpm`. Practice climbs it one rung after a
+   * take that PASSES this exercise's own pass rule at the rung it was sung at (exercises/ladder.ts nextTempo; a
+   * fixed run.score mark trapped the studio ladders), and only a take at `tempoBpm` can PASS the level
+   * (canPassAtTempo: progress/attempt.ts writes it into the attempt and the progression engine enforces it again).
+   */
   tempoLadder?: number[];
   /** Coaching-tip ids relevant to this exercise (see coaching tips table). */
   tipIds?: string[];
 }
 
 export interface LevelDef {
-  id: string; //                         e.g. "foundations.03"
+  id: string; //                         e.g. "foundations.03" (persisted in attempts: never renamed)
   worldId: WorldId;
+  /** Order within the world (1-based in the catalog; only the order matters). */
   index: number;
   title: string;
   exerciseId: string;
@@ -102,7 +108,12 @@ export interface AuditionDef {
   worldId: WorldId;
   /** Short sung tests drawn from the world's levels, at their pass rules. */
   exerciseIds: string[];
-  /** Passing exercise i unlocks levels up to and including unlockThrough[i] (level ids) — never beyond the world. */
+  /**
+   * Passing exercise i unlocks the levels past what the earlier tests reach, up to and including unlockThrough[i]
+   * (level ids): never beyond the world, never the Boss Recital, never the Range finder (it is always sung). Tests are
+   * sung IN ORDER, stopping at the first miss: progress opens only the next test (nextAuditionExercise) and counts a
+   * test only once every earlier level is passed (auditionSpans says which levels a test covers).
+   */
   unlockThrough: string[];
 }
 

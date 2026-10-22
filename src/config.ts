@@ -90,6 +90,12 @@ export const CONFIG = {
     holdStartSkipMs: 150,
     /** Drift = slope of a line fit over the held portion; report per second. Needs at least this much held audio. */
     driftMinHoldSec: 1,
+    /** A singer may come in this late after a note's start (a reaction to the cue) and still be measured on the part
+     *  they sang; a later start counts against coverage, so singing only the last seconds of a long hold cannot pass.
+     *  0.6 s is generous for a trained singer and fair to a beginner (reaction to the cue ~0.25 s, plus the breath and
+     *  finding the pitch); a beginner who needs 0.9 s still passes Pitch match at a reduced score, and one 1.2 s late
+     *  does not. PROVISIONAL: check against real beginners. */
+    lateStartAllowanceSec: 0.6,
   },
 
   /** 8.2 Onset crispness. */
@@ -138,10 +144,21 @@ export const CONFIG = {
     crackWithinMs: 30,
     /** ... or a confidence dropout of at least this long in the middle of a glide. */
     dropoutMinMs: 20,
+    /** On a whole take or a live buffer a dropout longer than this is a deliberate pause (a rest, a breath), not a
+     *  break. Audio that is continuous by construction (one glide, one phrase) ignores it. PROVISIONAL. */
+    dropoutMaxMs: 300,
     /** Continuous change shorter than this is heard as a clean step, not a slide. */
     portamentoFloorMs: 20,
     /** Stair-step detection: a plateau this long inside a glide breaks "smooth". PROVISIONAL. */
     stairPlateauMs: 60,
+    /** Vibrato riding on a siren (analysis/glide.ts explainVibrato): a window is "explained" by one sinusoid when it
+     *  leaves at most max(vibratoMisfitMinCents, vibratoMisfitNoiseFactor x the contour's own scatter) RMS cents
+     *  unexplained; otherwise the stalls count as stairs again. How irregular a real vibrato may be: tuned on synthetic
+     *  natural vibrato at 3/6/10 c jitter. PROVISIONAL: the first thing to check on the real-voice corpus. */
+    vibratoMisfitMinCents: 12,
+    vibratoMisfitNoiseFactor: 2.2,
+    /** The sinusoid search stops this far below the bleat flag, so an 8-step/s staircase is not taken for vibrato. PROVISIONAL. */
+    vibratoBandMarginHz: 0.5,
   },
 
   /** 8.5 Runs & riffs. */
@@ -153,8 +170,23 @@ export const CONFIG = {
     dtwBandMs: 150,
     /** Run score weights (sum 1). PROVISIONAL. */
     weights: { reached: 0.35, accuracy: 0.25, definition: 0.25, timing: 0.15 },
-    /** Tempo auto-advances at this run score (owner's spec). */
+    /** Owner's spec: the tempo ladder moves up when the singer has the run. Now exercises/ladder.ts nextTempo advances a rung
+     *  only when the take PASSES the level's own pass rule at that rung (a fixed 0.85 trapped every studio ladder and
+     *  advanced smeared takes). This value is only the run.score at which the "run.score" coaching tip stops firing. */
     tempoAdvanceScore: 0.85,
+    /** "On pitch" for the definition measure: within this of the note's own level. Half-width = definitionBandFraction of the
+     *  interval to the nearest note of a different pitch in the run (a slide through closely spaced notes cannot count as
+     *  dwelling on them), never narrower than definitionBandMinCents (a steady voice's scatter) and never wider than
+     *  CONFIG.tolerance.default (analysis/runs.ts). Tuned on the test singer's good/tight/sloppy models and detector output
+     *  at 3-12 notes/s. PROVISIONAL: real-voice corpus. */
+    definitionBandFraction: 0.12,
+    definitionBandMinCents: 8,
+    /** How fast the pitch cluster in a note's window slides, as a share of the speed one slide through that interval within
+     *  that slot would have: up to definitionSlideFree it is a held note, from definitionSlideZero up the voice was sweeping
+     *  through it (linear between). Relative, because through the detector's 43 ms window even a clean 12 notes/s run has no
+     *  flat plateau left. PROVISIONAL: real-voice corpus. */
+    definitionSlideFree: 0.4,
+    definitionSlideZero: 0.8,
     /** Notes-per-second ladder (pedagogy benchmark, not peer-reviewed). */
     tempoLadderNps: [3, 4.5, 6, 9, 12],
   },
@@ -165,11 +197,34 @@ export const CONFIG = {
     minRangeDb: 10,
     /** |slope| of cents vs relative dB above which we flag "sharp when loud" / "flat when soft". PROVISIONAL. */
     maxDriftCentsPerDb: 1,
+    /** The level envelope is averaged over this long before its shape is read, so the loudness ripple a vibrato puts on it
+     *  (5-7 Hz) is not taken for the shape. PROVISIONAL. */
+    shapeSmoothSec: 0.3,
+    /** How far an end of a swell has come DOWN from its peak, as a share of the dynamic range: no symmetry credit at the
+     *  first value or less (that end is as loud as the peak, so there is no swell on that side), full credit at the second
+     *  or more, linear between. A ramp, not a cut-off, because real messa di voce is often lopsided (RESEARCH 6). PROVISIONAL. */
+    endDownShare: [0.1, 0.4] as readonly [number, number],
+    /** A hold followed its loudness cue (crescendo, decrescendo, swell, soft/loud steps) at this correlation with the asked
+     *  path or above: half way between an unrelated level (0) and the exact path (1). exercises/loudness.ts; a hold below it
+     *  counts no loudness range, so a take sung against its cues fails the range gate. PROVISIONAL. */
+    minShapeScore: 0.5,
   },
 
   /** 8.7 Range. */
   range: {
     holdSec: 1,
+    /** A hold's centre line (running median then running mean) stays within this many cents of its reference pitch: narrower
+     *  than a semitone step (100 c), wider than what is left of a +/-100 c vibrato once smoothed (~15 c) plus the
+     *  reference's own error, drift and jitter. PROVISIONAL. */
+    holdBandCents: 65,
+    /** The reference pitch is the median of the centre line over a hold's first this-many seconds (two to three vibrato
+     *  cycles); nothing is tested against it earlier. PROVISIONAL. */
+    referenceSec: 0.5,
+    /** The centre line is a running median and then a running mean, each this long (~1.8 cycles of a 5.8 Hz vibrato). PROVISIONAL. */
+    centreSmoothSec: 0.31,
+    /** A centre line moving faster than this over a hold (a semitone in 2.5 s) is a glide, not a held note: without it a slow
+     *  siren would pass for a run of one-second holds. PROVISIONAL. */
+    maxDriftCentsPerSec: 40,
   },
 
   /** Latency calibration. Loopback is primary (speaker/earbud -> mic). */
@@ -190,6 +245,18 @@ export const CONFIG = {
     phraseGapMs: 350,
     dtwBandMs: 200,
     octaveAgnostic: true,
+    /** MIDI import phrase segmentation (song/midi-phrases.ts: legato hymns are cut at lyric clauses and at a length cap, since
+     *  their breaths are not notated as rests). All PROVISIONAL: tune on real hymn and karaoke files.
+     *  A piece longer than this is split by the fallback: about two slow hymn lines, one long breath. */
+    maxPhraseSec: 10,
+    /** A lyric-clause break needs at least this many notes on each side ... */
+    minPhraseNotes: 3,
+    /** ... and at least this many seconds on each side. */
+    minPhraseSec: 1.5,
+    /** The length-cap split leaves at least this much on each side of its cut. */
+    minSplitSideSec: 2,
+    /** The length-cap split looks for the strongest boundary within this share of the piece's length either side of its middle. */
+    splitWindowShare: 0.25,
   },
 
   health: {

@@ -1,0 +1,107 @@
+#VERSION:1.1.0
+#TITLE:Danny Boy
+#ARTIST:Traditional (Londonderry Air)
+#BPM:66
+#GAP:0
+#LANGUAGE:English
+#COMMENT:Public domain. Melody: Londonderry Air, traditional Irish, first printed 1855. Words: Frederic Weatherly, 1913. Chart by the Pitch Lab project (MIT licence).
+: 0 2 -6 Oh
+: 2 2 -5  Dan
+: 4 2 -3 ny
+: 6 6 -1  boy,
+: 12 2 -3  the
+: 14 2 -1  pipes,
+: 16 2 4  the
+: 18 2 2  pipes
+: 20 2 -1  are
+: 22 2 -3  call
+: 24 2 -5 ing,
+: 26 4 -8 ~
+- 30 32
+: 32 2 -5 From
+: 34 2 -1  glen
+: 36 2 0  to
+: 38 6 2  glen,
+: 44 2 4  and
+: 46 2 2  down
+: 48 2 -1  the
+: 50 2 -5  moun
+: 52 2 -1 tain
+: 54 8 -3  side.
+- 62 64
+: 64 2 -6 The
+: 66 2 -5  sum
+: 68 2 -3 mer's
+: 70 6 -1  gone,
+: 76 2 -3  and
+: 78 2 -1  all
+: 80 2 4  the
+: 82 2 2  ro
+: 84 2 -1 ses
+: 86 2 -3  fall
+: 88 2 -5 ing,
+: 90 2 -8 ~
+: 92 2 -9 ~
+: 94 2 -8 ~
+- 96
+: 96 2 -6 'Tis
+: 98 2 -5  you,
+: 100 2 -3  'tis
+: 102 6 -1  you
+: 108 2 0  must
+: 110 2 -1  go
+: 112 2 -3  and
+: 114 2 -5  I
+: 116 2 -3  must
+: 118 8 -5  bide.
+- 126 128
+: 128 2 2 But
+: 130 2 4  come
+: 132 2 6  ye
+: 134 6 7  back
+: 140 2 6  when
+: 142 2 6  sum
+: 144 2 4 mer's
+: 146 2 2  in
+: 148 2 -1  the
+: 150 2 2  mea
+: 152 2 -1 dow,
+: 154 4 -5 ~
+- 158 160
+: 160 2 2 Or
+: 162 2 4  when
+: 164 2 6  the
+: 166 6 7  val
+: 172 2 6 ley's
+: 174 2 6  hushed
+: 176 2 4  and
+: 178 2 2  white
+: 180 2 -1  with
+: 182 8 -3  snow,
+- 190 192
+: 192 2 2 'Tis
+: 194 2 2  I'll
+: 196 2 2  be
+: 198 6 11  here
+: 204 2 9  in
+: 206 2 9  sun
+: 208 2 7 shine
+: 210 2 4  or
+: 212 2 7  in
+: 214 2 2  sha
+: 216 2 -1 dow,
+: 218 4 -5 ~
+- 222 224
+: 224 2 -6 Oh
+: 226 2 -5  Dan
+: 228 2 -3 ny
+: 230 2 -1  boy,
+: 232 2 4  oh
+: 234 2 2  Dan
+: 236 2 -1 ny
+: 238 2 -3  boy,
+: 240 2 -5  I
+: 242 2 -8  love
+: 244 2 -6  you
+: 246 10 -5  so.
+E

@@ -23,6 +23,7 @@ import type {
   Timbre,
   VibratoSpec,
 } from './synth-types';
+import { clamp01 } from '../core/math';
 import { midiToHz } from '../core/music';
 
 /** `NoteSpec.startAt` / `GlideSpec.startAt` default: a small safety lead so the first render quantum isn't missed. */
@@ -65,10 +66,6 @@ const ENVELOPES: Record<Timbre, EnvelopeShape> = {
   // Plain reference tone: quick, steady.
   sine: { attackSec: 0.01, sustainLevel: 1 },
 };
-
-function clamp01(v: number): number {
-  return v < 0 ? 0 : v > 1 ? 1 : v;
-}
 
 // ---------------------------------------------------------------------------
 // Metronome scheduling maths (pure, exported for tests).

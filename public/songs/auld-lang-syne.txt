@@ -1,0 +1,71 @@
+#VERSION:1.1.0
+#TITLE:Auld Lang Syne
+#ARTIST:Traditional
+#BPM:88
+#GAP:0
+#LANGUAGE:English
+#COMMENT:Public domain. Words: Robert Burns, 1788. Traditional Scots melody. Chart by the Pitch Lab project (MIT licence).
+: 0 4 -5 Should
+: 4 6 0  auld
+: 10 2 0  ac
+: 12 4 0 quain
+: 16 4 4 tance
+: 20 6 2  be
+: 26 2 0  for
+: 28 4 2 got,
+- 32
+: 32 4 4 and
+: 36 6 0  ne
+: 42 2 0 ver
+: 44 4 4  brought
+: 48 4 7  to
+: 52 12 9  mind?
+- 64
+: 64 4 9 Should
+: 68 6 7  auld
+: 74 2 4  ac
+: 76 4 4 quain
+: 80 4 0 tance
+: 84 6 2  be
+: 90 2 0  for
+: 92 4 2 got,
+- 96
+: 96 4 4 and
+: 100 6 0  auld
+: 106 2 -3 ~
+: 108 4 -3  lang
+: 112 4 -5 ~
+: 116 12 0  syne?
+- 128
+: 128 4 9 For
+: 132 6 7  auld
+: 138 2 4 ~
+: 140 4 4  lang
+: 144 4 0 ~
+: 148 6 2  syne,
+: 154 2 0  my
+: 156 4 2  jo,
+- 160
+: 160 4 9 for
+: 164 6 7  auld
+: 170 2 4 ~
+: 172 4 4  lang
+: 176 4 7 ~
+: 180 12 9  syne,
+- 192
+: 192 4 9 we'll
+: 196 6 7  tak'
+: 202 2 4  a
+: 204 4 4  cup
+: 208 4 0  o'
+: 212 6 2  kind
+: 218 2 0 ness
+: 220 4 2  yet,
+- 224
+: 224 4 4 for
+: 228 6 0  auld
+: 234 2 -3 ~
+: 236 4 -3  lang
+: 240 4 -5 ~
+: 244 12 0  syne.
+E

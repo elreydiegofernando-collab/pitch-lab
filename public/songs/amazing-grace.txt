@@ -1,0 +1,46 @@
+#VERSION:1.1.0
+#TITLE:Amazing Grace
+#ARTIST:Traditional
+#BPM:80
+#GAP:0
+#LANGUAGE:English
+#COMMENT:Public domain. Words: John Newton, 1779. Melody NEW BRITAIN: Virginia Harmony 1831 / Southern Harmony 1835, in E. O. Excell's 1900 setting. Chart by the Pitch Lab project (MIT licence).
+: 0 4 -3 A
+: 4 8 2 maz
+: 12 2 6 ing
+: 14 2 2 ~
+: 16 8 6  grace!
+: 24 4 4  How
+: 28 8 2  sweet
+: 36 4 -1  the
+: 40 8 -3  sound
+- 48
+: 48 4 -3 That
+: 52 8 2  saved
+: 60 2 6  a
+: 62 2 2 ~
+: 64 8 6  wretch
+: 72 4 4  like
+: 76 12 9  me!
+- 88
+: 88 4 6 I
+: 92 6 9  once
+: 98 2 6 ~
+: 100 2 9  was
+: 102 2 6 ~
+: 104 8 2  lost,
+: 112 4 -3  but
+: 116 6 -1  now
+: 122 2 2 ~
+: 124 2 2  am
+: 126 2 -1 ~
+: 128 8 -3  found;
+- 136
+: 136 4 -3 Was
+: 140 8 2  blind,
+: 148 2 6  but
+: 150 2 2 ~
+: 152 8 6  now
+: 160 4 4  I
+: 164 8 2  see.
+E

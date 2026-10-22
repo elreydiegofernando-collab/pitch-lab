@@ -1,13 +1,26 @@
-/** Song mode contract (Phase 6). Times are seconds from song time 0 (after GAP/offset). */
+/**
+ * Song mode contract (Phase 6). Note and phrase times are seconds on the song's own clock, song time 0 = the first
+ * beat of the chart WITHOUT any #GAP (the gap is `offsetMs`, below). Song time is take time when a song starts at
+ * the downbeat, which is how analysis/phrases.ts reads them.
+ */
 import type { WorldId } from '../exercises/types';
 
+/** UltraStar golden-rap notes ('G') are imported as 'rap' (the golden bonus is lost). */
 export type SongNoteType = 'normal' | 'golden' | 'freestyle' | 'rap';
 
 export interface SongNote {
   start: number;
   duration: number;
   midi: number;
-  lyric: string; //            syllable (may be '' for MIDI)
+  /**
+   * The syllable, kept verbatim from the file. '' = the note continues the previous syllable (UltraStar "~"; MIDI
+   * notes without lyrics are '' too). Bundled charts start each word with a LEADING space (" grace"), so
+   * concatenating a phrase's syllables gives its text; imported charts keep their own spacing, with one exception: a MIDI
+   * file whose syllables hold no whitespace at all (LilyPond hymn exports) gets a leading space per syllable, except after
+   * a syllable ending in '-', and the first syllable of each phrase has none (files in scripts not spaced per syllable,
+   * such as Chinese, Japanese and Korean, are left verbatim; song/midi-phrases.ts). Never trim it.
+   */
+  lyric: string;
   type: SongNoteType;
 }
 
@@ -20,6 +33,7 @@ export interface SongPhrase {
 }
 
 export interface SongDifficulty {
+  /** Absolute pitches: shift a song only with song/transpose.ts transposeSong, which keeps these in step. */
   lowestMidi: number;
   highestMidi: number;
   rangeSemitones: number;
@@ -38,12 +52,17 @@ export interface Song {
   source: 'bundled' | 'ultrastar' | 'midi';
   /** Licence note for bundled songs (public domain melodies, our own charts). */
   licence?: string;
+  /** The chart's #BPM: its GRID tempo (the opening tempo for MIDI). Not a tempo marking to show a singer. */
   bpm?: number;
   notes: SongNote[];
   phrases: SongPhrase[];
   /** Optional backing track stored locally (OPFS ref), never uploaded. */
   backingRef?: string | null;
-  /** Backing-track offset relative to note time 0, ms (user-adjustable). */
+  /**
+   * Where in the BACKING AUDIO song time 0 falls, ms (UltraStar #GAP; for MIDI, the intro that was trimmed):
+   * backing position = song time + offsetMs. Raise it if the backing sounds late. User-adjustable. Use
+   * song/timing.ts (backingTimeAt, songTimeAtBacking) rather than re-deriving the sign.
+   */
   offsetMs: number;
   difficulty: SongDifficulty;
 }

@@ -31,7 +31,10 @@ export interface ProgressSnapshot {
   /** Momentum: slow decay, never resets to zero, rest days are healthy. */
   momentum: number;
   lastPracticeDay: string | null;
-  /** Personal records: metric key -> best value + attempt id. */
+  /**
+   * Personal records: "<exerciseId>:<metric>" -> best value + attempt id (progress/records.ts: recordKey,
+   * recordsForExercise). From passed attempts only; two-sided metrics (vibrato rate/extent) keep none.
+   */
   records: Record<string, { value: number; attemptId: string; at: string }>;
 }
 

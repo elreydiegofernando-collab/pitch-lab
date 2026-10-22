@@ -42,7 +42,9 @@ export interface AttemptRecord extends RecordBase {
   metrics: Metrics;
   durationSec: number;
   tonicMidi: number | null;
+  /** The tempo actually sung (a Runs ladder rung), not the exercise's pass tempo. */
   tempoBpm: number | null;
+  /** The saved take (local audio and pitch track), if kept. Never leaves the device: a backup carries it as null. */
   takeId: string | null;
   songId?: string | null;
 }
@@ -75,5 +77,6 @@ export interface BackupFile {
   exportedAt: string;
   profiles: ProfileRecord[];
   attempts: AttemptRecord[];
+  /** { schemaVersion: 1, profiles: { [profileId]: Settings } } (storage/backup.ts BackupSettings); device settings (latency, route) are not included. */
   settings: unknown;
 }
