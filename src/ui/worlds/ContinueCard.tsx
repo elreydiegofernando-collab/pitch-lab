@@ -5,7 +5,7 @@
  */
 import type { JSX } from 'preact';
 import { getExercise, WORLDS } from '../../exercises';
-import { continueLevel } from '../../progress';
+import { LEVEL_REFS, continueLevel } from '../../progress';
 import { navigate } from '../../router';
 import { isUnlocked, snapshot } from '../../state/session';
 import { Button } from '../components/Button';
@@ -53,10 +53,13 @@ export function ContinueCard(): JSX.Element {
         {title}
       </h2>
       {exercise ? <p class="pl-body-s pl-muted pl-prose">{exercise.goal}</p> : null}
-      <div class="wl-continue__meta">
-        <TallyLights lit={progress?.mastery ?? 0} />
-        {best !== null ? <span class="pl-body-s pl-muted pl-tabular">{`Best so far ${percent(best)}`}</span> : null}
-      </div>
+      {/* The Range finder measures the voice rather than grading it: no tally lights, no best score. */}
+      {level.id === LEVEL_REFS.rangeFinder ? null : (
+        <div class="wl-continue__meta">
+          <TallyLights lit={progress?.mastery ?? 0} />
+          {best !== null ? <span class="pl-body-s pl-muted pl-tabular">{`Best so far ${percent(best)}`}</span> : null}
+        </div>
+      )}
       <Button
         variant="primary"
         block

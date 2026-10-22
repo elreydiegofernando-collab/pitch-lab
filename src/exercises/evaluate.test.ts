@@ -144,7 +144,7 @@ describe('formatMetric', () => {
       ['run.definedRate', 0.537, '54%'],
       ['accuracy.medianAbsCents', 14.6, '15¢'],
       ['dynamics.rangeDb', 24.04, '24 dB'],
-      ['range.spanSemitones', 12, '12 semitones'],
+      ['range.spanSemitones', 12, '12 half steps'],
       ['accuracy.sdCents', Number.NaN, '–'],
       ['vibrato.rateHz', Number.POSITIVE_INFINITY, '–'],
     ];

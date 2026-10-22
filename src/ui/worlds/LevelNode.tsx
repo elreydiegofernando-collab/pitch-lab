@@ -6,6 +6,7 @@
 import type { JSX } from 'preact';
 import { ChevronRight } from 'lucide-preact';
 import type { WorldDef } from '../../exercises/types';
+import { LEVEL_REFS } from '../../progress';
 import { navigate } from '../../router';
 import { Locked } from '../components/Locked';
 import { ScoreRing } from '../components/ScoreRing';
@@ -13,10 +14,16 @@ import { TallyLights } from '../components/TallyLights';
 import { DOT, percent, tierLabel } from './format';
 import type { NodeModel } from './map-model';
 
+/** The Range finder measures the voice rather than grading it: once passed it reads "Range saved", with no score or lights. */
+function isMeasuring(node: NodeModel): boolean {
+  return node.level.id === LEVEL_REFS.rangeFinder;
+}
+
 /** What a screen reader hears for an openable node. */
 export function nodeLabel(node: NodeModel, world: Pick<WorldDef, 'title'>): string {
   const name = node.boss ? `${world.title} Boss Recital` : `Level ${node.number}: ${node.level.title}`;
   if (node.state === 'current') return `${name}. Up next.`;
+  if (isMeasuring(node)) return `${name}. Range saved.`;
   if (node.viaAudition) return `${name}. Passed by audition.`;
   const tier = node.mastery >= 2 ? `, ${tierLabel(node.mastery)}` : '';
   return `${name}. Passed${node.best !== null ? `, best ${percent(node.best)}` : ''}${tier}.`;
@@ -25,6 +32,7 @@ export function nodeLabel(node: NodeModel, world: Pick<WorldDef, 'title'>): stri
 /** The ring shows the best score; a passed level with no recorded score still reads as a closed ring. */
 function ringValue(node: NodeModel): number | null {
   if (node.state === 'locked') return null;
+  if (isMeasuring(node)) return node.state === 'passed' ? 1 : null;
   return node.state === 'passed' ? (node.best ?? 1) : node.best;
 }
 
@@ -37,7 +45,14 @@ function Status(props: { node: NodeModel }): JSX.Element {
     return (
       <span class="wl-node__status">
         <span class="wl-node__now">Up next</span>{' '}
-        {node.best !== null ? <span class="pl-tabular">{`${DOT} best ${percent(node.best)}`}</span> : null}
+        {node.best !== null && !isMeasuring(node) ? <span class="pl-tabular">{`${DOT} best ${percent(node.best)}`}</span> : null}
+      </span>
+    );
+  }
+  if (isMeasuring(node)) {
+    return (
+      <span class="wl-node__status">
+        <span>Range saved</span>
       </span>
     );
   }

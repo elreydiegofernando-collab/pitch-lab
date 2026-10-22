@@ -701,3 +701,27 @@
 .pl-live-status__ok {
   color: var(--on);
 }
+
+/* Plain-language Range finder (owner, 2026-10-22): the explanations under each range, and middle C on the strip. */
+.pl-rangecard__lines {
+  flex-wrap: wrap;
+  row-gap: var(--sp-3);
+}
+.pl-rangecard__lines > div {
+  flex: 1 1 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pl-rangecard__middle-c {
+  fill: var(--tally-fill);
+}
+.pl-level__howto {
+  margin-top: var(--sp-4);
+}
+.pl-level__pass--plain li {
+  align-items: flex-start;
+}
+.pl-level__pass--plain svg {
+  margin-top: 3px;
+}

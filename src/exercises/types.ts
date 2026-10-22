@@ -66,6 +66,13 @@ export interface ExerciseDef {
   title: string;
   /** One sentence, shown before singing. */
   goal: string;
+  /**
+   * Plain-language steps shown on the level screen ("How it goes"), written for someone relearning to sing: no jargon
+   * (owner, 2026-10-22). Optional while the catalog is reworded level by level.
+   */
+  steps?: string[];
+  /** The pass rule in plain words, shown on the level screen instead of the generated lines ("Score ≥ 60%"). */
+  passPlain?: string;
   pattern: PatternStep[];
   tempoBpm: number;
   tonicPlacement: TonicPlacement;

@@ -199,7 +199,7 @@ describe('Map: only openable nodes are buttons', () => {
   it('names each button for a screen reader with its place and state, and marks the current step', async () => {
     const c = await showMap();
     expect(node(c, 'foundations.04').querySelector('button')!.getAttribute('aria-label')).toBe('Level 4: Sustain II. Up next.');
-    expect(node(c, 'foundations.01').querySelector('button')!.getAttribute('aria-label')).toBe('Level 1: Range finder. Passed, best 85%.');
+    expect(node(c, 'foundations.01').querySelector('button')!.getAttribute('aria-label')).toBe('Level 1: Range finder. Range saved.');
     expect(node(c, 'foundations.04').querySelector('button')!.getAttribute('aria-current')).toBe('step');
     expect(node(c, 'foundations.03').querySelector('button')!.hasAttribute('aria-current')).toBe(false);
   });
@@ -209,17 +209,21 @@ describe('Map: node status', () => {
   it('writes the best score and mastery tier of a passed level, with its tally lights, and "Up next" on the current one', async () => {
     snapshot.value = snapshotOf(null, [
       pass('foundations.01', { score: 0.93, mastery: 3 }),
-      pass('foundations.02', { score: 0.88, mastery: 2 }),
-      pass('foundations.03', { score: 0.71, mastery: 1 }),
+      pass('foundations.02', { score: 0.93, mastery: 3 }),
+      pass('foundations.03', { score: 0.88, mastery: 2 }),
+      pass('foundations.04', { score: 0.71, mastery: 1 }),
     ]);
     const c = await showMap();
-    expect(textOf(node(c, 'foundations.01').querySelector('.wl-node__status'))).toBe(`Best 93% ${DOT} Studio`);
-    expect(textOf(node(c, 'foundations.02').querySelector('.wl-node__status'))).toBe(`Best 88% ${DOT} Solid`);
-    expect(textOf(node(c, 'foundations.03').querySelector('.wl-node__status'))).toBe(`Best 71% ${DOT} Passed`);
-    expect(node(c, 'foundations.01').querySelector('.pl-tally-lights')!.getAttribute('aria-label')).toContain('3 of 3');
-    expect(node(c, 'foundations.02').querySelector('.pl-tally-lights')!.getAttribute('aria-label')).toContain('2 of 3');
-    expect(textOf(node(c, 'foundations.04').querySelector('.wl-node__status'))).toBe('Up next');
-    expect(node(c, 'foundations.04').querySelector('.pl-tally-lights')).toBeNull();
+    // The Range finder measures the voice: it says so, with no score and no tally lights.
+    expect(textOf(node(c, 'foundations.01').querySelector('.wl-node__status'))).toBe('Range saved');
+    expect(node(c, 'foundations.01').querySelector('.pl-tally-lights')).toBeNull();
+    expect(textOf(node(c, 'foundations.02').querySelector('.wl-node__status'))).toBe(`Best 93% ${DOT} Studio`);
+    expect(textOf(node(c, 'foundations.03').querySelector('.wl-node__status'))).toBe(`Best 88% ${DOT} Solid`);
+    expect(textOf(node(c, 'foundations.04').querySelector('.wl-node__status'))).toBe(`Best 71% ${DOT} Passed`);
+    expect(node(c, 'foundations.02').querySelector('.pl-tally-lights')!.getAttribute('aria-label')).toContain('3 of 3');
+    expect(node(c, 'foundations.03').querySelector('.pl-tally-lights')!.getAttribute('aria-label')).toContain('2 of 3');
+    expect(textOf(node(c, 'foundations.05').querySelector('.wl-node__status'))).toBe('Up next');
+    expect(node(c, 'foundations.05').querySelector('.pl-tally-lights')).toBeNull();
   });
 
   it('shows the best score so far on the current level, and the score as an arc of its ring', async () => {
@@ -241,7 +245,7 @@ describe('Map: node status', () => {
     snapshot.value = snapshotOf('foundations.01', [passAudition('foundations', 1)]);
     const c = await showMap();
     expect(textOf(node(c, 'foundations.03').querySelector('.wl-node__status'))).toBe('Passed by audition');
-    expect(textOf(node(c, 'foundations.01').querySelector('.wl-node__status'))).toContain('Best 85%');
+    expect(textOf(node(c, 'foundations.01').querySelector('.wl-node__status'))).toBe('Range saved');
   });
 
   it('lights the cable in the world hue up to the current node', async () => {

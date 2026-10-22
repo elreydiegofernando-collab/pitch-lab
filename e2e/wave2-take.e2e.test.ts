@@ -108,7 +108,9 @@ describe('Wave 2 - a first session, through the real UI', () => {
     await page.getByTestId('continue-button').click();
     await page.getByTestId('level-screen').waitFor();
     expect(await page.getByTestId('level-label').textContent()).toContain('01');
-    expect(await page.getByTestId('best-score').textContent()).toContain('Not sung yet');
+    // The Range finder measures rather than grades: it shows the saved range (none yet), never a score.
+    expect(await page.getByTestId('saved-range').textContent()).toContain('Not measured yet');
+    expect(await page.getByTestId('best-score').count()).toBe(0);
 
     // Level -> Sing (ready) -> Sing (the mic opens inside this tap).
     await page.getByTestId('sing-button').click();
@@ -123,11 +125,11 @@ describe('Wave 2 - a first session, through the real UI', () => {
     await page.getByTestId('report-screen').waitFor({ timeout: TAKE_TIMEOUT_MS });
 
     // The verdict, and what the fake singer actually held.
-    expect((await page.getByTestId('verdict').textContent())?.trim()).toBe('Passed');
+    expect((await page.getByTestId('verdict').textContent())?.trim()).toBe('Range saved');
     const range = (await page.getByTestId('range-card').textContent()) ?? '';
     expect(range, 'extended range = the lowest and highest notes held').toContain(EXTENDED_RANGE);
     expect(range, 'comfortable range = trimmed inside them').toContain(COMFORTABLE_RANGE);
-    expect(await page.getByTestId('tile-range.spanSemitones').textContent()).toContain('17');
+    expect(await page.getByTestId('score-reveal').count(), 'the Range finder measures, it does not grade').toBe(0);
 
     // The first take of a launch must have its audio (playback is offered), and what it opened is listed.
     await page.getByTestId('play-take').waitFor({ timeout: 5_000 });
@@ -219,7 +221,7 @@ describe('Wave 2 - a first session, through the real UI', () => {
     await page.getByTestId('dest-map').click();
     await page.getByTestId('node-foundations.01').locator('button').click();
     await page.getByTestId('level-screen').waitFor();
-    expect(await page.getByTestId('best-score').textContent()).toContain('100%');
+    expect(await page.getByTestId('saved-range').textContent()).toContain(COMFORTABLE_RANGE);
 
     // The take: one attempt, one recording with its audio, kept durably, and it replays.
     await openFromHome(page, 'util-data');

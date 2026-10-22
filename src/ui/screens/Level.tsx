@@ -26,7 +26,9 @@ import { MoreSheet } from '../practice/MoreSheet';
 import { PracticeBar } from '../practice/PracticeBar';
 import { Unavailable } from '../practice/Unavailable';
 import { bossChain, levelNumber, percent, tempoLabel, toleranceLabel } from '../practice/copy';
+import { rangeLabel } from '../practice/RangeCard';
 import { tryCreateRunner } from '../practice/runner-handle';
+import { settings } from '../../state/settings';
 
 /** "the Foundations Boss Recital" or "Sustain II": how a level is named in a requirement line. */
 function levelName(world: WorldDef | undefined, level: LevelDef): string {
@@ -86,6 +88,11 @@ function LevelView(props: { level: LevelDef; def: ExerciseDef }): JSX.Element {
   };
 
   const tempo = tempoLabel(def);
+  // The Range finder measures the voice rather than grading it: no tolerance, no score, no tally lights.
+  const measuring = level.id === LEVEL_REFS.rangeFinder;
+  // The in-tune window only means something where pitch accuracy is judged.
+  const showsTolerance = def.analyzers.some((a) => a !== 'range');
+  const passLines = def.passPlain ? [def.passPlain] : passRequirements(def).map((line) => line.text);
   const recordAllowed = isUnlocked('records') && isRecordAttemptAllowed(def.id, snap, WORLDS);
   const recordHint = isUnlocked('records') ? `Pass ${levelName(world, level)} to chase personal records on it.` : requirementHint('records');
   const records = passed && isUnlocked('records') ? recordsForExercise(snap, def.id).filter((rec) => rec.metric in METRIC_INFO) : [];
@@ -113,6 +120,21 @@ function LevelView(props: { level: LevelDef; def: ExerciseDef }): JSX.Element {
             </p>
             <h2 class="pl-display-l">{boss ? def.title : level.title}</h2>
             <p class="pl-body pl-prose">{def.goal}</p>
+            {!boss && def.steps && def.steps.length > 0 ? (
+              <>
+                <h3 class="pl-label pl-level__howto">How it goes</h3>
+                <ol class="pl-level__chain" aria-label="How it goes, step by step" data-testid="level-steps">
+                  {def.steps.map((text, i) => (
+                    <li key={text}>
+                      <span class="pl-level__step pl-tabular" aria-hidden="true">
+                        {i + 1}
+                      </span>
+                      <span class="pl-prose">{text}</span>
+                    </li>
+                  ))}
+                </ol>
+              </>
+            ) : null}
             {boss && chain.length > 0 ? (
               <ol class="pl-level__chain" aria-label="The sections of this take, in order">
                 {chain.map((cue, i) => (
@@ -137,23 +159,48 @@ function LevelView(props: { level: LevelDef; def: ExerciseDef }): JSX.Element {
             <>
               <section class="pl-level__section" aria-label="To pass">
                 <h3 class="pl-label">To pass</h3>
-                <ul class="pl-level__pass">
-                  {passRequirements(def).map((line) => (
-                    <li key={line.text}>
+                <ul class={`pl-level__pass${def.passPlain ? ' pl-level__pass--plain' : ''}`}>
+                  {passLines.map((text) => (
+                    <li key={text}>
                       <Target size={18} strokeWidth={2} aria-hidden="true" />
-                      <span class="pl-tabular">{line.text}</span>
+                      <span class={def.passPlain ? 'pl-prose' : 'pl-tabular'}>{text}</span>
                     </li>
                   ))}
                 </ul>
               </section>
 
-              <ul class="pl-level__chips" aria-label="How this level is judged">
-                <li class="pl-pchip" aria-label={`In tune within plus or minus ${CONFIG.tolerance[def.tolerance]} cents`}>
-                  {toleranceLabel(def)}
-                </li>
-                {tempo ? <li class="pl-pchip">{tempo}</li> : null}
-              </ul>
+              {showsTolerance || tempo ? (
+                <ul class="pl-level__chips" aria-label="How this level is judged">
+                  {showsTolerance ? (
+                    <li class="pl-pchip" aria-label={`In tune within plus or minus ${CONFIG.tolerance[def.tolerance]} cents`}>
+                      {toleranceLabel(def)}
+                    </li>
+                  ) : null}
+                  {tempo ? <li class="pl-pchip">{tempo}</li> : null}
+                </ul>
+              ) : null}
 
+              {measuring ? (
+                <section class="pl-level__section pl-level__best" aria-label="Your range">
+                  <div class="pl-level__best-row">
+                    <span class="pl-label">Your range</span>
+                    {profile?.range ? (
+                      <span class="pl-display-m pl-tabular" data-testid="saved-range">
+                        {rangeLabel(profile.range.comfortable.low, profile.range.comfortable.high, settings.value.notation)}
+                      </span>
+                    ) : (
+                      <span class="pl-body pl-muted" data-testid="saved-range">
+                        Not measured yet
+                      </span>
+                    )}
+                  </div>
+                  <p class="pl-body-s pl-muted pl-prose">
+                    {profile?.range
+                      ? 'The notes your exercises use. Sing this again any time your voice feels different.'
+                      : 'Sing it once, and every exercise will fit your voice.'}
+                  </p>
+                </section>
+              ) : (
               <section class="pl-level__section pl-level__best" aria-label="Your best">
                 <div class="pl-level__best-row">
                   <span class="pl-label">Best</span>
@@ -174,6 +221,7 @@ function LevelView(props: { level: LevelDef; def: ExerciseDef }): JSX.Element {
                     : `Lights at ${percent(def.pass.score)}, ${percent(def.tiers.solid)} and ${percent(def.tiers.studio)}.`}
                 </p>
               </section>
+              )}
 
               {records.length > 0 ? (
                 <section class="pl-level__section" aria-label="Personal bests">

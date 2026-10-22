@@ -461,7 +461,7 @@ describe('sing: one take, start to finish', () => {
     const downbeat = runner.origin.value!;
     expect(r.synth.notes).toHaveLength(1);
     expect(r.synth.notes[0].startAt! + r.synth.notes[0].duration).toBeCloseTo(downbeat - 0.6, 9);
-    expect(runner.cue.value).toBe('Start in the middle');
+    expect(runner.cue.value).toBe('Sing the note you hear on “oo”');
 
     feed(r, runner, rangeSweep(45, 72));
     setClock(r, downbeat - 0.5 * (60 / p.bpm)); // half a beat before the downbeat: the last count

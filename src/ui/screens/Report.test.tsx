@@ -359,11 +359,21 @@ describe('Report: the Range finder', () => {
     await mount(finder);
     const card = q('[data-testid="range-card"]')!;
     expect(card).not.toBeNull();
-    expect(card.textContent).toContain('Comfortable');
+    expect(card.textContent).toContain('Practice range');
     expect(card.textContent).toContain('C3–A4');
-    expect(card.textContent).toContain('Extended');
+    expect(card.textContent).toContain('Full reach');
     expect(card.textContent).toContain('A2–C5');
     expect(card.querySelector('svg rect')).not.toBeNull();
+  });
+
+  it('measures rather than grades: "Range saved", no score ring, no tiles', async () => {
+    const finder = makeOutcome({ levelId: 'foundations.01', rangeSaved: true });
+    session.activeProfile.value = { ...session.activeProfile.value!, range: { comfortable: { low: 48, high: 69 }, extended: { low: 45, high: 72 }, measuredAt: '2026-10-21T09:00:00.000Z' } };
+    await mount(finder);
+    expect(q('[data-testid="verdict"]')?.textContent).toBe('Range saved');
+    expect(container.textContent).toContain('Every exercise now fits your voice.');
+    expect(q('[data-testid="score-reveal"]')).toBeNull();
+    expect(q('.pl-tiles')).toBeNull();
   });
 
   it('is absent for any other take', async () => {

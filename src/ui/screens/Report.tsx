@@ -39,6 +39,11 @@ function isRoutineTake(outcome: TakeOutcome): boolean {
   return outcome.prepared.target.kind === 'workout' && outcome.prepared.level === null;
 }
 
+/** The Range finder measures the voice rather than grading it: its report leads with the range, not a score. */
+function isRangeFinder(outcome: TakeOutcome): boolean {
+  return outcome.prepared.def.kind === 'range-finder';
+}
+
 /**
  * True when this take can light a level's tally lights (progress/engine.ts): a level, workout-level or record take at the
  * level's pass tempo. An audition test, a routine and a lower rung of a tempo ladder show their score with no lights.
@@ -62,7 +67,7 @@ function judge(outcome: TakeOutcome): Judgement {
     if (evaluation.unsung) return { kind: 'not-yet', word: 'Not finished', celebrate: false };
     return { kind: 'done', word: 'Done', celebrate: false };
   }
-  if (attempt.passed) return { kind: 'passed', word: 'Passed', celebrate: true };
+  if (attempt.passed) return { kind: 'passed', word: isRangeFinder(outcome) ? 'Range saved' : 'Passed', celebrate: true };
   if (evaluation.passed) return { kind: 'passed', word: `Passed at ${prepared.bpm} bpm`, celebrate: false };
   return { kind: 'not-yet', word: 'Not yet', celebrate: false };
 }
@@ -70,6 +75,7 @@ function judge(outcome: TakeOutcome): Judgement {
 /** What was sung, in a line: "Sustain I", or for a ladder "Run 3 · sung at 72 bpm", with the tempo the level passes at when lower. */
 function captionOf(outcome: TakeOutcome): string {
   const { prepared } = outcome;
+  if (isRangeFinder(outcome) && outcome.attempt.passed) return 'Every exercise now fits your voice.';
   const name = prepared.level && prepared.level.kind !== 'boss' ? prepared.level.title : prepared.def.title;
   if (!prepared.ladder) return name;
   const sung = `${name} · sung at ${prepared.bpm} bpm`;
@@ -133,18 +139,21 @@ function ReportView(props: { outcome: TakeOutcome }): JSX.Element {
             reasonLine={evaluation.notJudged ? notJudgedLine(evaluation.notJudged, prepared.target.kind === 'audition') : null}
           />
 
-          <ScoreReveal
-            score={evaluation.score}
-            tally={outcome.attempt.mastery}
-            showTally={showsTally(outcome)}
-            celebrate={verdict.celebrate}
-            tone={verdict.kind === 'passed' ? 'accent' : verdict.kind === 'not-judged' ? 'muted' : 'neutral'}
-          />
+          {isRangeFinder(outcome) ? null : (
+            <ScoreReveal
+              score={evaluation.score}
+              tally={outcome.attempt.mastery}
+              showTally={showsTally(outcome)}
+              celebrate={verdict.celebrate}
+              tone={verdict.kind === 'passed' ? 'accent' : verdict.kind === 'not-judged' ? 'muted' : 'neutral'}
+            />
+          )}
 
           {outcome.saveError ? <Banner kind="warn" message={outcome.saveError} /> : null}
           {savedRange ? <RangeCard range={savedRange} notation={notation} /> : null}
           {verdict.celebrate ? <UnlockedStrip events={outcome.unlocked} ownLevelId={prepared.level?.id ?? null} /> : null}
-          {verdict.kind !== 'not-judged' ? <MetricTiles tiles={outcome.tiles} /> : null}
+          {/* A saved range already says what the Range finder measured; its tile is for a take that fell short. */}
+          {verdict.kind !== 'not-judged' && !savedRange ? <MetricTiles tiles={outcome.tiles} /> : null}
 
           <TraceReplay
             notes={prepared.realized.notes}

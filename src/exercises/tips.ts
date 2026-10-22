@@ -262,11 +262,11 @@ export const COACHING_TIPS: readonly TipRule[] = [
   // ---------------------------------------------------------------- range
   // Spans are whole semitones (analysis/range.ts rounds each held note), so this is "below RANGE_MIN_SPAN".
   { id: 'range.narrow', when: { metric: 'range.spanSemitones', op: '<=', value: RANGE_MIN_SPAN - 1 }, priority: 60,
-    text: `Measured span: {v} semitones; the exercises need ${RANGE_MIN_SPAN}. Slide a little past each bar and hold the last note that still feels easy, never a strained one.` },
+    text: `Your low and high notes were {v} half steps apart, and the exercises need ${RANGE_MIN_SPAN} (an octave). Slide a little lower and a little higher than the lines on the screen, and hold the last note that still feels easy, never a strained one.` },
   { id: 'range.missing', when: { metric: 'range.spanSemitones', op: '>=', value: 0 }, missing: true, priority: 90,
-    text: 'No note was held for a full second. Hold your lowest and highest easy notes for a slow count of two.' },
+    text: 'No note was held long enough to measure. Hold your lowest and your highest easy note for a slow count of three each.' },
   { id: 'range.any', when: { metric: 'range.spanSemitones', op: '>=', value: 0 }, priority: 10,
-    text: 'Stay in the easy part of your voice. Range grows with relaxed practice, not by pushing for notes.' },
+    text: 'Stay in the easy part of your voice. Your range grows with relaxed practice, not by pushing for notes.' },
 ];
 
 /** Shown when a passed take lost almost nothing. */

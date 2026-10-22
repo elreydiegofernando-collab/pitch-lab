@@ -122,9 +122,19 @@ describe('RangeCard', () => {
     expect(rangeLabel(48, 69, 'sharps')).toBe('C3–A4');
     expect(rangeLabel(46, 70, 'flats')).toBe('B♭2–B♭4');
     await show(<RangeCard range={range} notation="sharps" />);
-    expect(container.textContent).toContain('Comfortable');
+    expect(container.textContent).toContain('Practice range');
     expect(container.textContent).toContain('C3–A4');
+    expect(container.textContent).toContain('Full reach');
     expect(container.textContent).toContain('A2–C5');
+  });
+
+  it('explains the note names and marks middle C when it is on the strip', async () => {
+    await show(<RangeCard range={range} notation="sharps" />);
+    expect(container.querySelector('[data-testid="middle-c"]')).not.toBeNull();
+    expect(container.textContent).toContain('The dot marks middle C (C4)');
+    await show(<RangeCard range={{ ...range, comfortable: { low: 64, high: 76 }, extended: { low: 62, high: 79 } }} notation="sharps" />);
+    expect(container.querySelector('[data-testid="middle-c"]')).toBeNull();
+    expect(container.textContent).toContain('middle C is C4');
   });
 
   it('draws one key per semitone with a margin, and marks both ranges by shape as well as tint', async () => {

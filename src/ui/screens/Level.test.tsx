@@ -302,3 +302,31 @@ describe('Level: Listen and More', () => {
     expect(route.value.name).toBe('map');
   });
 });
+
+describe('Level: the Range finder, in plain words', () => {
+  it('lists the steps, says what passing means without jargon, and shows no tolerance chip or score', async () => {
+    await mount('foundations.01');
+    const def = getExercise(getLevel('foundations.01')!.exerciseId)!;
+    const steps = q('[data-testid="level-steps"]');
+    expect(steps?.querySelectorAll('li')).toHaveLength(def.steps!.length);
+    expect(text()).toContain(def.passPlain!);
+    expect(text()).not.toContain('Score ≥');
+    expect(text()).not.toContain('semitone');
+    expect(text()).not.toContain('¢');
+    expect(q('[data-testid="best-score"]')).toBeNull();
+    // The profile has a saved range: the level shows it, as notes.
+    expect(q('[data-testid="saved-range"]')?.textContent).toMatch(/^[A-G][♯♭]?\d–[A-G][♯♭]?\d$/);
+  });
+
+  it('says "Not measured yet" before a range is saved', async () => {
+    resetSession([], null);
+    await mount('foundations.01');
+    expect(q('[data-testid="saved-range"]')?.textContent).toBe('Not measured yet');
+  });
+
+  it('keeps the generated pass lines and the tolerance chip on levels that are judged', async () => {
+    await mount('foundations.03');
+    expect(q('[data-testid="level-steps"]')).toBeNull();
+    expect(text()).toContain('±50¢');
+  });
+});

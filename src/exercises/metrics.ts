@@ -87,7 +87,7 @@ export const METRIC_INFO: Readonly<Record<MetricKey, MetricInfo>> = {
   'dynamics.rangeDb': { direction: 'higher', label: 'Loudness range', unit: 'dB', scale: 1, min: 0, max: 80 },
   'dynamics.absSlopeCentsPerDb': { direction: 'lower', label: 'Pitch per dB', unit: '¢/dB', scale: 1, min: 0, max: 50 },
   'dynamics.symmetry': rate('Swell symmetry'),
-  'range.spanSemitones': { direction: 'higher', label: 'Range', unit: 'semitones', scale: 1, min: 0, max: 48 },
+  'range.spanSemitones': { direction: 'higher', label: 'Low to high', unit: 'half steps', scale: 1, min: 0, max: 48 },
   'song.phraseScore': rate('Phrase score'),
   'song.inTolerancePct': { direction: 'higher', label: 'In tune', unit: '%', scale: 1, min: 0, max: 100 },
 };
