@@ -17,8 +17,11 @@ const exportMock = vi.hoisted(() => ({ build: vi.fn() }));
 vi.mock('../../coaching/export', async (importOriginal) => ({ ...(await importOriginal<typeof import('../../coaching/export')>()), buildCoachingFile: exportMock.build }));
 
 import { back, installRouteGuard, resetRouterForTests, route, routeOf } from '../../router';
+import { CHECKUP_TASKS } from '../../checkup/types';
 import { coachTake } from '../../coaching/coach';
+import { getExercise } from '../../exercises';
 import { attempt } from '../../progress/test-fixtures';
+import { activeCheckup, startCheckup } from '../../runtime/checkup';
 import type { AfterTakeAction, TakeOutcome } from '../../runtime/types';
 import { makeOutcome } from '../practice/outcome-fixture';
 import { createRunnerMock, lastOutcomeSignal, resetRunner, resetSession, runnerState, session, settingsSignal, snapshotAfter, synthMocks, type FakeRunner } from '../practice/test-fakes';
@@ -384,6 +387,103 @@ describe('Report: the Range finder', () => {
   it('is absent for any other take', async () => {
     await mount(PASSING);
     expect(q('[data-testid="range-card"]')).toBeNull();
+  });
+});
+
+describe('Report: a task of the voice check-up', () => {
+  const SIREN = makeOutcome({ levelId: 'foundations.05' });
+  const RESULTS: AfterTakeAction[] = [{ kind: 'checkup-results', label: 'See your results', primary: true, route: routeOf('checkup') }];
+
+  /** A take of check-up task `taskIndex` (the siren), as the runner prepares and logs it: an audition take tagged with the check-up. */
+  function checkupTake(base: TakeOutcome, over: { passed?: boolean; durationSec?: number; noVoice?: boolean; notJudged?: 'stopped' } = {}, taskIndex = 2): TakeOutcome {
+    const def = getExercise(CHECKUP_TASKS[taskIndex].exerciseId)!;
+    return {
+      ...base,
+      prepared: { ...base.prepared, target: { kind: 'checkup', taskIndex }, def, level: null, checkup: { taskIndex, taskCount: CHECKUP_TASKS.length, checkupId: 'c1' } },
+      analysis: { ...base.analysis, tipContext: { ...base.analysis.tipContext, noVoice: over.noVoice ?? false } },
+      evaluation: over.notJudged ? { ...base.evaluation, passed: false, notJudged: over.notJudged } : base.evaluation,
+      attempt: {
+        ...base.attempt,
+        exerciseId: def.id,
+        kind: 'audition',
+        levelId: null,
+        passed: over.passed ?? false,
+        metrics: base.analysis.metrics,
+        durationSec: over.durationSec ?? base.attempt.durationSec,
+        checkupId: 'c1',
+      },
+    };
+  }
+
+  it('names the task plainly, gives a calm verdict and no score ring or tally: a check-up, not a test', async () => {
+    await mount(checkupTake(SIREN), RESULTS);
+    expect(q('[data-testid="verdict"]')?.textContent).toBe('Sung');
+    expect(q('.pl-verdict')?.textContent).toContain('Slide up and down');
+    expect(text()).not.toContain('Audition');
+    expect(text()).not.toMatch(/Not yet|fail|wrong/i);
+    expect(q('[data-testid="score-reveal"]')).toBeNull();
+    expect(q('.pl-tally-lights')).toBeNull();
+    expect(q('[data-testid="verdict-reason"]')).toBeNull();
+    expect(q('.pl-tiles')).not.toBeNull(); // what it measured
+  });
+
+  it('a test that passed says so, and shows what it opened', async () => {
+    const opened: TakeOutcome['unlocked'] = [{ kind: 'level-opened', levelId: 'foundations.05', title: 'Sirens & glides' }];
+    await mount({ ...checkupTake(SIREN, { passed: true }), unlocked: opened }, RESULTS);
+    expect(q('[data-testid="verdict"]')?.textContent).toBe('Passed');
+    expect(q('.pl-verdict')?.textContent).toContain('Slide up and down');
+    expect(q('[data-testid="score-reveal"]')).toBeNull();
+    expect(q('[data-testid="unlocked-strip"]')?.textContent).toContain('Sirens & glides');
+  });
+
+  it('a take that measured nothing says why in check-up words, never “not judged for the level” or “as a test”', async () => {
+    const cases: Array<[Parameters<typeof checkupTake>[1], string, string]> = [
+      [{ notJudged: 'stopped' }, 'Not measured', 'Stopped early, so this task was not measured.'],
+      [{ noVoice: true, durationSec: 0 }, 'Nothing came through', 'Nothing came through the microphone, so this task was not measured.'],
+      [{ durationSec: 3 }, 'Not measured', 'Not all of this task was heard, so it was not measured.'],
+    ];
+    for (const [over, word, reason] of cases) {
+      await mount(checkupTake(SIREN, over), RESULTS);
+      expect(q('[data-testid="verdict"]')?.textContent, word).toBe(word);
+      expect(q('[data-testid="verdict-reason"]')?.textContent).toBe(reason);
+      expect(text()).not.toMatch(/judged for the level|as a test/);
+      expect(q('[data-testid="score-reveal"]')).toBeNull();
+      await act(() => {
+        render(null, container);
+      });
+      container.remove();
+    }
+  });
+
+  it('“See your results” ends the check-up and goes back to the check-up screen beneath, never a second copy of it', async () => {
+    const s = startCheckup();
+    activeCheckup.value = { ...s, attemptIds: ['a', 'b', 'c', 'd', 'e'] };
+    flow.afterTakeActions.mockReturnValue(RESULTS);
+    lastOutcomeSignal.value = checkupTake(SIREN, {}, 4);
+    resetRouterForTests([routeOf('home'), routeOf('checkup'), routeOf('report')]);
+    installRouteGuard(() => ({ ok: true }));
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    await act(() => {
+      render(<Report />, container);
+    });
+    q<HTMLButtonElement>('[data-testid="report-primary"]')!.click();
+    expect(activeCheckup.value?.finishedAt).not.toBeNull();
+    expect(route.value).toEqual(routeOf('checkup'));
+    expect(back()).toBe(true);
+    expect(route.value.name).toBe('home');
+    activeCheckup.value = null;
+  });
+});
+
+describe('Report: a Range finder pass whose range would not save', () => {
+  it('is a plain pass, never “Range saved”, and does not promise the exercises fit', async () => {
+    const finder = makeOutcome({ levelId: 'foundations.01', rangeSaved: false, saveError: 'Your range was not saved. Sing the Range finder again to save it.' });
+    expect(finder.attempt.passed).toBe(true);
+    await mount(finder);
+    expect(q('[data-testid="verdict"]')?.textContent).toBe('Passed');
+    expect(text()).not.toContain('Every exercise now fits your voice.');
+    expect(q('.pl-banner--warn')?.textContent).toContain('Your range was not saved');
   });
 });
 

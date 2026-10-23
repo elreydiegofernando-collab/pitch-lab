@@ -14,7 +14,10 @@
  *    record, so a newer delete beats an older live copy and a newer live copy beats an older
  *    delete, with no special cases;
  *  - attempts: append-only and immutable, so deduped by id. An id already present locally is
- *    left untouched, never compared or overwritten;
+ *    left untouched, never compared or overwritten. Each row goes through the attempts repo's own
+ *    validation (normalizeAttemptFields): a bad value of an optional field (songId, the voice
+ *    check-up's checkupId, a song take's phrase, songShift or songSpeed) is dropped alone and the
+ *    row still imports, and a backup made before those fields existed imports as it always did;
  *  - every imported timestamp is folded into this device's clock, so its own later writes
  *    keep sorting after whatever history it just absorbed - but a timestamp implausibly far in
  *    the future is rejected rather than merged (hlc.ts HLC_MAX_REMOTE_SKEW_MS);

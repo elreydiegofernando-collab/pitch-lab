@@ -31,6 +31,8 @@ const REFUSED: readonly Refusal[] = [
   { hash: '#/audition/vibrato', toast: `${BOSS} unlock Vibrato.`, lands: 'map-screen', never: ['audition-screen'] },
   { hash: '#/songs', toast: `${BOSS} open Song Stage.`, lands: 'home-screen', never: ['songs-screen'] },
   { hash: '#/song/amazing-grace', toast: `${BOSS} open Song Stage.`, lands: 'home-screen', never: ['song-player', 'songs-screen'] },
+  { hash: '#/song-progress/amazing-grace', toast: `${BOSS} open Song Stage.`, lands: 'home-screen', never: ['song-progress', 'songs-screen'] },
+  { hash: '#/checkup-results/not-on-this-device', toast: 'That check-up is not on this device.', lands: 'checkup-screen', never: ['checkup-results-screen'] },
   { hash: '#/song-import', toast: `${BOSS} import your own songs.`, lands: 'home-screen', never: ['song-import-screen'] },
   { hash: '#/dashboard', toast: 'Pass your first level to see the progress dashboard.', lands: 'home-screen', never: ['dashboard-screen'] },
   { hash: '#/workout', toast: 'Pass your first level to unlock the daily workout.', lands: 'home-screen', never: ['workout-screen'] },

@@ -159,6 +159,7 @@ Analyzers are **pure functions over a pitch track plus a target**, and **each on
 - **Scrolling piano roll** with the target note bars, lyrics, and the user's live pitch line.
 - **Loop any phrase**, **slow down**, **play back**, and **record takes**.
 - **Phrase-by-phrase scored breakdown.**
+- **Learning a song** (owner, 2026-10-22: "I'd love to be able to practice on a song and get better at it"): a suggested path (listen; each phrase slowly, then at full speed; pairs of phrases joined; the whole song), per-phrase progress (best, latest, learned), coaching on each take located by syllable and time, and "then and now" for the song. Every song attempt records the phrases it covered, its key and its speed, so the log alone tells the progress (DESIGN §13.9, §13.16).
 - Song mode depends on latency calibration (§6.5).
 
 ## 11. Progression — game-like, earned, linear
@@ -172,6 +173,7 @@ Model:
 - **Tolerance is set by the level, not by the user.** There's no beginner/intermediate/advanced picker, and no per-profile difficulty preset.
 - **Mastery tiers** per level (pass, solid, studio) are shown as three tally lights. Replaying for mastery is optional; passing is enough to advance.
 - **Placement auditions (decided 2026-10-21: yes).** Each world has one **audition**: a short sung test drawn from that world's levels at their pass thresholds. Passing it unlocks the world's levels up to the demonstrated tier, so an experienced singer can *sing* past early material. **An audition only skips levels inside a world that is already unlocked. It can never open a later world.** The Boss Recital is always required to leave a world. Auditions can be retaken, and failing never re-locks anything already earned.
+- **Voice check-up (decided 2026-10-22):** a four-minute check-up (the Range finder and the Foundations audition's tests, sung whatever the one before did) rates each skill in plain words, names one or two things to focus on, and compares with the last one. It grants only what the audition could: a test it passes counts only if it was the audition's next test when it was sung (the Range finder sung, every level before it passed), so a test passed out of order grants nothing, then or later (DESIGN §13.15, `src/progress/engine.ts`).
 
 ### 11.1 The gating rule: everything is earned (owner directive 2026-10-21)
 
@@ -213,7 +215,7 @@ Model:
 - **Export / import:**
   - A JSON backup of a profile (versioned schema) to restore it or move it to a new device.
   - A take's audio as WAV, only when the user taps Export.
-  - A coaching file ("Send to Claude", from a level's More): the last five takes of one exercise with their pitch lines and scores, for a closer look in chat (docs/COACHING.md). It carries their audio only when the user turns on Include audio, which is off each time the sheet opens.
+  - A coaching file ("Send to Claude", from a level's More): the last five takes of one exercise with their pitch lines and scores, for a closer look in chat (docs/COACHING.md). The song coaching file is the same idea from a song's progress screen: the song as charted and its last eight takes, each with the phrases it covered, its key, its speed and its pitch line. Either carries audio only when the user turns on Include audio, which is off each time the sheet opens.
   - These two are the **only** ways audio leaves the device.
   - Diagnostics JSON for bug reports.
 - **Voice-health note:** shown at first run and in Help. It covers warming up, hydrating, never pushing through pain or hoarseness, resting, and not straining for range. After about 30 minutes of active singing, a gentle break reminder appears. A clear "not medical advice" line is included.

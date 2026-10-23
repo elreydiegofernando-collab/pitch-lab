@@ -107,6 +107,9 @@ function SingTake(props: { target: RunTarget }): JSX.Element {
 
   const controls = singControls(phase, prepared !== null, error);
   const taking = phase === 'count-in' || phase === 'singing';
+  // A check-up task has no Level screen before it, so the default-range note (Level.tsx) shows here: the Range finder
+  // task saved no range, and this task is placed in the voice type's default range.
+  const defaultRange = prepared !== null && prepared.target.kind === 'checkup' && prepared.usingDefaultRange && prepared.def.kind !== 'range-finder';
   const showPreview = prepared !== null && origin === null && (phase === 'idle' || phase === 'listening' || phase === 'error');
 
   /**
@@ -129,6 +132,7 @@ function SingTake(props: { target: RunTarget }): JSX.Element {
         <div class="pl-live-body__readouts pl-safe-x">
           <ReadoutCluster engine={engine} toleranceCents={tolerance} notation={notation} />
           {error ? <RunErrorBanner error={error} /> : null}
+          {defaultRange && !error ? <Banner kind="info" message="Using a default range until you pass the Range finder." /> : null}
         </div>
 
         <div class="pl-live-body__canvas pl-sing__canvas">

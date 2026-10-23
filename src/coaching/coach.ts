@@ -9,12 +9,19 @@
  * a gentler way in with next moves. A passed take is depth 1 with the polish or next-step tip and no more. Two voice-care
  * rules add a rest: many takes in a short time, or a long run of misses.
  *
+ * The coaching leans on the latest voice check-up (owner, 2026-10-22: "if you can hold a note, but you have voice
+ * cracking ... you should maybe practice voice cracking"): "Practise <level>" for a level that trains one of its focus
+ * skills (checkup/skills.ts SKILL_LEVELS) is offered from the second miss in a row, not only the fourth, with the same
+ * gates (already passed, earlier in the catalog, never the Range finder).
+ *
  * Every tip id has a ladder in the content (src/coaching/content: the rule table's and the general tips'), so the card
  * always reads plain words. Beyond the contract stub: locateProblem also takes the take's pitch line and vibrato style,
  * progressLines and coachTake the vibrato style (and coachTake the time, for the rest rule), all optional; coachFrom
  * coaches a saved take read back (last-time.ts, and the coaching-file tool, offline.ts).
  */
 import type { Metrics } from '../analysis/types';
+import { SKILL_LEVELS } from '../checkup/skills';
+import { latestCheckupFocus } from '../checkup/summary';
 import type { Notation } from '../core/music';
 import type { PitchTrack, VibratoStyle } from '../core/types';
 import type { TakeAnalysis } from '../exercises/analyze';
@@ -157,6 +164,14 @@ function practiseLevel(ladder: CoachLadder | undefined, current: string | null, 
   return level;
 }
 
+/** From this depth (misses in a row) a level that trains a check-up focus skill is offered; any other level from depth 4. */
+export const FOCUS_PRACTISE_DEPTH: CoachDepth = 2;
+
+/** The levels behind the latest finished voice check-up's focus skills in `log` (empty without one). The song coach leans the same way. */
+export function checkupFocusLevels(log: readonly AttemptRecord[]): ReadonlySet<string> {
+  return new Set(latestCheckupFocus(log).flatMap((skill) => SKILL_LEVELS[skill]));
+}
+
 /** Takes of anything in the REST_WINDOW_MS up to `now`. */
 function recentTakes(log: readonly AttemptRecord[], now: number): number {
   let n = 0;
@@ -219,10 +234,11 @@ export function coachFrom(src: CoachSource, log: readonly AttemptRecord[], ctx: 
 
   const ladder = ladderFor(tip.id);
   const moves: CoachMove[] = [];
-  if (!passed && depth >= 4) {
-    moves.push({ kind: 'listen-slow' });
-    const level = practiseLevel(ladder, attempt.levelId ?? levelForExercise(def.id)?.id ?? null, ctx);
-    if (level) moves.push({ kind: 'practise-level', levelId: level.id, title: levelTitle(level) });
+  if (!passed && depth >= 4) moves.push({ kind: 'listen-slow' });
+  const level = passed ? undefined : practiseLevel(ladder, attempt.levelId ?? levelForExercise(def.id)?.id ?? null, ctx);
+  // The latest check-up's focus, as the log stood before this take: its levels are offered from the second miss.
+  if (level && depth >= (checkupFocusLevels(before).has(level.id) ? FOCUS_PRACTISE_DEPTH : 4)) {
+    moves.push({ kind: 'practise-level', levelId: level.id, title: levelTitle(level) });
   }
   if (!passed && depth >= 3) moves.push({ kind: 'send-to-claude' });
   const now = ctx.now ?? Date.parse(attempt.createdAt);

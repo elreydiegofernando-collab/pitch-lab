@@ -706,6 +706,71 @@ button.pl-song-row:active {
   border-radius: 50%;
   background: var(--tally);
 }
+.pl-song-pill__num {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+/* Learned: a check beside the number (the shape says it; the blue tint only repeats it). */
+.pl-song-pill__learned {
+  flex: none;
+  color: var(--on-text);
+}
+
+/* ---------------------------------------------------------------- learn this song (the path) */
+
+.pl-song-learn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--world-song);
+  border-radius: var(--radius-card);
+  background: var(--bg-1);
+}
+.pl-song-learn__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.pl-song-learn__title {
+  font-size: 17px;
+  line-height: 1.4;
+  color: var(--text-hi);
+  overflow-wrap: anywhere;
+  /* At most two lines: a long phrase ends in an ellipsis rather than pushing the piano roll off the screen. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.pl-song-learn__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.pl-song-learn__actions .pl-btn {
+  flex: 1 1 200px;
+}
+.pl-song-learn__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: var(--target-min);
+  padding: 0 var(--sp-2);
+  border-radius: var(--radius-control);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--tally-text);
+  flex: none;
+}
+.pl-song-learn__link:active {
+  background: var(--bg-2);
+}
 
 /* ---------------------------------------------------------------- take result (sheet) */
 
@@ -800,6 +865,146 @@ button.pl-song-row:active {
   padding: var(--sp-3);
   border: 1px solid color-mix(in srgb, var(--alert) 45%, var(--line));
   border-radius: var(--radius-control);
+}
+
+/* ---------------------------------------------------------------- song progress */
+
+.pl-song-prog__head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pl-song-prog__head .pl-display-l {
+  overflow-wrap: anywhere;
+}
+.pl-song-prog__next {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  border-left: 4px solid var(--world-song);
+}
+.pl-song-prog__phrases {
+  display: flex;
+  flex-direction: column;
+}
+.pl-song-prog__phrase {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+.pl-song-prog__phrase:last-child {
+  border-bottom: 0;
+}
+.pl-song-prog__num {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 22px;
+  line-height: 1.1;
+  color: var(--text-mid);
+  text-align: right;
+}
+.pl-song-prog__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.pl-song-prog__words {
+  font-size: 17px;
+  line-height: 1.4;
+  color: var(--text-hi);
+  overflow-wrap: anywhere;
+}
+.pl-song-prog__learned,
+.pl-song-prog__notyet {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  padding-top: 2px;
+}
+.pl-song-prog__learned {
+  color: var(--on-text);
+}
+.pl-song-prog__notyet {
+  color: var(--text-mid);
+}
+
+/* Then and now: the two takes, one above the other on a phone, side by side when there is room. */
+.pl-song-then {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-4);
+}
+@media (min-width: 600px) {
+  .pl-song-then:has(> :nth-child(2)) {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+.pl-song-then__take {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.pl-song-then__caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px var(--sp-2);
+}
+.pl-song-then__score {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 26px;
+  line-height: 1;
+  color: var(--text-hi);
+}
+.pl-song-then__skeleton {
+  min-height: 180px;
+}
+/* Drawn 300 units wide: its 14-unit labels stay at 13 px or more down to a 320 px phone, and it stops growing at 520 px. */
+.pl-song-chart {
+  display: block;
+  width: 100%;
+  max-width: 520px;
+  height: auto;
+  border-radius: var(--radius-control);
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+}
+.pl-song-chart__axis {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.pl-song-chart__note {
+  fill: color-mix(in srgb, var(--text-hi) 12%, transparent);
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.pl-song-chart__line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.pl-song-chart__line--on {
+  stroke: var(--on);
+}
+.pl-song-chart__line--off {
+  stroke: var(--off);
+}
+.pl-song-chart__tick {
+  fill: var(--text-mid);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
 }
 
 /* ---------------------------------------------------------------- wide (>= 900 px, DESIGN.md §7) */

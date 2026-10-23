@@ -2,8 +2,9 @@
  * docs/DESIGN.md section 12 on the production build, for every screen a singer can reach: the page never scrolls sideways
  * (the phrase scrubber scrolls inside its own row, the page does not), every control is at least 48 px square, and nothing
  * throws. Run as a singer who has passed Foundations (a hand-built backup), so the later screens are open: the map and its
- * levels and Boss Recital, an audition, the workout, Song Stage with its player and import, the Vibrato meter, the dashboard,
- * Live, all five Setup steps, Settings, Profiles, Data, Diagnostics and About, plus the sheets that open over them. At a
+ * levels and Boss Recital, an audition, the workout, Song Stage with its player, a song's progress and import, the voice
+ * check-up's intro, the Vibrato meter, the dashboard, Live, all five Setup steps, Settings, Profiles, Data, Diagnostics and
+ * About, plus the sheets that open over them. At a
  * phone's smallest supported width (375 px, DESIGN.md section 7) and on a wide desktop window.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -128,11 +129,19 @@ describe('Wave 2 - every screen keeps to the layout rules in DESIGN.md', () => {
         await page.getByRole('button', { name: 'More options' }).click();
         await audit(page, 'song player, More', problems);
         await page.keyboard.press('Escape');
+        // The song's progress, from the Learn this song panel, and back to the player.
+        await page.getByTestId('learn-progress').click();
+        await page.getByTestId('song-progress').waitFor({ state: 'visible', timeout: 15_000 });
+        await audit(page, 'song progress', problems);
+        await page.getByRole('button', { name: 'Back' }).first().click();
+        await page.getByTestId('song-player').waitFor({ state: 'visible', timeout: 15_000 });
         await page.getByRole('button', { name: 'Back' }).first().click();
         await page.getByTestId('song-import-button').click();
         await page.getByTestId('song-import-screen').waitFor();
         await audit(page, 'song import', problems);
       });
+      // Home's voice check-up card ("Take your voice check-up": this singer has sung, with no check-up yet) opens its intro.
+      await visit('checkup-card-button', 'checkup-screen', 'voice check-up intro');
       await visit('dest-vibrato-meter', 'vibrato-meter-screen', 'vibrato meter');
       await visit('dest-live', 'live-screen', 'live');
       await visit('dest-dashboard', 'dashboard-screen', 'dashboard');

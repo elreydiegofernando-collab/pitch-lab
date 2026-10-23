@@ -30,7 +30,12 @@ function AllPassed(): JSX.Element {
   );
 }
 
-export function ContinueCard(): JSX.Element {
+/**
+ * `quiet`: another card is the first step on Home right now (the voice check-up, src/ui/worlds/CheckupCard.tsx), so
+ * Continue steps back to a secondary button and the screen keeps one amber button (docs/DESIGN.md 13.0).
+ */
+export function ContinueCard(props: { quiet?: boolean }): JSX.Element {
+  const quiet = props.quiet === true;
   const snap = snapshot.value;
   const level = continueLevel(snap, WORLDS);
   const found = level ? locateLevel(WORLDS, level.id) : undefined;
@@ -61,7 +66,7 @@ export function ContinueCard(): JSX.Element {
         </div>
       )}
       <Button
-        variant="primary"
+        variant={quiet ? 'secondary' : 'primary'}
         block
         class="wl-cta"
         onClick={() => navigate('level', { levelId: level.id })}

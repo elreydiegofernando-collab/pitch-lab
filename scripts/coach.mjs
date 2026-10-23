@@ -2,10 +2,11 @@
 /**
  * Pitch Lab coaching read: the diagnosis of the takes the owner sends from the phone, for Claude to read in chat.
  *
- *   node scripts/coach.mjs <file...> [--json] [--take N]
+ *   node scripts/coach.mjs <file...> [--json] [--take N] [--phrase N] [--checkup]
  *   node scripts/coach.mjs --list
  *
- * Each file is a coaching file ("Send to Claude": pitch-lab-coach-*.json), a backup (pitch-lab-backup-*.json) or a take WAV
+ * Each file is a coaching file ("Send to Claude": pitch-lab-coach-*.json), a song coaching file (the same, from a song:
+ * pitch-lab-coach-song-*.json), a backup (pitch-lab-backup-*.json: its voice check-ups and its songs are read too) or a take WAV
  * (pitch-lab-take-*.wav); what it is is read from its content, not its name. docs/COACHING.md is the workflow.
  *
  * The analysis is src/coaching/offline.ts. It is TypeScript on the app's own modules, so it is loaded through Vite's SSR module
@@ -28,15 +29,20 @@ const USAGE = `Usage:
   node scripts/coach.mjs --list [folder...]
 
 Files (any mix; the content says what each one is):
-  pitch-lab-coach-*.json    coaching file ("Send to Claude"): up to 5 takes with their pitch lines
-  pitch-lab-backup-*.json   backup: the numbers of every attempt, no pitch lines
+  pitch-lab-coach-*.json    coaching file ("Send to Claude" from a level): up to 5 takes with their pitch lines
+                            song coaching file ("Send to Claude" from a song): the song and up to 8 takes of it, each with
+                            its phrases, key, speed and pitch line
+  pitch-lab-backup-*.json   backup: the numbers of every attempt, no pitch lines; with its check-ups and its songs' tally
   pitch-lab-take-*.wav      one take's audio (sample 0 is the downbeat)
 With a coaching file, a backup given too supplies the whole log (streak, progress) and a WAV is matched to the newest take
-(or --take N). With a backup, each WAV is matched to one of its attempts. A WAV alone needs --exercise.
+(or --take N). With a song file, a backup given too supplies the song's whole history. With a backup, each WAV is matched to
+one of its attempts, and its voice check-ups are read with their then-and-now. A WAV alone needs --exercise.
 
 Options:
   --json             print the structured diagnosis (JSON) instead of the text
   --take N           show take N in detail (1 = newest); the comparison still covers them all
+  --phrase N         a song file: draw phrase N (1 = the first phrase of the song) in every take that covers it
+  --checkup          a backup: read only its voice check-ups (the skills, the focus, the then-and-now)
   --exercise X       an exercise id (foundations.siren.1), a level id (foundations.05) or part of a title ("sirens")
   --attempt ID       with a backup and a WAV: the attempt this WAV is (an id prefix is enough)
   --at TIME          with a backup and a WAV: the attempt nearest this time, e.g. "2026-10-22 14:05"
@@ -48,8 +54,8 @@ Options:
   --help             this text
 `;
 
-const VALUE_FLAGS = new Set(['take', 'exercise', 'attempt', 'at', 'tonic', 'bpm', 'profile', 'width']);
-const BOOL_FLAGS = new Set(['json', 'list', 'help']);
+const VALUE_FLAGS = new Set(['take', 'phrase', 'exercise', 'attempt', 'at', 'tonic', 'bpm', 'profile', 'width']);
+const BOOL_FLAGS = new Set(['json', 'list', 'help', 'checkup']);
 
 /**
  * Where the share sheet's "Save to OneDrive" lands on this PC (docs/COACHING.md): every folder in the home folder whose
@@ -73,7 +79,7 @@ async function defaultFolders() {
   return [...new Set(folders.map((f) => path.resolve(f)))];
 }
 
-const WANTED = /^pitch-lab-(coach-.+\.json|backup-.+\.json|take-.+\.wav)$/i;
+const WANTED = /^pitch-lab-(coach-.+\.json|song-.+\.json|backup-.+\.json|take-.+\.wav)$/i;
 
 /** The pitch-lab files in `folder` and its immediate sub-folders (a share sheet may save into any of them). */
 async function findFiles(folder) {
@@ -121,7 +127,13 @@ async function listFiles(folders) {
   }
   const p2 = (n) => String(n).padStart(2, '0');
   const stamp = (d) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
-  const kind = (f) => (/coach-/i.test(path.basename(f)) ? 'coach ' : /backup-/i.test(path.basename(f)) ? 'backup' : 'take  ');
+  // A song file may be named pitch-lab-coach-song-*.json or pitch-lab-song-*.json: either way the label says it is a song's.
+  const kind = (f) => {
+    const name = path.basename(f);
+    if (/backup-/i.test(name)) return 'backup';
+    if (/^pitch-lab-take-/i.test(name)) return 'take  ';
+    return /(^pitch-lab-song-|coach-song-)/i.test(name) ? 'song  ' : 'coach ';
+  };
   const lines = rows.map((r) => `  ${stamp(r.mtime)}  ${kind(r.file)}  ${String(Math.max(1, Math.round(r.size / 1024))).padStart(6)} KB  ${r.file.replace(/\\/g, '/')}`);
   process.stdout.write(`Newest first (by the time each file was saved):\n${lines.join('\n')}\n`);
 }
@@ -155,6 +167,15 @@ function parseArgs(argv) {
 
 class UsageError extends Error {}
 
+/**
+ * JSON as plain ASCII, like the text: a character past 7 bits (a typographic dash or quote) is written as its JSON escape
+ * (a backslash, "u" and four hex digits), which parses back to the same character, so a console in any code page prints it as it is.
+ */
+function asciiJson(value) {
+  const backslash = String.fromCharCode(92);
+  return JSON.stringify(value, null, 2).replace(/[^\x00-\x7f]/g, (c) => `${backslash}u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+}
+
 function positiveNumber(opts, name) {
   if (opts[name] === undefined) return undefined;
   const n = Number(opts[name]);
@@ -184,10 +205,12 @@ async function main() {
     return 2;
   }
   let take;
+  let phrase;
   let bpm;
   let width;
   try {
     take = positiveNumber(opts, 'take');
+    phrase = positiveNumber(opts, 'phrase');
     bpm = positiveNumber(opts, 'bpm');
     width = positiveNumber(opts, 'width');
   } catch (e) {
@@ -232,13 +255,14 @@ async function main() {
     }
     if (inputs.length === 0) return status || 1;
 
-    const runOpts = { take, bpm, width, exercise: opts.exercise, attempt: opts.attempt, at: opts.at, tonic: opts.tonic, profile: opts.profile };
-    const results = offline.analyzeInputs(inputs, runOpts);
+    const runOpts = { take, phrase, bpm, width, exercise: opts.exercise, attempt: opts.attempt, at: opts.at, tonic: opts.tonic, profile: opts.profile, checkup: opts.checkup === true };
+    const results = offline.analyzeReports(inputs, runOpts);
     if (opts.json) {
-      const shaped = results.map((d) => (take === undefined ? d : { ...d, takes: d.takes.filter((t) => t.index === take) }));
-      process.stdout.write(`${JSON.stringify(shaped, null, 2)}\n`);
+      // A check-up read has no takes: --take only narrows the reads that do.
+      const shaped = results.map((d) => (take === undefined || !Array.isArray(d.takes) ? d : { ...d, takes: d.takes.filter((t) => t.index === take) }));
+      process.stdout.write(`${asciiJson(shaped)}\n`);
     } else {
-      process.stdout.write(results.map((d) => offline.formatDiagnosis(d, { take })).join('\n'));
+      process.stdout.write(results.map((d) => offline.formatReport(d, { take })).join('\n'));
     }
     return status;
   } catch (e) {

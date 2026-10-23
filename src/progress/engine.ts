@@ -17,6 +17,12 @@
  *    counts like any other evidence, i.e. once every earlier level is passed. It never grants the
  *    Range finder (it sets the range every exercise transposes to, so it is always sung), a Boss
  *    Recital or anything past one, and never opens a world, whatever a bad catalog entry says.
+ *  - A placement test sung in a voice check-up (a row with a `checkupId`) grants only what the audition
+ *    itself could have: the check-up sings every test whatever the one before it did, so the registry
+ *    did not choose it, and its pass counts only if it was the audition's NEXT test when it was sung
+ *    (nextAuditionExercise on the log before it: the Range finder sung, every level before its span
+ *    passed). A test it passed out of order, or before the Range finder was sung, never grants, now or
+ *    later. An ordinary audition row was the next test by construction (the registry opens no other).
  *  - Unlocks depend on the log alone, never on the clock: a wrong device clock cannot re-lock
  *    anything. Adding attempts can only add passes (soft-deleting an attempt is the one way to
  *    remove evidence, and it is the singer's own act).
@@ -40,7 +46,7 @@ import { foldRecords } from './records';
 import type { ExerciseLookup } from './records';
 import { dayIndexOf, dayKeyOf, requireMs } from './time';
 import type { TimeInput } from './time';
-import { LEVEL_REFS, unlockedFeatures } from './unlocks';
+import { LEVEL_REFS, nextAuditionExercise, unlockedFeatures } from './unlocks';
 
 export type { ExerciseLookup } from './records';
 
@@ -67,7 +73,8 @@ interface LevelStats {
   attempts: number;
   /** The best score of a take at the level's pass tempo (a lower rung of a Runs ladder is practice at another speed). */
   bestScore: number;
-  pass: { at: string; bestScore: number; mastery: Mastery } | null;
+  /** The direct passes: the first one's time and place in the replayed log (`index`), the best score and mastery of all. */
+  pass: { at: string; index: number; bestScore: number; mastery: Mastery } | null;
   /**
    * The best of the PASSED personal-record takes at the pass tempo: they light the level's tally lights (a record take
    * is the level sung again, judged by its own rule), though they never pass it. 0 when there is none.
@@ -105,7 +112,8 @@ function collectLevelStats(
   getExercise: ExerciseLookup | undefined,
 ): Map<string, LevelStats> {
   const stats = new Map<string, LevelStats>();
-  for (const { a } of log) {
+  for (let index = 0; index < log.length; index++) {
+    const { a } = log[index];
     if (a.levelId == null || !LEVEL_ATTEMPT_KINDS.has(a.kind)) continue;
     const owner = levelOwner.get(a.levelId);
     if (!owner) continue;
@@ -121,7 +129,7 @@ function collectLevelStats(
     if (atTempo && score > s.bestScore) s.bestScore = score;
     if (a.passed === true && LEVEL_PASSING_KINDS.has(a.kind) && atTempo) {
       const mastery = passMastery(a.mastery);
-      if (!s.pass) s.pass = { at: a.createdAt, bestScore: score, mastery };
+      if (!s.pass) s.pass = { at: a.createdAt, index, bestScore: score, mastery };
       else {
         if (score > s.pass.bestScore) s.pass.bestScore = score;
         if (mastery > s.pass.mastery) s.pass.mastery = mastery;
@@ -138,12 +146,65 @@ function collectLevelStats(
   return stats;
 }
 
+type LevelOwners = ReadonlyMap<string, { world: WorldDef; level: LevelDef }>;
+
+/** A take of a voice check-up (src/checkup): it carries the check-up's id. */
+function isCheckupTake(a: AttemptRecord): boolean {
+  return typeof a.checkupId === 'string' && a.checkupId !== '';
+}
+
+/**
+ * The progress the registry saw just before log row `index` was sung, as much of it as nextAuditionExercise reads: each
+ * level's status and whether an audition granted it, and the open worlds. It is built from the direct passes before
+ * that row and from `grants`, which holds exactly the grants of the rows before it while collectGrants walks the log in
+ * order. Scores, mastery, features and momentum are left empty: no rule here reads them.
+ */
+function progressBefore(
+  index: number,
+  worlds: readonly WorldDef[],
+  ordered: ReadonlyMap<WorldId, LevelDef[]>,
+  levelOwner: LevelOwners,
+  stats: ReadonlyMap<string, LevelStats>,
+  grants: ReadonlyMap<WorldId, ReadonlyMap<string, Grant>>,
+): ProgressSnapshot {
+  const direct = (levelId: string): boolean => (stats.get(levelId)?.pass?.index ?? Infinity) < index;
+  const resolved = new Map<WorldId, Map<string, ResolvedLevel>>();
+  const resolve = (world: WorldDef): Map<string, ResolvedLevel> => {
+    let r = resolved.get(world.id);
+    if (!r) {
+      const granted = grants.get(world.id);
+      r = resolveWorld(ordered.get(world.id) ?? [], direct, (levelId) => granted?.has(levelId) === true);
+      resolved.set(world.id, r);
+    }
+    return r;
+  };
+  const open = openWorlds(worlds, levelOwner, resolve);
+  const levels: Record<string, LevelProgress> = {};
+  for (const world of worlds) {
+    const r = open.has(world.id) ? resolve(world) : null;
+    for (const level of ordered.get(world.id) ?? []) {
+      const res = r?.get(level.id);
+      levels[level.id] = { levelId: level.id, status: res?.status ?? 'locked', bestScore: 0, mastery: 0, attempts: 0, passedAt: null, viaAudition: res?.evidence === 'audition' };
+    }
+  }
+  const worldsUnlocked = [...new Set(worlds.filter((w) => open.has(w.id)).map((w) => w.id))];
+  return { profileId: '', computedAt: '', levels, worldsUnlocked, features: [], momentum: 0, lastPracticeDay: null, records: {} };
+}
+
 /**
  * Levels each world's passed auditions grant. A test grants only its own span (auditions.ts: past what the
  * earlier tests reach, short of any Boss Recital) and never the Range finder, which only a real take passes.
- * Whether a grant COUNTS is resolveWorld's call: it waits until every earlier level is passed.
+ * Whether a grant COUNTS is resolveWorld's call: it waits until every earlier level is passed. A check-up's test
+ * grants nothing unless it was the audition's next test when it was sung (the module doc), so a check-up never grants
+ * more than the audition could, and never later.
  */
-function collectGrants(log: readonly LoggedAttempt[], worlds: readonly WorldDef[], ordered: ReadonlyMap<WorldId, LevelDef[]>): Map<WorldId, Map<string, Grant>> {
+function collectGrants(
+  log: readonly LoggedAttempt[],
+  worlds: readonly WorldDef[],
+  ordered: ReadonlyMap<WorldId, LevelDef[]>,
+  levelOwner: LevelOwners,
+  stats: ReadonlyMap<string, LevelStats>,
+): Map<WorldId, Map<string, Grant>> {
   const spanOf = new Map<string, { worldId: WorldId; first: number; last: number }>();
   for (const world of worlds) {
     if (!world.audition) continue;
@@ -152,10 +213,14 @@ function collectGrants(log: readonly LoggedAttempt[], worlds: readonly WorldDef[
     }
   }
   const grants = new Map<WorldId, Map<string, Grant>>();
-  for (const { a } of log) {
+  for (let index = 0; index < log.length; index++) {
+    const { a } = log[index];
     if (a.kind !== 'audition' || a.passed !== true) continue;
     const span = spanOf.get(a.exerciseId);
     if (!span) continue; // not a test of any audition, or one that reaches nothing new
+    if (isCheckupTake(a) && nextAuditionExercise(span.worldId, progressBefore(index, worlds, ordered, levelOwner, stats, grants), worlds) !== a.exerciseId) {
+      continue; // sung by a check-up out of the audition's order: it measured the skill, and grants nothing
+    }
     const levels = ordered.get(span.worldId) ?? [];
     let granted = grants.get(span.worldId);
     if (!granted) {
@@ -174,13 +239,16 @@ function collectGrants(log: readonly LoggedAttempt[], worlds: readonly WorldDef[
   return grants;
 }
 
-/** Statuses of one OPEN world: strictly linear, evidence counts only while every earlier level is passed. */
-function resolveWorld(levels: readonly LevelDef[], stats: ReadonlyMap<string, LevelStats>, grants: ReadonlyMap<string, Grant> | undefined): Map<string, ResolvedLevel> {
+/**
+ * Statuses of one OPEN world: strictly linear, evidence counts only while every earlier level is passed. `isDirect` and
+ * `isGranted` say whether a level has a direct pass and an audition grant.
+ */
+function resolveWorld(levels: readonly LevelDef[], isDirect: (levelId: string) => boolean, isGranted: (levelId: string) => boolean): Map<string, ResolvedLevel> {
   const out = new Map<string, ResolvedLevel>();
   let reachable = true;
   for (const level of levels) {
-    const direct = stats.get(level.id)?.pass != null;
-    const granted = grants?.has(level.id) === true;
+    const direct = isDirect(level.id);
+    const granted = isGranted(level.id);
     if (reachable && (direct || granted)) {
       out.set(level.id, { status: 'passed', evidence: direct ? 'direct' : 'audition' });
     } else if (reachable) {
@@ -191,6 +259,27 @@ function resolveWorld(levels: readonly LevelDef[], stats: ReadonlyMap<string, Le
     }
   }
   return out;
+}
+
+/** Worlds open from the start, plus each world whose gate level a DIRECT pass cleared inside an open world. */
+function openWorlds(worlds: readonly WorldDef[], levelOwner: LevelOwners, resolve: (world: WorldDef) => ReadonlyMap<string, ResolvedLevel>): Set<WorldId> {
+  const open = new Set<WorldId>();
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const world of worlds) {
+      if (open.has(world.id)) continue;
+      let opens = world.unlockedBy == null;
+      if (!opens) {
+        const gate = levelOwner.get(world.unlockedBy as string);
+        opens = !!gate && gate.world.id !== world.id && open.has(gate.world.id) && resolve(gate.world).get(gate.level.id)?.evidence === 'direct';
+      }
+      if (opens) {
+        open.add(world.id);
+        changed = true;
+      }
+    }
+  }
+  return open;
 }
 
 /**
@@ -217,35 +306,20 @@ export function computeSnapshot(
   }
 
   const stats = collectLevelStats(log, levelOwner, options.getExercise);
-  const grants = collectGrants(log, worlds, ordered);
+  const grants = collectGrants(log, worlds, ordered, levelOwner, stats);
 
   const resolved = new Map<WorldId, Map<string, ResolvedLevel>>();
   const resolve = (world: WorldDef): Map<string, ResolvedLevel> => {
     let r = resolved.get(world.id);
     if (!r) {
-      r = resolveWorld(ordered.get(world.id) ?? [], stats, grants.get(world.id));
+      const granted = grants.get(world.id);
+      r = resolveWorld(ordered.get(world.id) ?? [], (levelId) => stats.get(levelId)?.pass != null, (levelId) => granted?.has(levelId) === true);
       resolved.set(world.id, r);
     }
     return r;
   };
 
-  // Worlds open from the start, plus each world whose gate level a DIRECT pass cleared inside an open world.
-  const open = new Set<WorldId>();
-  for (let changed = true; changed; ) {
-    changed = false;
-    for (const world of worlds) {
-      if (open.has(world.id)) continue;
-      let opens = world.unlockedBy == null;
-      if (!opens) {
-        const gate = levelOwner.get(world.unlockedBy as string);
-        opens = !!gate && gate.world.id !== world.id && open.has(gate.world.id) && resolve(gate.world).get(gate.level.id)?.evidence === 'direct';
-      }
-      if (opens) {
-        open.add(world.id);
-        changed = true;
-      }
-    }
-  }
+  const open = openWorlds(worlds, levelOwner, resolve);
 
   const levels: Record<string, LevelProgress> = {};
   for (const world of worlds) {

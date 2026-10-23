@@ -112,7 +112,11 @@ export interface CheckupSummary {
   startLevelId: string | null;
   /** Levels this check-up opened (granted by its placement tests), in order. */
   opened: string[];
-  /** The range measured, as note names ("B2–A4"), when the Range finder passed. */
+  /**
+   * The range measured, as note names ("B2–A4"), when the Range finder passed and saved the range the profile has now
+   * (checkupsOf's `savedRange`); null otherwise. A take keeps only the span of a range, not its notes, so an older
+   * check-up's range is said in words by its range skill ("Your easy notes span an octave and 3 half steps").
+   */
   range: string | null;
 }
 

@@ -11,10 +11,18 @@ import type { KVStore } from '../../storage/kv-types';
 vi.mock('../../storage/kv', () => ({
   openKV: async (): Promise<KVStore> => ({ persistent: true, get: async () => undefined, set: async () => {}, delete: async () => {}, keys: async () => [] }),
 }));
+// The check-up engine and its session belong to other builders: the dashboard is tested against the contract's doubles.
+vi.mock('../../runtime/checkup', async () => (await import('../checkup/test-support')).checkupRuntimeModule());
+vi.mock('../../checkup/summary', async () => (await import('../checkup/test-support')).summaryModule());
 
-import { resetRouterForTests } from '../../router';
+import { CHECKUP_SKILLS } from '../../checkup/skills';
+import { checkupsOf } from '../../checkup/summary';
+import { installRouteGuard, resetRouterForTests, route, routeOf } from '../../router';
+import { abandonCheckup, activeCheckup } from '../../runtime/checkup';
 import { activeProfile, attemptLog, snapshot } from '../../state/session';
 import type { AttemptRecord } from '../../storage/schema';
+import { sessionOf, skill, summaryOf } from '../checkup/test-support';
+import { formatDate } from '../progress/format';
 import { attemptAt, passWorld, profileRecord, snapshotOf } from '../progress/test-fixtures';
 import { Dashboard } from './Dashboard';
 
@@ -39,6 +47,10 @@ const text = (): string => container.textContent ?? '';
 
 beforeEach(() => {
   resetRouterForTests();
+  activeCheckup.value = null;
+  vi.mocked(checkupsOf).mockReset();
+  vi.mocked(checkupsOf).mockReturnValue([]);
+  vi.mocked(abandonCheckup).mockClear();
 });
 
 afterEach(() => {
@@ -223,5 +235,105 @@ describe('Dashboard: level map, range, bests, practice', () => {
     expect(container.querySelector('[data-testid="practice-recent"]')!.textContent).toBe('10 min');
     expect(container.querySelector('[data-testid="practice-before"]')!.textContent).toBe('20 min');
     expect(container.querySelector('[data-testid="dash-practice"]')!.textContent).toContain('Down 10 min from the week before');
+  });
+});
+
+describe('Dashboard: check-ups', () => {
+  const card = (): Element | null => container.querySelector('[data-testid="dash-checkups"]');
+  const rows = (): HTMLButtonElement[] => Array.from(container.querySelectorAll<HTMLButtonElement>('[data-testid="dash-checkup-row"]'));
+  const open = (): void => {
+    show([attemptAt('foundations.01', { daysAgo: 1 }), attemptAt('foundations.02', { daysAgo: 0 })]);
+    installRouteGuard(() => ({ ok: true }));
+  };
+
+  it('is a card of the dashboard, after the skills, only once the dashboard is open', async () => {
+    show([]);
+    await mount();
+    expect(card()).toBeNull();
+    render(null, container);
+    container.remove();
+    open();
+    await mount();
+    const ids = Array.from(container.querySelectorAll('.pl-dash-card')).map((c) => c.getAttribute('data-testid'));
+    expect(ids).toContain('dash-checkups');
+    expect(ids.indexOf('dash-checkups')).toBe(ids.indexOf('dash-skills') + 1);
+    expect(card()!.classList.contains('pl-card')).toBe(true);
+    expect(card()!.querySelector('h2')!.textContent).toBe('Check-ups');
+  });
+
+  it('offers to take the first check-up before there is one', async () => {
+    open();
+    await mount();
+    expect(card()!.textContent).toContain('A voice check-up takes about four minutes.');
+    expect(rows()).toHaveLength(0);
+    expect(container.querySelector('[data-testid="dash-checkup-recheck"]')).toBeNull();
+    container.querySelector<HTMLButtonElement>('[data-testid="dash-checkup-take"]')!.click();
+    expect(route.value).toEqual(routeOf('checkup'));
+  });
+
+  it('lists each check-up newest first with its date and its focus, each opening its results', async () => {
+    open();
+    const older = summaryOf('older', { daysAgo: 12, focus: ['slides'] });
+    const newer = summaryOf('newer', { daysAgo: 2, focus: [] });
+    vi.mocked(checkupsOf).mockReturnValue([older, newer]);
+    await mount();
+    expect(rows().map((r) => r.querySelector('.ck-dash__date')!.textContent)).toEqual([formatDate(newer.finishedAt), formatDate(older.finishedAt)]);
+    expect(rows().map((r) => r.querySelector('.pl-body-s')!.textContent)).toEqual(['Everything measured is solid', 'Focus: slides']);
+    expect(rows()[1].getAttribute('aria-label')).toBe(`Check-up of ${formatDate(older.finishedAt)}. Focus: slides. Open the results.`);
+    rows()[1].click();
+    expect(route.value).toEqual(routeOf('checkup-results', { checkupId: 'older' }));
+  });
+
+  it('says nothing could be measured for a check-up that measured nothing, not that everything is solid', async () => {
+    open();
+    const silent = CHECKUP_SKILLS.map((s) => skill(s, 'not-measured'));
+    vi.mocked(checkupsOf).mockReturnValue([summaryOf('silent', { daysAgo: 2, focus: [], skills: silent })]);
+    await mount();
+    expect(rows()[0].querySelector('.pl-body-s')!.textContent).toBe('Nothing could be measured');
+  });
+
+  it('keeps every row a touch target of its own', async () => {
+    open();
+    vi.mocked(checkupsOf).mockReturnValue([summaryOf('a', { daysAgo: 30 }), summaryOf('b', { daysAgo: 1 })]);
+    await mount();
+    expect(rows()).toHaveLength(2);
+    for (const row of rows()) expect(row.tagName).toBe('BUTTON');
+  });
+
+  it('offers a Re-check once the last check-up is three weeks old, and not before', async () => {
+    open();
+    vi.mocked(checkupsOf).mockReturnValue([summaryOf('recent', { daysAgo: 20 })]);
+    await mount();
+    expect(container.querySelector('[data-testid="dash-checkup-recheck"]')).toBeNull();
+    render(null, container);
+    container.remove();
+    open();
+    vi.mocked(checkupsOf).mockReturnValue([summaryOf('old', { daysAgo: 21 })]);
+    await mount();
+    const recheck = container.querySelector<HTMLButtonElement>('[data-testid="dash-checkup-recheck"]')!;
+    expect(recheck.textContent).toBe('Re-check');
+    recheck.click();
+    expect(route.value).toEqual(routeOf('checkup'));
+  });
+
+  it('drops a finished check-up still in memory before a re-check, so the intro shows and not the old results', async () => {
+    open();
+    vi.mocked(checkupsOf).mockReturnValue([summaryOf('old', { daysAgo: 30 })]);
+    activeCheckup.value = sessionOf(5, { finishedAt: '2026-09-22T14:05:00.000Z' });
+    await mount();
+    container.querySelector<HTMLButtonElement>('[data-testid="dash-checkup-recheck"]')!.click();
+    expect(abandonCheckup).toHaveBeenCalledTimes(1);
+    expect(activeCheckup.value).toBeNull();
+  });
+
+  it('keeps a check-up left part way when a re-check is due', async () => {
+    open();
+    vi.mocked(checkupsOf).mockReturnValue([summaryOf('old', { daysAgo: 30 })]);
+    const part = sessionOf(2);
+    activeCheckup.value = part;
+    await mount();
+    container.querySelector<HTMLButtonElement>('[data-testid="dash-checkup-recheck"]')!.click();
+    expect(abandonCheckup).not.toHaveBeenCalled();
+    expect(activeCheckup.value).toBe(part);
   });
 });

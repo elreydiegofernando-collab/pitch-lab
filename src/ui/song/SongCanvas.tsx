@@ -127,7 +127,7 @@ export function SongCanvas(props: SongCanvasProps): JSX.Element {
         const selection = session.selection.value;
         const speed = session.speed.value;
         const song = session.song.value;
-        const key = `${selection}|${speed}|${session.shift.value}`;
+        const key = `${selection === null ? 'all' : `${selection.from}-${selection.to}`}|${speed}|${session.shift.value}`;
         if (key !== builtPreview) {
           builtPreview = key;
           builtFor = null;

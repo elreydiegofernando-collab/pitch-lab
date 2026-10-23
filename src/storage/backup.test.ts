@@ -627,6 +627,64 @@ describe('sanitising what comes in', () => {
   });
 });
 
+describe('the check-up id and a song take’s phrase, key and speed', () => {
+  it('travel with a backup: export, then import on a fresh device, gives the same rows', async () => {
+    const source = await device();
+    const p = await createProfile(source, { name: 'Tenor' });
+    const checkupTake = await addAttempt(source, attemptInput(p.id, { kind: 'audition', exerciseId: 'foundations.audition.2', checkupId: '1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed' }));
+    const songTake = await addAttempt(source, attemptInput(p.id, { kind: 'song', exerciseId: 'song.amazing-grace', songId: 'amazing-grace', phrase: { from: 2, to: 4 }, songShift: -2, songSpeed: 0.75 }));
+    const wholeSong = await addAttempt(source, attemptInput(p.id, { kind: 'song', exerciseId: 'song.amazing-grace', songId: 'amazing-grace', phrase: null, songShift: 0, songSpeed: 1 }));
+    const file = await exportBackup(source);
+    expect(file.attempts.find((a) => a.id === checkupTake.id)?.checkupId).toBe(checkupTake.checkupId);
+    expect(file.attempts.find((a) => a.id === songTake.id)).toMatchObject({ phrase: { from: 2, to: 4 }, songShift: -2, songSpeed: 0.75 });
+
+    const dest = await device(T0 + 1_000_000, 'dest');
+    const report = await importBackup(dest, JSON.stringify(file));
+    cleanReport(report);
+    expect(report.attemptsAdded).toBe(3);
+    for (const a of [checkupTake, songTake, wholeSong]) await expect(getAttempt(dest, a.id)).resolves.toEqual(a);
+  });
+
+  it('a bad value is dropped alone: the row still imports with everything else it carries', async () => {
+    const dest = await device();
+    const p = await createProfile(dest, { name: 'T' });
+    const stamp = dest.nextTimestamp();
+    const report = await importBackup(
+      dest,
+      envelope({
+        attempts: [
+          remoteAttempt(p.id, stamp, { id: 'bad-checkup', checkupId: 'not an id', score: 0.6 }),
+          remoteAttempt(p.id, stamp, { id: 'bad-song', kind: 'song', songId: 'song-1', phrase: { from: 5, to: 1 }, songShift: 'up', songSpeed: 9 }),
+          remoteAttempt(p.id, stamp, { id: 'half-bad', kind: 'song', songId: 'song-1', phrase: { from: 1, to: 2 }, songShift: 1.5, songSpeed: 0.5 }),
+        ] as unknown as AttemptRecord[],
+      }),
+    );
+    cleanReport(report);
+    expect(report.attemptsAdded).toBe(3);
+    const badCheckup = (await getAttempt(dest, 'bad-checkup'))!;
+    expect('checkupId' in badCheckup).toBe(false);
+    expect(badCheckup).toMatchObject({ score: 0.6, metrics: { 'accuracy.inTolerancePct': 80 } });
+    const badSong = (await getAttempt(dest, 'bad-song'))!;
+    for (const key of ['phrase', 'songShift', 'songSpeed']) expect(key in badSong, key).toBe(false);
+    expect(badSong.songId).toBe('song-1');
+    const halfBad = (await getAttempt(dest, 'half-bad'))!;
+    expect(halfBad).toMatchObject({ phrase: { from: 1, to: 2 }, songSpeed: 0.5 });
+    expect('songShift' in halfBad).toBe(false);
+  });
+
+  it('a backup made before these fields existed still imports, its rows unchanged', async () => {
+    const dest = await device();
+    const p = await createProfile(dest, { name: 'T' });
+    const old = remoteAttempt(p.id, dest.nextTimestamp(), { id: 'old-1', kind: 'song', exerciseId: 'song.s', songId: 's' });
+    const report = await importBackup(dest, envelope({ attempts: [old] as unknown as AttemptRecord[] }));
+    cleanReport(report);
+    expect(report.attemptsAdded).toBe(1);
+    const row = (await getAttempt(dest, 'old-1'))!;
+    expect(row).toEqual({ ...old, createdAt: '2026-10-20T12:00:00.000Z' });
+    for (const key of ['checkupId', 'phrase', 'songShift', 'songSpeed']) expect(key in row, key).toBe(false);
+  });
+});
+
 describe('the clock cannot be poisoned by a damaged or hostile file', () => {
   it('rejects timestamps implausibly far in the future instead of pinning the local clock there', async () => {
     const dest = await device();

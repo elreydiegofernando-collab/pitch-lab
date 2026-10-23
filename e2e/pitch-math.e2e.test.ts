@@ -116,3 +116,57 @@ describe('detrend + estimateRateHz + estimateHalfExtent (vibrato recovery)', () 
     expect(residualDriftiness).toBeLessThan(2 * 40 + 10);
   });
 });
+
+describe('estimateRateHz across dropouts (maxGapSec)', () => {
+  /** The 5.5 Hz / 50c track with `holes` (seconds, [from, to)) cut out of it, as unvoiced stretches leave it. */
+  function trackWithHoles(holes: ReadonlyArray<readonly [number, number]>) {
+    const { times, cents } = syntheticVibratoTrack({ carrierHz: 330, rateHz: 5.5, depthCents: 50, driftCents: 3, noiseCents: 1.5 });
+    const keep = times.map((t) => !holes.some(([from, to]) => t >= from && t < to));
+    return { times: times.filter((_, i) => keep[i]), cents: cents.filter((_, i) => keep[i]) };
+  }
+
+  // Chrome's fake microphone drops a ~0.7 s chunk now and then; the app's track then has voiced runs with gaps between them.
+  const HOLES: ReadonlyArray<readonly [number, number]> = [
+    [1.0, 1.7],
+    [3.2, 3.9],
+    [6.0, 6.7],
+  ];
+
+  it('reads the true rate from the runs between the gaps, where the plain estimate reads it low', () => {
+    const { times, cents } = trackWithHoles(HOLES);
+    const dt = detrend(times, cents, 0.7);
+    // Time with no samples in it counts as time without cycles: about 2.1 s of the 10 s are missing.
+    expect(estimateRateHz(times, dt)).toBeLessThan(5.0);
+    const rate = estimateRateHz(times, dt, 0.1);
+    expect(rate).toBeGreaterThan(5.4);
+    expect(rate).toBeLessThan(5.6);
+  });
+
+  it('still measures the extent of a track with gaps in it', () => {
+    const { times, cents } = trackWithHoles(HOLES);
+    const halfExtent = estimateHalfExtent(detrend(times, cents, 0.7));
+    expect(halfExtent).toBeGreaterThan(38);
+    expect(halfExtent).toBeLessThan(62);
+  });
+
+  it('gives the plain estimate on a track with no gaps', () => {
+    const { times, cents } = trackWithHoles([]);
+    const dt = detrend(times, cents, 0.7);
+    expect(estimateRateHz(times, dt, 0.1)).toBeCloseTo(estimateRateHz(times, dt), 9);
+  });
+
+  it('is NaN when no run holds two crossings to bound a cycle', () => {
+    // Runs of a few samples a second apart: each holds at most one upward crossing.
+    const times: number[] = [];
+    const values: number[] = [];
+    for (let run = 0; run < 5; run++) {
+      for (let k = 0; k < 4; k++) {
+        times.push(run * 1.0 + k * 0.01);
+        values.push(k < 2 ? -1 : 1);
+      }
+    }
+    expect(estimateRateHz(times, values, 0.1)).toBeNaN();
+    // The same samples without the gap rule do count a cycle from one run to the next, which is the mistake.
+    expect(estimateRateHz(times, values)).toBeGreaterThan(0);
+  });
+});

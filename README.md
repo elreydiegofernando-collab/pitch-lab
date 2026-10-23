@@ -182,7 +182,7 @@ test mic capture on a real phone before deploying.
 | `npm test` | Unit tests (Vitest, synthesized-signal tests for DSP/analyzers, pure-module tests elsewhere). |
 | `npm run e2e` | End-to-end tests: builds the app (as `NODE_ENV=production`), serves it, and drives its real UI in a **real, desktop Chrome** fed a synthesized WAV as a fake microphone: a first session from the first-run sheets to a passed Range finder, locked deep links, persistence and offline use, backups and WAV export, profiles, Song Stage from a restored backup and a sung song phrase, and every screen's layout (see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)). Takes about four minutes. Needs Chrome installed; not run in every CI environment. |
 | `npm run icons` | Generates the PWA icon set from the source artwork. |
-| `npm run coach -- <file...>` | Reads a coaching file ("Send to Claude"), a backup or a take WAV and prints a diagnosis of the takes; `npm run coach -- --list` finds the newest ones (see [`docs/COACHING.md`](docs/COACHING.md)). |
+| `npm run coach -- <file...>` | Reads a coaching file ("Send to Claude" from a level), a song coaching file (`pitch-lab-coach-song-*.json`, from a song's progress), a backup (with its voice check-ups; `--checkup` reads those alone) or a take WAV and prints a diagnosis of the takes; `npm run coach -- --list` finds the newest ones (see [`docs/COACHING.md`](docs/COACHING.md)). |
 | `npm run check` | `typecheck` + `test` + `build`, the quick "is this phase still green" command. |
 
 ## Deploying to GitHub Pages

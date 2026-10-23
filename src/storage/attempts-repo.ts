@@ -51,10 +51,41 @@ function finiteOrNull(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+/** A check-up id: a plain token (a UUID), like every record id; it is shown in a route and compared, never parsed. */
+const CHECKUP_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+/** More phrases than any song holds: an index past this is damage, not a song. */
+const MAX_PHRASE_INDEX = 10_000;
+/** A song is transposed at most this far either way (four octaves; the player itself allows one). */
+const MAX_SONG_SHIFT = 48;
+/** Playback speeds above 0 and up to this (the player sings at 0.5, 0.75 or 1). */
+const MAX_SONG_SPEED = 2;
+
+/**
+ * The optional fields a well-formed value of which is kept, null is kept as null, and anything else (a wrong type, an
+ * out-of-range number, a malformed phrase) is dropped ALONE: the attempt itself still counts. Each returns undefined to
+ * drop the field.
+ */
+const OPTIONAL_CLEANERS = {
+  songId: (v: unknown): string | null | undefined => (v === null ? null : typeof v === 'string' && v ? v : undefined),
+  checkupId: (v: unknown): string | null | undefined => (v === null ? null : typeof v === 'string' && CHECKUP_ID_RE.test(v) ? v : undefined),
+  phrase: (v: unknown): { from: number; to: number } | null | undefined => {
+    if (v === null) return null;
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined;
+    const { from, to } = v as { from?: unknown; to?: unknown };
+    const index = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= MAX_PHRASE_INDEX;
+    return index(from) && index(to) && from < to ? { from, to } : undefined; // only these two keys are stored
+  },
+  songShift: (v: unknown): number | null | undefined =>
+    v === null ? null : typeof v === 'number' && Number.isInteger(v) && Math.abs(v) <= MAX_SONG_SHIFT ? v : undefined,
+  songSpeed: (v: unknown): number | null | undefined =>
+    v === null ? null : typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= MAX_SONG_SPEED ? v : undefined,
+} satisfies { [K in keyof NewAttempt]?: (value: unknown) => NewAttempt[K] | undefined };
+
 /**
  * Validates and normalises the caller-supplied part of an attempt: structural problems throw a
- * TypeError (so a bug cannot poison progression with a corrupt row), numeric ones are clamped.
- * Also the single path the backup importer uses for incoming rows.
+ * TypeError (so a bug cannot poison progression with a corrupt row), numeric ones are clamped,
+ * and a bad value of an optional field (songId, checkupId, phrase, songShift, songSpeed) is
+ * dropped alone (OPTIONAL_CLEANERS). Also the single path the backup importer uses for incoming rows.
  */
 export function normalizeAttemptFields(input: unknown): NewAttempt {
   const a = input as Record<string, unknown> | null | undefined;
@@ -81,8 +112,11 @@ export function normalizeAttemptFields(input: unknown): NewAttempt {
     tempoBpm: finiteOrNull(a.tempoBpm),
     takeId: typeof a.takeId === 'string' && a.takeId ? a.takeId : null,
   };
-  if (typeof a.songId === 'string' && a.songId) out.songId = a.songId;
-  else if (a.songId === null) out.songId = null;
+  // Absent stays absent (an older row, or a take that is neither a song nor a check-up keeps its shape).
+  for (const key of Object.keys(OPTIONAL_CLEANERS) as Array<keyof typeof OPTIONAL_CLEANERS>) {
+    const clean = OPTIONAL_CLEANERS[key](a[key]);
+    if (clean !== undefined) (out as Record<string, unknown>)[key] = clean;
+  }
   return out;
 }
 

@@ -284,6 +284,10 @@ headphones unless a row says speaker.
 | S12 | Delete an imported song (More → Delete this song → Delete). | The song and its backing are gone from the library, with a toast that says so. A failed delete would say so and keep the song. | Songs | | |
 | S13 | Leave the player while the mic is on. | The mic indicator goes off. | Status bar indicator | | |
 | S14 | With a song open to this profile, launch `#/song/<id>` (an installed app can use a shortcut or a link). | The song opens directly; for a profile that has not earned it, the library opens with the requirement line. | Song player / Songs | | |
+| S15 | **Learn this song** (added 2026-10-22). Open a song you have not sung; follow the panel: Listen, then its button for each step. | The panel shows the step to do now ("Step 1 of …"): listen, then each phrase slowly (75%) and at full speed, then pairs joined, then the whole song. Its button sets the phrase, speed and loop and starts it; it is a secondary button (the bar's Sing stays the one amber button). The scrubber pills show each phrase's best full-speed score, with a check once it is learned. | Song player | | |
+| S16 | Miss the same phrase three times in a row (sing it a little flat on purpose). | The take sheet's coaching card names the syllable and time ("On “ho-” in “O holy night” at 0:11 you were flat by …") in plain words, deepens with each miss on that phrase, and offers **Listen slowly** from the second miss and **Send to Claude** from the third. Missing another phrase starts over at the plain tip. After a pass, the forward button names the path's next step ("Full speed", "Next phrase", "Phrases 1 and 2"). | Song take sheet | | |
+| S17 | Open the song's **Progress** (the panel's link). Sing the whole song once, then again a week later. | Phrase by phrase: words, best and latest full-speed score, takes, learned. "Then and now" draws your first take and your best whole-song take over the notes, with "Show as table". **Send to Claude** saves `pitch-lab-coach-song-<title>-<date>-<time>.json`, Include audio off on each opening. | Song progress | | |
+| S18 | Launch `#/song-progress/<id>` on a profile that has not earned that song. | The library opens with the requirement line; the progress screen never shows. | Songs | | |
 
 ## Phase 7 — Progress, workout, profiles, data, polish
 
@@ -344,6 +348,22 @@ cannot pass yet; Sirens & glides (05) is a good one.
 | T6 | On the PC, after OneDrive syncs: `npm run coach -- --list`, then `npm run coach -- "<the path it printed>"`. | The file from T4 is listed first, with its full path. The read names the level, each take's verdict, where the problem is, and what changed across the takes. | Terminal | | |
 | T7 | Sing eight takes of anything within twenty minutes, or miss one level six times in a row. | The coaching card adds a rest note: rest a few minutes, sip some water, stop if anything hurts, scratches or goes hoarse. It is a note, not a button. | Take report | | |
 | T8 | Miss a level whose notes you sing some a little sharp and some a little flat. | The card does not tell you that you sang sharp (or flat): it says the notes landed off the middle both ways, or how much of the time you were in tune, with spots on both sides. | Take report | | |
+| T9 | On the PC: `npm run coach -- "<a song file>" "<a backup>"`, then `npm run coach -- "<the backup>" --checkup`. (Dry run without the phone: `COACH_SAMPLE_DIR=<folder> npx vitest run src/coaching/offline -t "writes a sample"` writes sample files.) | The song read re-scores every take from its pitch line, names the troubled syllables, and with the backup lists the song's whole history and its learning path. The check-up read lists each check-up's skills with the app's ratings and the numbers behind them, the focus, the starting point, then and now, and whether a re-check is due. | Terminal | | |
+
+### Voice check-up (added 2026-10-22)
+
+The check-up on the iPhone (DESIGN.md §13.15): a fresh profile first, then the owner's own.
+
+| # | Steps | Expected | Where to look | Result | Notes |
+|---|---|---|---|---|---|
+| V1 | New profile: Home. | "Start with a 4-minute voice check-up" sits above the Continue card and has the one amber button; Continue is a secondary button. | Home | | |
+| V2 | Start the check-up and sing the five tasks. | Each Sing screen is titled by the plain task ("Slide up and down") with the chip "Check-up · 2 of 5". Each report names the task, says "Sung" (or "Passed" for a test that passed), shows no score ring, and offers **Next task** with **Sing it again** beside it. After the last task, **See your results** opens the results, and Back from them goes to Home in one tap. | Sing, Report | | |
+| V3 | Tap Stop two seconds into a task. Then sing a task in silence. | The report says "Not measured" with "Stopped early, so this task was not measured." (or "Nothing came through") and **Sing it again** is the amber button. Singing it again replaces that take in the check-up. This works on the last task too. | Report | | |
+| V4 | On a fresh profile, sing the Range finder too narrowly (hold notes less than an octave apart). | The report leads with **Sing it again**. Going on anyway: the next task's Sing screen says "Using a default range until you pass the Range finder." Afterwards nothing past Pitch match has opened, even after you pass the Range finder later from its level. | Report, Sing, Map | | |
+| V5 | Sing two tasks, then force-quit Pitch Lab and open it again. | Home shows "Finish your voice check-up"; the check-up screen shows "Task 3 of 5" and the two tasks as sung. (A check-up started more than a day ago starts afresh.) | Home, Check-up | | |
+| V6 | Read the results of a check-up where your voice cracked on the slide. | Your range in note names; each skill as a word and a glyph ("Solid", "Getting there", "Focus here"), never a grade or alarm colour; slides to focus on, with what to practise and a button for Sirens & glides when it is open (else a Locked line); where you start; what opened. A slide that ended off its note says so. No ¢, Hz or semitones anywhere. | Check-up results | | |
+| V7 | With slides as the focus: open the Daily workout; miss a later level twice on a crack. | The workout includes Sirens & glides. The report's coaching offers **Practise Sirens & glides** from the second miss in a row (not only the fourth). | Workout, Report | | |
+| V8 | Three weeks later (or set the date forward): Home, then a re-check. | Home says "Time for a re-check". The results show "Then and now" with one plain line per skill and a warm headline, and the pitch lines of both check-ups side by side (stacked on the phone). | Home, Check-up results | | |
 
 ### Decisions the builders left to the owner
 

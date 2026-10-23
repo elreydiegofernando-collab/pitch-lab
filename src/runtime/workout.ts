@@ -5,10 +5,17 @@
  * The session lives in memory for the page's lifetime (a workout is one sitting); every take in it is already a
  * durable attempt, so nothing is lost if the page dies mid-workout. A profile switch, a backup import or Delete all
  * data drops it (src/state/session.ts).
+ *
+ * The latest voice check-up steers the plan (owner, 2026-10-22: "if you can hold a note, but you have voice cracking
+ * ... you should maybe practice voice cracking"): the levels behind its focus skills go to the top of the weakness
+ * ranking, so the plan leans on them (Sirens & glides for slides) until a re-check shows otherwise. Only open levels
+ * are ever planned, so a focus never opens anything.
  */
 import { signal } from '@preact/signals';
+import { SKILL_LEVELS } from '../checkup/skills';
+import { latestCheckupFocus } from '../checkup/summary';
 import { WORLDS, getExercise } from '../exercises';
-import { buildDailyWorkout, withRoutines, type Workout, type WorkoutMinutes } from '../progress';
+import { buildDailyWorkout, rankWeakness, weaknessInputsFromLog, withRoutines, type WeaknessScore, type Workout, type WorkoutMinutes } from '../progress';
 import { attemptLog, snapshot } from '../state/session';
 import { settings, updateSettings } from '../state/settings';
 import type { TakeOutcome } from './types';
@@ -43,15 +50,37 @@ export const activeWorkout = signal<WorkoutSession | null>(null);
 /** Momentum before the workout's first take and after its latest one (the snapshots around each take). */
 let momentum: { before: number; after: number } | null = null;
 
+/**
+ * The weakness ranking (weakest first) with the focus levels raised to the top. `focus` holds one group of level ids
+ * per focus skill, most important first: the first group's levels come before the second's, and inside a group the
+ * ranking's own order (weakest first) holds. Every other level keeps its place after them, and a level the ranking
+ * does not hold (a locked one) stays out of it. Pure.
+ */
+export function raiseFocusLevels(ranking: readonly WeaknessScore[], focus: ReadonlyArray<readonly string[]>): WeaknessScore[] {
+  const group = new Map<string, number>();
+  focus.forEach((ids, i) => {
+    for (const id of ids) if (!group.has(id)) group.set(id, i);
+  });
+  if (group.size === 0) return [...ranking];
+  const raised = ranking.filter((r) => group.has(r.levelId));
+  raised.sort((a, b) => (group.get(a.levelId) ?? 0) - (group.get(b.levelId) ?? 0)); // stable: weakest first within a group
+  return [...raised, ...ranking.filter((r) => !group.has(r.levelId))];
+}
+
 /** Today's plan for the active profile (locked: `workout.locked` with the hint). Pure apart from reading the session. */
 export function planWorkout(minutes: WorkoutMinutes): Workout {
+  const now = Date.now();
+  const snap = snapshot.value;
+  const log = attemptLog.value;
+  const ranking = rankWeakness(weaknessInputsFromLog(snap, WORLDS, log), now);
   return buildDailyWorkout({
     minutes,
-    snapshot: snapshot.value,
+    snapshot: snap,
     worlds: WORLDS,
-    attempts: attemptLog.value,
-    now: Date.now(),
+    attempts: log,
+    now,
     getExercise: withRoutines(getExercise),
+    weakness: raiseFocusLevels(ranking, latestCheckupFocus(log).map((skill) => SKILL_LEVELS[skill])),
   });
 }
 

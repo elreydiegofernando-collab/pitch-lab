@@ -330,6 +330,41 @@ describe('Sing: context chips', () => {
   });
 });
 
+describe('Sing: a check-up task with no range saved', () => {
+  const DEFAULT_RANGE_NOTE = 'Using a default range until you pass the Range finder.';
+  /** A check-up task's prepared run: `levelId` names the material; the target and the check-up are the task's. */
+  const task = (levelId: string, taskIndex: number, range: null | undefined) => ({
+    ...makePrepared(levelId, { range }),
+    target: { kind: 'checkup' as const, taskIndex },
+    checkup: { taskIndex, taskCount: 5, checkupId: 'c1' },
+  });
+
+  it('says the task uses a default range: there is no Level screen before it to say so', async () => {
+    runnerState.prepare = () => ({ ...task('foundations.05', 2, null), level: null });
+    await mount({ kind: 'checkup', taskIndex: 2 });
+    expect(q('.pl-banner--info')?.textContent).toContain(DEFAULT_RANGE_NOTE);
+    expect(q('[data-testid="context-chip"]')?.textContent).toBe('Check-up · 3 of 5');
+  });
+
+  it('says nothing on the Range finder task itself, once a range is saved, or on a level take (its Level screen says it)', async () => {
+    const cases: Array<[() => ReturnType<typeof makePrepared>, RunTarget]> = [
+      [() => task('foundations.01', 0, null), { kind: 'checkup', taskIndex: 0 }],
+      [() => ({ ...task('foundations.05', 2, undefined), level: null }), { kind: 'checkup', taskIndex: 2 }],
+      [() => makePrepared('foundations.03', { range: null }), LEVEL],
+    ];
+    for (const [prepare, target] of cases) {
+      resetRunner();
+      runnerState.prepare = prepare;
+      await mount(target);
+      expect(text()).not.toContain(DEFAULT_RANGE_NOTE);
+      await act(() => {
+        render(null, container);
+      });
+      container.remove();
+    }
+  });
+});
+
 describe('Sing: errors and Esc', () => {
   it('shows a mic error inline with its fix, and the primary button says "Try again"', async () => {
     const runner = await mount();

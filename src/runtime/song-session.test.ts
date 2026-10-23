@@ -26,11 +26,17 @@ import {
   backingSchedule,
   countInBeatSec,
   createSongSession,
+  isValidSelection,
   metronomeBpm,
+  onePhrase,
   phraseRows,
+  sameSelection,
   scoreSongSegment,
+  scoredPhrasesOf,
+  selectionOfPitched,
   selectionWindow,
   songTimeAt,
+  toSongClock,
   toTakeTime,
   type SongSession,
   type SongSessionDeps,
@@ -197,6 +203,8 @@ interface Rig {
   engine: FakeEngine;
   notes: NoteSpec[];
   clicks: number[];
+  /** The profile's attempt log as the session's recordAttempt keeps it (each written attempt appended). */
+  log: AttemptRecord[];
   recordAttempt: ReturnType<typeof vi.fn<(fields: AttemptFields) => Promise<{ attempt: AttemptRecord }>>>;
   saveTake: ReturnType<typeof vi.fn<(input: SaveTakeInput) => Promise<TakeRecord>>>;
   createBuffer: ReturnType<typeof vi.fn<(samples: Float32Array, sampleRate: number) => AudioBuffer>>;
@@ -216,9 +224,12 @@ function rig(
     engine.state = 'running';
   }
   const { synth, notes, clicks } = fakeSynth();
-  const recordAttempt = vi.fn(async (fields: AttemptFields) => ({
-    attempt: { ...fields, id: 'attempt-1', createdAt: new Date().toISOString(), updatedAt: '1', deletedAt: null } as AttemptRecord,
-  }));
+  const log: AttemptRecord[] = [];
+  const recordAttempt = vi.fn(async (fields: AttemptFields) => {
+    const attempt = { ...fields, id: `attempt-${log.length + 1}`, createdAt: new Date().toISOString(), updatedAt: '1', deletedAt: null } as AttemptRecord;
+    log.push(attempt);
+    return { attempt };
+  });
   const saveTake = vi.fn(
     async (input: SaveTakeInput): Promise<TakeRecord> => ({
       id: input.id ?? 'take-x',
@@ -248,6 +259,7 @@ function rig(
     settings: () => ({ ...DEFAULT_SETTINGS, keepTakeAudio: opts.keepTakeAudio ?? false }),
     latency: () => (opts.latency === undefined ? CALIBRATION : opts.latency),
     recordAttempt,
+    log: () => log,
     decodeAudio: async () => {
       if (!backing) throw new Error('no backing in this rig');
       const n = backing.seconds * BACKING_RATE;
@@ -258,7 +270,7 @@ function rig(
   };
   const session = createSongSession(song, { deps, recordId: backing ? 'rec-1' : null });
   session.setShift(0); // sing in the chart's own key, so the expected pitches are the chart's
-  return { session, song, engine, notes, clicks, recordAttempt, saveTake, createBuffer };
+  return { session, song, engine, notes, clicks, log, recordAttempt, saveTake, createBuffer };
 }
 
 /** Let the session's promise chains run (engine start, scoring, writes). */
@@ -305,12 +317,12 @@ describe('pure helpers', () => {
   it('windows a phrase with a lead-in and a tail, the whole song, or a phrase to the end (loop bounds)', () => {
     const song = chart();
     const [p0, p1] = song.phrases;
-    const first = selectionWindow(song, 1)!;
+    const first = selectionWindow(song, onePhrase(1))!;
     expect(first).toEqual({ start: 3 - PHRASE_LEAD_SEC, end: 5.5 + PHRASE_TAIL_SEC, firstNote: 3, from: p1.from, to: p1.to });
     expect(selectionWindow(song, null)).toEqual({ start: -PHRASE_LEAD_SEC, end: 5.5 + PHRASE_TAIL_SEC, firstNote: 0, from: 0, to: song.notes.length });
-    expect(selectionWindow(song, 0, { toEnd: true })).toMatchObject({ start: -PHRASE_LEAD_SEC, end: 5.5 + PHRASE_TAIL_SEC, from: p0.from, to: song.notes.length });
-    expect(selectionWindow(song, 0)).toMatchObject({ end: 2.5 + PHRASE_TAIL_SEC, to: p0.to });
-    expect(selectionWindow(song, 7)).toBeNull();
+    expect(selectionWindow(song, onePhrase(0), { toEnd: true })).toMatchObject({ start: -PHRASE_LEAD_SEC, end: 5.5 + PHRASE_TAIL_SEC, from: p0.from, to: song.notes.length });
+    expect(selectionWindow(song, onePhrase(0))).toMatchObject({ end: 2.5 + PHRASE_TAIL_SEC, to: p0.to });
+    expect(selectionWindow(song, onePhrase(7))).toBeNull();
   });
 
   it('lists phrases with their lyrics and where each sits in the pitched view', () => {
@@ -328,9 +340,40 @@ describe('pure helpers', () => {
     expect(pitchedView(spoken).phrases).toHaveLength(2);
   });
 
+  it('maps phrase spans between the player (Song.phrases) and the log (the pitched view), around a spoken phrase', () => {
+    const song = chart();
+    const spoken: Song = {
+      ...song,
+      notes: [...song.notes.slice(0, 4), { start: 2.6, duration: 0.2, midi: 0, lyric: ' (spoken)', type: 'freestyle' }, ...song.notes.slice(4)],
+      phrases: [song.phrases[0], { start: 2.6, end: 2.8, from: 4, to: 5 }, { ...song.phrases[1], from: 5, to: 9 }],
+    };
+    const rows = phraseRows(spoken);
+    expect(scoredPhrasesOf(rows, null)).toEqual([0, 1]);
+    expect(scoredPhrasesOf(rows, onePhrase(1))).toEqual([]);
+    expect(scoredPhrasesOf(rows, { from: 0, to: 3 })).toEqual([0, 1]);
+    expect(selectionOfPitched(rows, { from: 1, to: 2 })).toEqual(onePhrase(2));
+    expect(selectionOfPitched(rows, { from: 0, to: 2 })).toEqual({ from: 0, to: 3 }); // joined across the spoken line
+    expect(selectionOfPitched(rows, null)).toBeNull();
+    expect(selectionOfPitched(rows, { from: 1, to: 5 })).toBeUndefined();
+    // A joined window runs from the first phrase's lead-in to the last one's tail.
+    expect(selectionWindow(spoken, { from: 0, to: 3 })).toMatchObject({ start: -PHRASE_LEAD_SEC, from: 0, to: 9 });
+    expect(isValidSelection({ from: 1, to: 1 }, 3)).toBe(false);
+    expect(isValidSelection({ from: 0, to: 3 }, 3)).toBe(true);
+    expect(isValidSelection({ from: 2, to: 4 }, 3)).toBe(false);
+    expect(sameSelection(onePhrase(1), { from: 1, to: 2 })).toBe(true);
+    expect(sameSelection(null, onePhrase(0))).toBe(false);
+  });
+
+  it('puts a saved take on the song clock: the window start, then take seconds at the take speed', () => {
+    const track = makeTrack({ duration: 1, midi: () => 60 });
+    const onClock = toSongClock(track, 2.5, 0.75);
+    expect(onClock[0].t).toBeCloseTo(2.5, 9);
+    expect(onClock[onClock.length - 1].t).toBeCloseTo(2.5 + track[track.length - 1].t * 0.75, 9);
+  });
+
   it('puts notes on the slowed take timeline and reads the song time back from the clock', () => {
     const song = chart();
-    const w = selectionWindow(song, 1)!;
+    const w = selectionWindow(song, onePhrase(1))!;
     const notes = song.notes.slice(w.from, w.to);
     expect(toTakeTime(notes, w.start, 0.5)[0]).toMatchObject({ midi: 67, start: (3 - w.start) / 0.5, end: (3.5 - w.start) / 0.5 });
     const tl = { startAt: 10, window: w, speed: 0.5 as SongSpeed, passSec: (w.end - w.start) / 0.5, repeat: false };
@@ -405,12 +448,12 @@ describe('a song take', () => {
 
   it('starts the mic inside the gesture, counts in, and scores the phrase it recorded', async () => {
     const r = rig();
-    r.session.select(1);
+    r.session.select(onePhrase(1));
     r.session.sing();
     expect(r.engine.start).toHaveBeenCalledTimes(1); // synchronously, before any await
     await settle();
     const tl = r.session.timeline.value!;
-    expect(tl).toMatchObject({ kind: 'take', speed: 1, window: selectionWindow(r.song, 1) });
+    expect(tl).toMatchObject({ kind: 'take', speed: 1, window: selectionWindow(r.song, onePhrase(1)) });
     expect(r.session.phase.value).toBe('count-in');
     expect(r.session.countIn.value).toBe(COUNT_IN_BEATS);
     // Three clicks lead into the first note.
@@ -443,7 +486,7 @@ describe('a song take', () => {
   it('keeps the melody guide silent during a take on a speaker, where the mic would score it', async () => {
     const r = rig({ latency: { ...CALIBRATION, route: 'speaker' } });
     expect(r.session.headphones.value).toBe(false);
-    r.session.select(0);
+    r.session.select(onePhrase(0));
     await singTake(r, (tl) => sungFrames(tl, r.song));
     expect(r.notes).toEqual([]); // no guide note while recording
     expect(r.clicks).toHaveLength(COUNT_IN_BEATS); // the count-in still clicks
@@ -457,7 +500,7 @@ describe('a song take', () => {
 
   it('writes a song attempt (never a level pass) and saves the take under it', async () => {
     const r = rig();
-    r.session.select(0);
+    r.session.select(onePhrase(0));
     await singTake(r, (tl) => sungFrames(tl, r.song));
     expect(r.recordAttempt).toHaveBeenCalledTimes(1);
     const fields = r.recordAttempt.mock.calls[0][0];
@@ -481,7 +524,7 @@ describe('a song take', () => {
 
   it('a wrong-note take is written as not passed', async () => {
     const r = rig();
-    r.session.select(0);
+    r.session.select(onePhrase(0));
     await singTake(r, (tl) => sungFrames(tl, r.song, tl.speed, 150)); // a semitone and a half sharp throughout
     const result = r.session.result.value!;
     expect(result.passed).toBe(false);
@@ -491,7 +534,7 @@ describe('a song take', () => {
 
   it('a slowed take is scored where it was sung and mapped back to song time', async () => {
     const r = rig();
-    r.session.select(1);
+    r.session.select(onePhrase(1));
     r.session.setSpeed(0.5);
     const tl = await singTake(r, (t) => sungFrames(t, r.song)); // sung at the slowed tempo
     expect(tl.passSec).toBeCloseTo((tl.window.end - tl.window.start) / 0.5, 9);
@@ -525,6 +568,9 @@ describe('a song take', () => {
     expect(result.phrases.map((p) => p.phraseIndex)).toEqual([0]);
     expect(result.unfinished).toBe(1);
     expect(r.recordAttempt).toHaveBeenCalledTimes(1);
+    // A whole-song take stopped after the first phrase is a take of that phrase: its score is that phrase's.
+    expect(result.phrase).toEqual({ from: 0, to: 1 });
+    expect(r.recordAttempt.mock.calls[0][0]).toMatchObject({ phrase: { from: 0, to: 1 }, songShift: 0, songSpeed: 1 });
   });
 
   it('a take cancelled in the count-in or interrupted writes nothing', async () => {
@@ -615,7 +661,7 @@ describe('a song take', () => {
     r.session.playTake();
     source = playing();
     r.session.dismissResult();
-    r.session.select(1);
+    r.session.select(onePhrase(1));
     expect(source.stop).toHaveBeenCalled();
     expect(r.session.takePlaying.value).toBe(false);
 
@@ -626,16 +672,86 @@ describe('a song take', () => {
   });
 });
 
+describe('learning from a take', () => {
+  it('records the phrases a take covered, its key and its speed', async () => {
+    const r = rig();
+    r.session.select(onePhrase(1));
+    r.session.setSpeed(0.75);
+    await singTake(r, (tl) => sungFrames(tl, r.song));
+    expect(r.recordAttempt.mock.calls[0][0]).toMatchObject({ kind: 'song', phrase: { from: 1, to: 2 }, songShift: 0, songSpeed: 0.75 });
+    expect(r.session.result.value?.phrase).toEqual({ from: 1, to: 2 });
+
+    r.session.dismissResult();
+    r.session.setSpeed(1);
+    r.session.setShift(-2);
+    r.session.select({ from: 0, to: 2 });
+    await singTake(r, (tl) => sungFrames(tl, r.session.song.value));
+    expect(r.recordAttempt.mock.calls[1][0]).toMatchObject({ phrase: { from: 0, to: 2 }, songShift: -2, songSpeed: 1 });
+
+    r.session.dismissResult();
+    r.session.select(null);
+    await singTake(r, (tl) => sungFrames(tl, r.session.song.value));
+    expect(r.recordAttempt.mock.calls[2][0]).toMatchObject({ phrase: null, songShift: -2, songSpeed: 1 });
+    expect(r.session.result.value?.phrases.map((p) => p.phraseIndex)).toEqual([0, 1]);
+  });
+
+  it('coaches each take against the log it was written into, deeper with each miss on the same phrase', async () => {
+    const r = rig();
+    r.session.select(onePhrase(0));
+    await singTake(r, (tl) => sungFrames(tl, r.song));
+    const pass = r.session.result.value!.coaching!;
+    expect(pass).toMatchObject({ passed: true, depth: 1, problem: { tipId: 'song.polish' } });
+    expect(pass.tip).toBe('Next, sing phrase 2 slowly.');
+
+    const depths: number[] = [];
+    for (let i = 0; i < 2; i++) {
+      r.session.dismissResult();
+      await singTake(r, (tl) => sungFrames(tl, r.song, tl.speed, -45)); // flat by nearly half a step throughout
+      const c = r.session.result.value!.coaching!;
+      expect(c.passed).toBe(false);
+      expect(c.problem.tipId).toBe('song.flat');
+      expect(c.problem.what).toMatch(/^On “(do|re|mi|fa)” in “do re mi fa” at 0:0\d you were flat by about half the way to the next note/);
+      depths.push(c.depth);
+    }
+    expect(depths).toEqual([1, 2]);
+    expect(r.session.result.value!.coaching!.progress[0]).toMatchObject({ label: 'Score', better: null });
+  });
+
+  it('still coaches a take whose attempt could not be written', async () => {
+    const r = rig();
+    r.recordAttempt.mockRejectedValueOnce(new Error('disk full'));
+    r.session.select(onePhrase(0));
+    await singTake(r, (tl) => sungFrames(tl, r.song, tl.speed, 150));
+    const result = r.session.result.value!;
+    expect(result.attempt).toBeNull();
+    expect(result.attemptError).toContain('disk full');
+    expect(result.coaching).toMatchObject({ passed: false, missesInARow: 1 });
+  });
+
+  it('Listen slowly plays a stretch at its own speed and leaves the chosen phrase and speed alone', async () => {
+    const r = rig();
+    r.session.select(onePhrase(0));
+    r.session.listenTo(onePhrase(1), 0.75);
+    await settle();
+    const tl = r.session.timeline.value!;
+    expect(tl).toMatchObject({ kind: 'listen', speed: 0.75, window: selectionWindow(r.song, onePhrase(1)) });
+    expect(r.session.selection.value).toEqual(onePhrase(0));
+    expect(r.session.speed.value).toBe(1);
+    r.session.listenTo(onePhrase(1), 0.75); // a second tap stops it
+    expect(r.session.phase.value).toBe('idle');
+  });
+});
+
 describe('listening and looping', () => {
   it('loops the selected phrase pass after pass, within its bounds', async () => {
     const r = rig();
-    r.session.select(1);
+    r.session.select(onePhrase(1));
     r.session.setLoop(true);
     r.session.play();
     expect(r.session.phase.value).toBe('playing');
     await settle();
     const first = r.session.timeline.value!;
-    const w: SongWindow = selectionWindow(r.song, 1)!;
+    const w: SongWindow = selectionWindow(r.song, onePhrase(1))!;
     expect(first).toMatchObject({ kind: 'play', repeat: true, window: w });
     expect(first.passSec).toBeCloseTo(w.end - w.start, 9);
 
@@ -656,20 +772,20 @@ describe('listening and looping', () => {
 
     r.session.stop();
     expect(r.session.phase.value).toBe('idle');
-    expect(r.session.selection.value).toBe(1);
+    expect(r.session.selection.value).toEqual(onePhrase(1));
   });
 
   it('Play runs on from the selection, and pausing leaves the phrase that was playing selected', async () => {
     const r = rig();
-    r.session.select(0);
+    r.session.select(onePhrase(0));
     r.session.play();
     await settle();
     const tl = r.session.timeline.value!;
-    expect(tl).toMatchObject({ kind: 'play', repeat: false, window: selectionWindow(r.song, 0, { toEnd: true }) });
+    expect(tl).toMatchObject({ kind: 'play', repeat: false, window: selectionWindow(r.song, onePhrase(0), { toEnd: true }) });
     await vi.advanceTimersByTimeAsync((tl.startAt + (r.song.phrases[1].start + 0.3 - tl.window.start) - Date.now() / 1000) * 1000);
     expect(r.session.phase.value).toBe('playing');
     r.session.stop();
-    expect(r.session.selection.value).toBe(1);
+    expect(r.session.selection.value).toEqual(onePhrase(1));
   });
 
   it('plays the backing at the song offset, and slowed down from one WSOLA stretch per speed', async () => {
@@ -677,7 +793,7 @@ describe('listening and looping', () => {
     await settle();
     expect(r.session.backing.value).toEqual({ status: 'ready', durationSec: 8 });
 
-    r.session.select(1);
+    r.session.select(onePhrase(1));
     r.session.listen();
     await settle();
     let tl = r.session.timeline.value!;
@@ -716,7 +832,7 @@ describe('listening and looping', () => {
 
   it('Listen plays the selection once, then rests', async () => {
     const r = rig();
-    r.session.select(0);
+    r.session.select(onePhrase(0));
     r.session.listen();
     await settle();
     const tl = r.session.timeline.value!;

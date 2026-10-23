@@ -1,7 +1,8 @@
 /**
- * Dashboard: Momentum, level-map completion, a 30-day trend per unlocked skill, the range over time, personal bests
- * and practice minutes (SPEC §12, DESIGN.md §13.10). Everything is derived from the attempt log and the progress
- * snapshot (src/ui/progress/dashboard-model.ts); locked skills are not shown at all.
+ * Dashboard: Momentum, level-map completion, a 30-day trend per unlocked skill, the voice check-ups (each one's date and
+ * focus, a link to its results, and Re-check once one is due), the range over time, personal bests and practice
+ * minutes (SPEC §12, DESIGN.md §13.10). Everything is derived from the attempt log and the progress snapshot
+ * (src/ui/progress/dashboard-model.ts); locked skills are not shown at all.
  */
 import { useMemo } from 'preact/hooks';
 import type { JSX } from 'preact';
@@ -13,6 +14,7 @@ import { activeProfile, attemptLog, isUnlocked, snapshot } from '../../state/ses
 import { settings } from '../../state/settings';
 import { AppBar } from '../components/AppBar';
 import { Locked } from '../components/Locked';
+import { CheckupsCard } from '../checkup/CheckupsCard';
 import { buildDashboard } from '../progress/dashboard-model';
 import { BestsCard, LevelsCard, MomentumCard, PracticeCard, RangeCard, SkillsCard } from '../progress/dashboard-sections';
 
@@ -37,6 +39,7 @@ export function Dashboard(): JSX.Element {
               <MomentumCard view={model.momentum} />
               <LevelsCard completion={model.completion} lockedHint={model.nextLocked ? worldRequirementHint(model.nextLocked.id, snap, WORLDS) : null} />
               <SkillsCard trends={model.skills} todayIndex={model.todayIndex} />
+              <CheckupsCard />
               <RangeCard points={model.range} range={activeProfile.value?.range ?? null} notation={settings.value.notation} />
               <BestsCard bests={model.bests} lockedHint={requirementHint('records')} />
               <PracticeCard weeks={model.practice} />

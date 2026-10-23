@@ -1,13 +1,16 @@
 // @vitest-environment happy-dom
 /**
- * Home, the hub (docs/DESIGN.md 13.1): the Continue card, the Momentum chip, training destinations that stay as static
- * Locked lines until earned, the utilities, the boot states and the first-run sheets. The session and settings modules
- * are replaced by signal doubles over the real unlock registry, and the real router and route guard are used.
+ * Home, the hub (docs/DESIGN.md 13.1): the Continue card, the voice check-up card, the Momentum chip, training
+ * destinations that stay as static Locked lines until earned, the utilities, the boot states and the first-run sheets.
+ * The session and settings modules are replaced by signal doubles over the real unlock registry, the check-up session and
+ * the check-up engine (other builders' modules) by the contract's doubles, and the real router and route guard are used.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../state/session', async () => (await import('../worlds/test-support')).sessionDouble());
 vi.mock('../../state/settings', async () => (await import('../worlds/test-support')).settingsDouble());
+vi.mock('../../runtime/checkup', async () => (await import('../checkup/test-support')).checkupRuntimeModule());
+vi.mock('../../checkup/summary', async () => (await import('../checkup/test-support')).summaryModule());
 vi.mock('../../audio/platform', () => ({
   isIOS: () => false,
   isStandalone: () => false,
@@ -15,9 +18,13 @@ vi.mock('../../audio/platform', () => ({
   isLikelyBluetoothLabel: () => false,
 }));
 
+import { checkupsOf } from '../../checkup/summary';
+import { jargonIn } from '../../coaching/plain';
 import { computeMomentum, requirementHint } from '../../progress';
-import { resetRouterForTests, route, routeOf } from '../../router';
+import { installRouteGuard, resetRouterForTests, route, routeOf } from '../../router';
+import { abandonCheckup, activeCheckup } from '../../runtime/checkup';
 import type { AttemptRecord } from '../../storage/schema';
+import { sessionOf, summaryOf } from '../checkup/test-support';
 import { localUtcOffsetMinutes } from '../worlds/momentum-bars';
 import { activeProfile, attemptLog, bootError, bootPhase, snapshot } from '../../state/session';
 import { deviceSettings, settings } from '../../state/settings';
@@ -61,6 +68,11 @@ beforeEach(() => {
   settings.value = { ...DEFAULT_SETTINGS, voiceCareSeen: true };
   deviceSettings.value = { ...DEFAULT_DEVICE_SETTINGS, headphoneGuideSeen: true };
   installGuardOver(() => snapshot.peek());
+  // No check-up yet and none running, until a test says otherwise.
+  activeCheckup.value = null;
+  vi.mocked(checkupsOf).mockReset();
+  vi.mocked(checkupsOf).mockReturnValue([]);
+  vi.mocked(abandonCheckup).mockClear();
 });
 
 afterEach(() => {
@@ -223,6 +235,216 @@ describe('Home: the Continue card', () => {
 
     byTestId<HTMLButtonElement>(c, 'continue-dashboard')!.click();
     expect(route.value).toEqual(routeOf('dashboard'));
+  });
+});
+
+describe('Home: the voice check-up card', () => {
+  const card = (c: HTMLElement): HTMLElement | null => byTestId(c, 'checkup-card');
+  /** True when `a` comes before `b` in the page. */
+  const before = (a: Element | null, b: Element | null): boolean => !!a && !!b && (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+  const amberButtons = (c: HTMLElement): number => c.querySelectorAll('.wl-page .pl-btn--primary').length;
+  const sung = (): void => {
+    attemptLog.value = attemptsThrough('foundations.02');
+    snapshot.value = snapshotOf('foundations.02');
+  };
+
+  describe('on a profile that has sung nothing', () => {
+    it('starts with a 4-minute voice check-up, above Continue', async () => {
+      const c = await showHome();
+      expect(card(c)!.dataset.kind).toBe('first');
+      expect(textOf(card(c)!.querySelector('h2'))).toBe('Start with a 4-minute voice check-up');
+      expect(before(card(c), byTestId(c, 'continue-card'))).toBe(true);
+    });
+
+    it('keeps one amber button: the check-up\'s, with Continue stepping back to a secondary button that still works', async () => {
+      const c = await showHome();
+      expect(amberButtons(c)).toBe(1);
+      expect(byTestId(c, 'checkup-card-button')!.classList.contains('pl-btn--primary')).toBe(true);
+      const keepGoing = byTestId<HTMLButtonElement>(c, 'continue-button')!;
+      expect(keepGoing.classList.contains('pl-btn--secondary')).toBe(true);
+      expect(keepGoing.classList.contains('pl-btn--primary')).toBe(false);
+      keepGoing.click();
+      expect(route.value).toEqual(routeOf('level', { levelId: 'foundations.01' }));
+    });
+
+    it('opens the check-up from the card', async () => {
+      const c = await showHome();
+      byTestId<HTMLButtonElement>(c, 'checkup-card-button')!.click();
+      expect(route.value).toEqual(routeOf('checkup'));
+    });
+
+    it('comes after the voice-care and headphone sheets, which still come one at a time and first', async () => {
+      settings.value = { ...DEFAULT_SETTINGS };
+      deviceSettings.value = { ...DEFAULT_DEVICE_SETTINGS };
+      const c = await showHome();
+      await waitUntil(() => dialogLabel(c) === 'Voice care');
+      expect(c.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+      expect(card(c)!.dataset.kind).toBe('first');
+      byTestId<HTMLButtonElement>(c, 'voice-care-done')!.click();
+      await waitUntil(() => dialogLabel(c) === 'Before you start');
+      [...c.querySelectorAll('button')].find((b) => textOf(b) === 'Later')!.click();
+      await waitUntil(() => dialogLabel(c) === null);
+      // With the sheets gone the card is what the singer sees first, and it never moved.
+      expect(card(c)!.dataset.kind).toBe('first');
+      expect(before(card(c), byTestId(c, 'continue-card'))).toBe(true);
+    });
+  });
+
+  describe('on a profile that has sung but never took one', () => {
+    it('invites with "Take your voice check-up", just under Continue, which keeps the amber button', async () => {
+      sung();
+      const c = await showHome();
+      expect(card(c)!.dataset.kind).toBe('take');
+      expect(textOf(card(c)!.querySelector('h2'))).toBe('Take your voice check-up');
+      expect(before(byTestId(c, 'continue-card'), card(c))).toBe(true);
+      expect(byTestId(c, 'continue-button')!.classList.contains('pl-btn--primary')).toBe(true);
+      expect(byTestId(c, 'checkup-card-button')!.classList.contains('pl-btn--secondary')).toBe(true);
+      expect(amberButtons(c)).toBe(1);
+    });
+
+    it('opens the check-up from the card, and Continue still opens the level', async () => {
+      sung();
+      const c = await showHome();
+      byTestId<HTMLButtonElement>(c, 'checkup-card-button')!.click();
+      expect(route.value).toEqual(routeOf('checkup'));
+      resetRouterForTests();
+      installGuardOver(() => snapshot.peek());
+      byTestId<HTMLButtonElement>(c, 'continue-button')!.click();
+      expect(route.value).toEqual(routeOf('level', { levelId: 'foundations.03' }));
+    });
+
+    it('turns into the first-step card again if the log is empty (a deleted profile\'s data)', async () => {
+      sung();
+      const c = await showHome();
+      expect(card(c)!.dataset.kind).toBe('take');
+      attemptLog.value = [];
+      snapshot.value = snapshotOf(null);
+      await flush();
+      expect(card(c)!.dataset.kind).toBe('first');
+    });
+  });
+
+  describe('when a check-up was left part way', () => {
+    it('finishes it, above Continue, and says which task is next', async () => {
+      sung();
+      activeCheckup.value = sessionOf(2);
+      const c = await showHome();
+      expect(card(c)!.dataset.kind).toBe('continue');
+      expect(textOf(card(c)!.querySelector('h2'))).toBe('Finish your voice check-up');
+      expect(textOf(card(c))).toContain('Task 3 of 5 is next.');
+      expect(before(card(c), byTestId(c, 'continue-card'))).toBe(true);
+      expect(amberButtons(c)).toBe(1);
+      byTestId<HTMLButtonElement>(c, 'checkup-card-button')!.click();
+      expect(route.value).toEqual(routeOf('checkup'));
+      expect(abandonCheckup).not.toHaveBeenCalled();
+      expect(activeCheckup.value).not.toBeNull();
+    });
+  });
+
+  describe('when a re-check is due', () => {
+    it('says time for a re-check, how long it has been, and opens a fresh check-up', async () => {
+      sung();
+      vi.mocked(checkupsOf).mockReturnValue([summaryOf('old', { daysAgo: 30 })]);
+      activeCheckup.value = sessionOf(5, { finishedAt: '2026-10-01T14:05:00.000Z' });
+      const c = await showHome();
+      expect(card(c)!.dataset.kind).toBe('recheck');
+      expect(textOf(card(c)!.querySelector('h2'))).toBe('Time for a re-check');
+      expect(textOf(card(c))).toContain('It has been 4 weeks since your last check-up.');
+      expect(before(byTestId(c, 'continue-card'), card(c))).toBe(true);
+      expect(byTestId(c, 'continue-button')!.classList.contains('pl-btn--primary')).toBe(true);
+      byTestId<HTMLButtonElement>(c, 'checkup-card-button')!.click();
+      // The finished check-up still in memory is dropped, so the intro shows rather than the old results.
+      expect(abandonCheckup).toHaveBeenCalledTimes(1);
+      expect(route.value).toEqual(routeOf('checkup'));
+    });
+
+    it('falls due while the app stays open, when it comes back into view', async () => {
+      const start = new Date();
+      vi.useFakeTimers({ toFake: ['Date'] });
+      try {
+        vi.setSystemTime(start);
+        sung();
+        vi.mocked(checkupsOf).mockReturnValue([summaryOf('c', { daysAgo: 10, now: start.getTime() })]);
+        const c = await showHome();
+        expect(card(c)!.dataset.kind).toBe('latest');
+        vi.setSystemTime(new Date(start.getTime() + 12 * 86_400_000));
+        document.dispatchEvent(new Event('visibilitychange'));
+        await flush();
+        expect(card(c)!.dataset.kind).toBe('recheck');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe('when the last check-up is recent', () => {
+    const recent = (): ReturnType<typeof summaryOf> => summaryOf('recent', { daysAgo: 4, focus: ['slides'] });
+
+    it('links to the latest results in a quiet row, just under Continue', async () => {
+      sung();
+      vi.mocked(checkupsOf).mockReturnValue([summaryOf('older', { daysAgo: 40 }), recent()]);
+      const c = await showHome();
+      const row = card(c)!;
+      expect(row.dataset.kind).toBe('latest');
+      expect(textOf(row)).toContain('Last check-up');
+      expect(textOf(row)).toContain('Focus: slides');
+      expect(before(byTestId(c, 'continue-card'), row)).toBe(true);
+      expect(byTestId(c, 'continue-button')!.classList.contains('pl-btn--primary')).toBe(true);
+      expect(amberButtons(c)).toBe(1);
+    });
+
+    it('opens the latest results', async () => {
+      sung();
+      vi.mocked(checkupsOf).mockReturnValue([recent()]);
+      const c = await showHome();
+      // Whether a check-up is on this device is the session's to say (the guard's hasCheckup); here it is.
+      installRouteGuard(() => ({ ok: true }));
+      card(c)!.click();
+      expect(route.value).toEqual(routeOf('checkup-results', { checkupId: 'recent' }));
+    });
+  });
+
+  describe('around the rest of Home', () => {
+    it('is not there while the session boots, nor after a failed boot', async () => {
+      bootPhase.value = 'booting';
+      activeProfile.value = null;
+      const c = await showHome();
+      expect(card(c)).toBeNull();
+      bootPhase.value = 'failed';
+      await flush();
+      expect(card(c)).toBeNull();
+    });
+
+    it('leaves the six training destinations and the utilities as they were', async () => {
+      const c = await showHome();
+      expect(byTestId(c, 'training-list')!.querySelectorAll('.pl-row__title')).toHaveLength(6);
+      expect(byTestId(c, 'utility-list')!.querySelectorAll('.pl-row__title')).toHaveLength(6);
+      expect(byTestId(c, 'training-list')!.contains(card(c))).toBe(false);
+    });
+
+    it('says everything in plain words, in every state', async () => {
+      const texts: string[] = [];
+      const record = async (): Promise<void> => {
+        view?.unmount();
+        const c = await showHome();
+        texts.push(textOf(card(c)));
+      };
+      await record(); // first
+      sung();
+      await record(); // take
+      activeCheckup.value = sessionOf(2);
+      await record(); // continue
+      activeCheckup.value = null;
+      vi.mocked(checkupsOf).mockReturnValue([summaryOf('old', { daysAgo: 60 })]);
+      await record(); // recheck
+      vi.mocked(checkupsOf).mockReturnValue([summaryOf('new', { daysAgo: 1 })]);
+      await record(); // latest
+      expect(texts).toHaveLength(5);
+      for (const text of texts) {
+        expect(jargonIn(text)).toEqual([]);
+        expect(text).not.toMatch(/\b(push|force|strain)\b/i);
+      }
+    });
   });
 });
 

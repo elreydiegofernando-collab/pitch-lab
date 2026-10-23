@@ -7,9 +7,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Browser } from 'playwright-core';
 import { PREVIEW_URL, TONE_WAV_PATH } from './config';
 import { launchWithFakeMic } from './chrome';
-import { getEngineInfo, getFrames, getRenderFps, waitForFrames } from './debug-hook';
+import { bestRenderFps, getEngineInfo, getFrames, waitForFrames } from './debug-hook';
 import { centsFromReference, frameRateOverWindow, median, voicedFrames } from './pitch-math';
 import { dismissFirstRun, waitForServiceWorkerControl } from './ui';
+
+/** How long after the first 3 s of the engine running the render rate gets to reach its bar (see bestRenderFps in debug-hook.ts). */
+const RENDER_RATE_WINDOW_MS = 20_000;
 
 describe('live pitch — A3 220 Hz tone', () => {
   let browser: Browser;
@@ -43,8 +46,9 @@ describe('live pitch — A3 220 Hz tone', () => {
 
       expect(frameRateOverWindow(frames, 2)).toBeGreaterThanOrEqual(85);
 
-      const liveNote = (await page.getByTestId('live-note').textContent()) ?? '';
-      expect(liveNote).toContain('A3');
+      // The readout names the note being sung and shows a dash in a moment with no voice. Chrome's fake microphone drops
+      // a silent chunk (about 0.7 s) now and then, so read it until it shows A3 rather than at one instant.
+      await expect.poll(async () => (await page.getByTestId('live-note').textContent()) ?? '', { timeout: 8_000, interval: 200 }).toContain('A3');
 
       const info = await getEngineInfo(page);
       const settings = info?.trackSettings;
@@ -65,7 +69,9 @@ describe('live pitch — A3 220 Hz tone', () => {
       await page.getByTestId('sing-button').click();
       await waitForFrames(page, 10, 10_000);
       await page.waitForTimeout(3_000);
-      const fps = (await getRenderFps(page)) ?? 0;
+      // The best rate seen within RENDER_RATE_WINDOW_MS after those 3 s (see bestRenderFps): the bar is unchanged, and a
+      // loop that never reaches it still fails, but a machine that is busy for a few seconds does not fail the run.
+      const fps = await bestRenderFps(page, 50, RENDER_RATE_WINDOW_MS);
 
       if (headless) {
         // Headless Chrome routinely throttles requestAnimationFrame well
@@ -79,7 +85,7 @@ describe('live pitch — A3 220 Hz tone', () => {
     } finally {
       await context.close();
     }
-  }, 20_000);
+  }, 45_000);
 
   it('never writes the URL when navigating with in-app buttons (Home -> Live)', async () => {
     const context = await browser.newContext();

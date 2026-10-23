@@ -1,0 +1,565 @@
+/**
+ * Styles for the voice check-up (docs/DESIGN.md 11-13): its intro, the run in progress, the results, "Then and now", the
+ * pitch lines side by side, Home's check-up card and the dashboard's Check-ups list. Class prefix `ck-`. Tokens only
+ * (tokens.css): no new hues and no new fonts. Calm and plain, "a check-up, not a test": a rating is a word and a glyph in
+ * the text-safe hues, never an alarm colour, and the amber tally light marks where the singer is. Motion rules (section
+ * 9): nothing but a skeleton's opacity moves, and it stops under reduced motion.
+ */
+
+/* ---------------------------------------------------------------- shell */
+
+.ck-scope {
+  /* --tally as TEXT is under 4.5:1 on the light surfaces; mixing toward the text colour keeps it amber and readable. */
+  --ck-amber-ink: color-mix(in srgb, var(--tally) 72%, var(--text-hi));
+}
+
+.ck-page {
+  gap: var(--sp-6);
+  padding-left: max(var(--sp-4), env(safe-area-inset-left));
+  padding-right: max(var(--sp-4), env(safe-area-inset-right));
+}
+
+.ck-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.ck-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 36px;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+
+/* Primary actions are 64 px tall (docs/DESIGN.md 6). */
+.ck-cta {
+  min-height: var(--target-primary);
+  font-size: 18px;
+}
+/* Two buttons in the bottom bar (Continue, then a quiet Start over). */
+.ck-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.ck-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+.ck-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.ck-chev {
+  flex: none;
+  color: var(--text-lo);
+}
+
+/* ---------------------------------------------------------------- the five tasks */
+
+.ck-tasks {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+/* A set-list entry: the number, the title and its state on one line, what to do under both so it has the full width. */
+.ck-task {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-areas:
+    'n title state'
+    'n ask ask';
+  align-items: center;
+  column-gap: var(--sp-3);
+  row-gap: 2px;
+  min-height: 76px;
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--line);
+}
+.ck-task:last-child {
+  border-bottom: none;
+}
+.ck-task__n {
+  grid-area: n;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 32px;
+  line-height: 1;
+  color: var(--text-lo);
+}
+.ck-task__title {
+  grid-area: title;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 22px;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+.ck-task__ask {
+  grid-area: ask;
+}
+.ck-task__state {
+  grid-area: state;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-lo);
+}
+.ck-task--done .ck-task__n,
+.ck-task--done .ck-task__state {
+  color: var(--text-mid);
+}
+/* The task to sing next carries the tally light: an amber rule, number and state. */
+.ck-task--next::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--tally);
+}
+.ck-task--next .ck-task__n,
+.ck-task--next .ck-task__state {
+  color: var(--ck-amber-ink);
+}
+
+/* ---------------------------------------------------------------- results: the range */
+
+.ck-range__label {
+  margin-top: var(--sp-2);
+}
+.ck-range__value {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 56px;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+.ck-range__value--none {
+  font-size: 36px;
+  color: var(--text-lo);
+}
+
+/* ---------------------------------------------------------------- results: the skills */
+
+.ck-skills {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+.ck-skill {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--line);
+}
+.ck-skill:last-child {
+  border-bottom: none;
+}
+.ck-skill__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-1) var(--sp-3);
+}
+.ck-skill__name {
+  min-width: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 22px;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+.ck-skill__what {
+  max-width: 65ch;
+}
+
+/* A rating: a glyph and a word, in a text-safe hue. Neutral where a number would be a grade (nothing here is red). */
+.ck-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-mid);
+}
+.ck-rating svg {
+  flex: none;
+}
+.ck-rating--solid {
+  color: var(--on-text);
+}
+.ck-rating--focus {
+  color: var(--tally-text);
+}
+.ck-rating--not-measured {
+  color: var(--text-lo);
+}
+
+/* ---------------------------------------------------------------- results: what to focus on */
+
+.ck-focus {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.ck-focus__item {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-4) var(--sp-4) calc(var(--sp-4) + 4px);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+.ck-focus__item::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--tally);
+}
+.ck-focus__title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+/* ---------------------------------------------------------------- results: where you start, what opened */
+
+.ck-start {
+  position: relative;
+  overflow: hidden;
+  padding: var(--sp-4) var(--sp-4) var(--sp-4) calc(var(--sp-4) + 4px);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  gap: var(--sp-2);
+}
+.ck-start::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--tally);
+}
+.ck-start__title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 32px;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+
+.ck-opened {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.ck-opened__item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+}
+.ck-opened__icon {
+  flex: none;
+  margin-top: 3px;
+  color: var(--text-mid);
+}
+.ck-opened__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* ---------------------------------------------------------------- then and now */
+
+.ck-headline {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 24px;
+  line-height: 1.2;
+}
+.ck-lines {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+.ck-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'label mark'
+    'values values';
+  align-items: center;
+  column-gap: var(--sp-3);
+  row-gap: 2px;
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--line);
+}
+.ck-line:last-child {
+  border-bottom: none;
+}
+.ck-line__label {
+  grid-area: label;
+  font-size: 16px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.ck-line__mark {
+  grid-area: mark;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-mid);
+}
+.ck-line--better .ck-line__mark {
+  color: var(--on-text);
+}
+.ck-line__values {
+  grid-area: values;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  color: var(--text-mid);
+  font-variant-numeric: tabular-nums;
+}
+.ck-line__to {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ck-line__to svg {
+  flex: none;
+}
+.ck-line__now {
+  color: var(--text-hi);
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------- your pitch lines */
+
+.ck-takes {
+  gap: var(--sp-4);
+}
+.ck-take {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.ck-take__title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 22px;
+  line-height: 1.1;
+}
+/* The pair stacks on a phone (the older line first); where there is room it sits in two columns. */
+.ck-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-4);
+}
+@media (min-width: 720px) {
+  .ck-pair--two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.ck-pair__col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.ck-pair__label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-mid);
+}
+.ck-pair__none {
+  padding: var(--sp-4);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-card);
+}
+/* A line still loading holds the replay's place (its canvas, then its legend), so nothing jumps when it arrives. */
+.ck-skeleton {
+  height: 232px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  animation: ck-pulse 1.6s ease-in-out infinite;
+}
+@keyframes ck-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* ---------------------------------------------------------------- Home: the check-up card */
+
+.ck-card {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-4) var(--sp-4) calc(var(--sp-4) + 4px);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+/* The 4 px amber rule: full for the first step, half-strength for an invitation that is not the first thing to do. */
+.ck-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--tally);
+}
+.ck-card--prominent {
+  border-color: color-mix(in srgb, var(--tally) 35%, var(--line));
+}
+.ck-card--standard::before {
+  background: color-mix(in srgb, var(--tally) 45%, var(--line));
+}
+.ck-card__title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 30px;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+.ck-card .pl-btn {
+  margin-top: var(--sp-2);
+}
+
+/* The latest results: a quiet row, the whole of it a button. */
+.ck-card--row {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: 64px;
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  transition:
+    background var(--dur-micro) var(--ease-standard),
+    transform var(--dur-micro) var(--ease-standard);
+}
+.ck-card--row::before {
+  display: none;
+}
+button.ck-card--row:active {
+  background: var(--bg-2);
+  transform: scale(0.99);
+}
+.ck-card__icon {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-control);
+  background: var(--bg-2);
+  color: var(--tally-text);
+}
+.ck-card__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ck-card__row-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 20px;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------- dashboard: the Check-ups list */
+
+.ck-dash__list {
+  display: flex;
+  flex-direction: column;
+}
+.ck-dash__list > li + li {
+  border-top: 1px solid var(--line);
+}
+.ck-dash__row {
+  width: calc(100% + var(--sp-4));
+  margin: 0 calc(var(--sp-2) * -1);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-2);
+  min-height: var(--target-min);
+  border-radius: var(--radius-control);
+  text-align: left;
+}
+.ck-dash__row:active {
+  background: var(--bg-2);
+}
+.ck-dash__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ck-dash__date {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+/* ---------------------------------------------------------------- reduced motion */
+
+@media (prefers-reduced-motion: reduce) {
+  .ck-skeleton {
+    animation: none;
+  }
+}
+:root[data-reduced-motion='on'] .ck-skeleton {
+  animation: none;
+}

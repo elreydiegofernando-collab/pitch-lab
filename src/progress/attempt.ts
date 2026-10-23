@@ -10,7 +10,9 @@
  *      daily-workout level     -> kind 'workout'  + levelId
  *      warm-up / cool-down     -> kind 'workout'  + levelId null (a routine carries no progression)
  *      placement audition      -> kind 'audition' + the audition exercise's id + levelId null
- *      song                    -> kind 'song'     + songId + levelId null
+ *      song                    -> kind 'song'     + songId + levelId null, with the phrases, key and speed sung
+ *    and a take of the voice check-up is one of those (its Range finder a practice rep, its placement tests audition
+ *    takes) carrying the check-up's id, so a check-up is read back from the log alone (src/checkup);
  *  - a take counts as PASSED only if the evaluation passed AND (for a tempo-ladder exercise) it was sung at
  *    the pass tempo: the lower rungs of a Runs ladder are practice, however well they went; AND its realization
  *    was not folded (a `fit` of 'folded' means notes were moved by octaves to squeeze the material into too
@@ -69,6 +71,8 @@ export interface AttemptInput {
   metrics: Metrics;
   /** The saved take (`storage.takes.save(...).id`), if it was kept. */
   takeId?: string | null;
+  /** The voice check-up this take is a task of (runtime/checkup.ts); omit (or null) for any other take. */
+  checkupId?: string | null;
 }
 
 /** AttemptRecord.kind and levelId for a source; throws on a source that contradicts the exercise (a programming error). */
@@ -109,6 +113,8 @@ export function buildAttempt(input: AttemptInput): AttemptFields {
     tonicMidi: realized.tonicMidi,
     tempoBpm: realized.bpm,
     takeId: input.takeId ?? null,
+    // Only a check-up's takes carry the field: every other row keeps the shape it always had.
+    ...(input.checkupId ? { checkupId: input.checkupId } : {}),
   };
 }
 
@@ -126,6 +132,15 @@ export interface SongAttemptInput {
   /** The key the song was sung in, if transposed (null when unknown). */
   tonicMidi?: number | null;
   takeId?: string | null;
+  /**
+   * The phrases sung: [from, to) into pitchedView(song).phrases, e.g. { from: 2, to: 3 } for phrase 3 alone; null for
+   * the whole song. Omitted, the row carries none (as every song take before phrases were recorded).
+   */
+  phrase?: { from: number; to: number } | null;
+  /** Half steps from the chart's own key (0 = as written). */
+  songShift?: number | null;
+  /** The playback speed sung at (0.5, 0.75 or 1). */
+  songSpeed?: number | null;
 }
 
 /** The exercise id song attempts are filed under (they have no ExerciseDef): `song.<songId>`. */
@@ -133,8 +148,13 @@ export function songExerciseId(songId: string): string {
   return `song.${songId}`;
 }
 
-/** The AttemptRecord fields for one sung take of a song: kind 'song', no level, the song's id on the row. */
+/**
+ * The AttemptRecord fields for one sung take of a song: kind 'song', no level, the song's id on the row, and the phrases,
+ * key and speed it was sung at when given (src/song/practice.ts reads a song's progress back from them; storage keeps a
+ * value only when it is well formed).
+ */
 export function buildSongAttempt(input: SongAttemptInput): AttemptFields {
+  const { phrase, songShift, songSpeed } = input;
   return {
     profileId: input.profileId,
     exerciseId: songExerciseId(input.songId),
@@ -149,5 +169,8 @@ export function buildSongAttempt(input: SongAttemptInput): AttemptFields {
     tempoBpm: null,
     takeId: input.takeId ?? null,
     songId: input.songId,
+    ...(phrase !== undefined ? { phrase: phrase === null ? null : { from: phrase.from, to: phrase.to } } : {}),
+    ...(songShift !== undefined ? { songShift } : {}),
+    ...(songSpeed !== undefined ? { songSpeed } : {}),
   };
 }

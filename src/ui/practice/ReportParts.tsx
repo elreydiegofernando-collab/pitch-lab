@@ -15,6 +15,21 @@ export function notJudgedLine(reason: NotJudgedReason | undefined, audition = fa
   return 'Not judged: this exercise doesn’t fit your saved range.';
 }
 
+/** Why a take of a voice check-up task measured nothing. */
+export type UnmeasuredReason = 'stopped' | 'quiet' | 'silent';
+
+/** A check-up task that measured nothing, and why, in a sentence: a check-up measures, it never judges. */
+export function unmeasuredLine(reason: UnmeasuredReason): string {
+  switch (reason) {
+    case 'stopped':
+      return 'Stopped early, so this task was not measured.';
+    case 'quiet':
+      return 'Not all of this task was heard, so it was not measured.';
+    case 'silent':
+      return 'Nothing came through the microphone, so this task was not measured.';
+  }
+}
+
 export interface VerdictLineProps {
   verdict: Verdict;
   /** The words next to the glyph: "Passed", "Passed at 45 bpm" (a lower rung of a tempo ladder), "Not yet", "Not judged", "Done". */

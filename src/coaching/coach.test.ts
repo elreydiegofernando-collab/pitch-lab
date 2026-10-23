@@ -10,9 +10,10 @@ import type { CoachLadder } from './types';
 const fake = vi.hoisted(() => ({ ladders: {} as Record<string, CoachLadder> }));
 vi.mock('./content/index', () => ({ ladderFor: (id: string) => fake.ladders[id] }));
 
+import { latestCheckupFocus } from '../checkup/summary';
 import { getExercise, getLevel, POLISH_TIP, STOPPED_TIP } from '../exercises';
-import { coachFrom, coachTake, depthFor, missesInARow, progressLines, REST_MISSES, REST_TAKES, tipOnly, type CoachSource } from './coach';
-import { attemptOf, outcomeOf, sing, snapshotOf, T0, type SungTake } from './test-takes';
+import { coachFrom, coachTake, depthFor, FOCUS_PRACTISE_DEPTH, missesInARow, progressLines, REST_MISSES, REST_TAKES, tipOnly, type CoachSource } from './coach';
+import { attemptOf, checkupWithFocus, outcomeOf, sing, snapshotOf, T0, type SungTake } from './test-takes';
 
 const ladder = (practiseLevelId?: string): CoachLadder => ({
   tip: 'Plain tip.',
@@ -187,6 +188,30 @@ describe('coachTake: the moves', () => {
     expect(practise('foundations.05')).toBeUndefined();
     expect(practise('vibrato.03')).toBeUndefined();
     expect(practise('foundations.01')).toBeUndefined();
+  });
+
+  it('leans on the latest voice check-up: a level that trains one of its focus skills is offered from the second miss', () => {
+    fake.ladders[MISS.tip.id] = ladder('foundations.02');
+    const practises = (c: ReturnType<typeof coachAfter>): boolean => c.moves.some((m) => m.kind === 'practise-level');
+    const passedEarlier = [attemptOf(null, { exerciseId: 'foundations.range-finder.1', levelId: 'foundations.01', passed: true }), attemptOf(null, { exerciseId: 'foundations.pitch-match.1', levelId: 'foundations.02', passed: true })];
+    const pitch = checkupWithFocus(1); // match and hold sung poorly
+    expect(latestCheckupFocus(pitch)).toEqual(['pitch', 'steadiness']);
+
+    expect(practises(coachAfter(MISS, 0, { earlier: [...passedEarlier, ...pitch] }))).toBe(false); // the first miss: the tip alone
+    const second = coachAfter(MISS, 1, { earlier: [...passedEarlier, ...pitch] });
+    expect(second.depth).toBe(FOCUS_PRACTISE_DEPTH);
+    expect(second.moves).toEqual([{ kind: 'practise-level', levelId: 'foundations.02', title: 'Pitch match' }]);
+    expect(coachAfter(MISS, 2, { earlier: [...passedEarlier, ...pitch] }).moves.map((m) => m.kind)).toEqual(['practise-level', 'send-to-claude']);
+
+    // A check-up that found another focus leaves the usual fourth miss; so does none at all.
+    const slides = checkupWithFocus(2);
+    expect(latestCheckupFocus(slides)).toEqual(['slides']);
+    expect(practises(coachAfter(MISS, 1, { earlier: [...passedEarlier, ...slides] }))).toBe(false);
+    expect(practises(coachAfter(MISS, 1, { earlier: passedEarlier }))).toBe(false);
+    // The same gates: a focus level not passed yet is never offered.
+    expect(practises(coachAfter(MISS, 3, { earlier: pitch }))).toBe(false);
+    // A pass gets no moves, focus or not.
+    expect(coachAfter(PASS, 1, { earlier: [...passedEarlier, ...pitch] }).moves.filter((m) => m.kind !== 'rest')).toEqual([]);
   });
 
   it('asks for a rest after many takes in a short time, or a long run of misses', () => {

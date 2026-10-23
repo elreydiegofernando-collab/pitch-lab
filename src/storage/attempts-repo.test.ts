@@ -118,6 +118,69 @@ describe('input validation (a corrupt row must never reach the log)', () => {
   });
 });
 
+describe('the check-up id and a song take’s phrase, key and speed', () => {
+  it('are kept when well formed (null as null), and absent when not given', async () => {
+    const db = await freshDb();
+    const checkupTake = await addAttempt(db, attemptInput('p1', { checkupId: '6f1c2a9e-1b2c-4d3e-8f90-123456789abc' }));
+    expect(checkupTake.checkupId).toBe('6f1c2a9e-1b2c-4d3e-8f90-123456789abc');
+    const songTake = await addAttempt(db, attemptInput('p1', { kind: 'song', songId: 'amazing-grace', phrase: { from: 2, to: 3 }, songShift: -3, songSpeed: 0.75 }));
+    expect(songTake).toMatchObject({ phrase: { from: 2, to: 3 }, songShift: -3, songSpeed: 0.75 });
+    await expect(getAttempt(db, songTake.id)).resolves.toEqual(songTake);
+    const whole = await addAttempt(db, attemptInput('p1', { kind: 'song', songId: 's', phrase: null, songShift: 0, songSpeed: 1, checkupId: null }));
+    expect(whole).toMatchObject({ phrase: null, songShift: 0, songSpeed: 1, checkupId: null });
+    const plain = await addAttempt(db, attemptInput('p1'));
+    for (const key of ['checkupId', 'phrase', 'songShift', 'songSpeed']) expect(key in plain, key).toBe(false);
+  });
+
+  it('keep every speed the player sings at, and shifts both ways', () => {
+    for (const songSpeed of [0.5, 0.75, 1]) expect(normalizeAttemptFields(attemptInput('p1', { songSpeed })).songSpeed).toBe(songSpeed);
+    for (const songShift of [-12, -1, 0, 5, 12]) expect(normalizeAttemptFields(attemptInput('p1', { songShift })).songShift).toBe(songShift);
+    expect(normalizeAttemptFields(attemptInput('p1', { phrase: { from: 0, to: 12 } })).phrase).toEqual({ from: 0, to: 12 });
+  });
+
+  it('a phrase keeps only its two indices', () => {
+    const f = normalizeAttemptFields({ ...attemptInput('p1'), phrase: { from: 1, to: 4, text: 'O holy night', __proto__: { polluted: true } } });
+    expect(f.phrase).toEqual({ from: 1, to: 4 });
+    expect(Object.keys(f.phrase!)).toEqual(['from', 'to']);
+  });
+
+  const bad: Array<[string, Record<string, unknown>]> = [
+    ['a numeric checkupId', { checkupId: 7 }],
+    ['an empty checkupId', { checkupId: '' }],
+    ['a checkupId with spaces', { checkupId: 'not an id' }],
+    ['a path-like checkupId', { checkupId: '../takes/x' }],
+    ['an over-long checkupId', { checkupId: 'x'.repeat(200) }],
+    ['an object checkupId', { checkupId: { id: 'x' } }],
+    ['a phrase without its end', { phrase: { from: 2 } }],
+    ['an empty phrase', { phrase: { from: 3, to: 3 } }],
+    ['a backwards phrase', { phrase: { from: 4, to: 2 } }],
+    ['a negative phrase', { phrase: { from: -1, to: 2 } }],
+    ['a fractional phrase', { phrase: { from: 0.5, to: 2 } }],
+    ['a phrase of strings', { phrase: { from: '1', to: '2' } }],
+    ['a phrase as an array', { phrase: [1, 2] }],
+    ['a phrase as words', { phrase: 'phrase 3' }],
+    ['a phrase past any song', { phrase: { from: 0, to: 20_000 } }],
+    ['a fractional shift', { songShift: 2.5 }],
+    ['a NaN shift', { songShift: NaN }],
+    ['an infinite shift', { songShift: Infinity }],
+    ['a shift as text', { songShift: '3' }],
+    ['a shift of five octaves', { songShift: 60 }],
+    ['a zero speed', { songSpeed: 0 }],
+    ['a negative speed', { songSpeed: -1 }],
+    ['a speed past double', { songSpeed: 3 }],
+    ['a NaN speed', { songSpeed: NaN }],
+    ['a speed as text', { songSpeed: '1' }],
+  ];
+
+  it.each(bad)('drops %s alone: the attempt is still stored', async (_label, fields) => {
+    const db = await freshDb();
+    const a = await addAttempt(db, { ...attemptInput('p1', { kind: 'song', songId: 'song-1', score: 0.7 }), ...fields } as NewAttempt);
+    for (const key of Object.keys(fields)) expect(key in a, key).toBe(false);
+    expect(a).toMatchObject({ kind: 'song', songId: 'song-1', score: 0.7 });
+    await expect(getAttempt(db, a.id)).resolves.toEqual(a);
+  });
+});
+
 describe('sanitizeMetrics', () => {
   it('keeps finite numbers under well-formed metric keys', () => {
     expect(sanitizeMetrics({ 'accuracy.inTolerancePct': 80, 'vibrato.rateHz': 5.5, 'run.score': 0 })).toEqual({

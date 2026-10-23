@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { CHECKUP_TASKS } from '../../checkup/types';
+import { jargonIn } from '../../coaching/plain';
 import { getExercise, getLevel, getWorld } from '../../exercises';
 import type { PreparedRun, RunTarget } from '../../runtime/types';
 import { bossChain, contextChip, levelNumber, percent, singTitle, tempoLabel, toleranceLabel } from './copy';
@@ -87,6 +89,63 @@ describe('contextChip', () => {
 
   it('marks a record attempt on a level without a ladder', () => {
     expect(contextChip(base, { kind: 'record', levelId: 'foundations.03' })).toBe('Record attempt');
+  });
+});
+
+describe('contextChip: the voice check-up', () => {
+  const base = makePrepared('foundations.03');
+  const task = (taskIndex: number): PreparedRun => ({ ...base, level: null, checkup: { taskIndex, taskCount: CHECKUP_TASKS.length, checkupId: 'run-1' } });
+  const target = (taskIndex: number): RunTarget => ({ kind: 'checkup', taskIndex });
+
+  it('says which task of the check-up this is, counting from 1 from the runner’s 0-based index', () => {
+    expect(contextChip(task(0), target(0))).toBe('Check-up · 1 of 5');
+    expect(contextChip(task(1), target(1))).toBe('Check-up · 2 of 5');
+    expect(contextChip(task(4), target(4))).toBe('Check-up · 5 of 5');
+  });
+
+  it('counts out of the task count the runner prepared', () => {
+    const prepared: PreparedRun = { ...base, checkup: { taskIndex: 2, taskCount: 7, checkupId: 'run-1' } };
+    expect(contextChip(prepared, target(2))).toBe('Check-up · 3 of 7');
+  });
+
+  it('still says it from the route\'s target when the run carries no check-up details', () => {
+    expect(contextChip(base, target(2))).toBe('Check-up · 3 of 5');
+    expect(contextChip({ ...base, checkup: null }, target(3))).toBe('Check-up · 4 of 5');
+  });
+
+  it('wins over the audition test it is sung as, and over a ladder, a workout and a record', () => {
+    const crowded: PreparedRun = {
+      ...makePrepared('runs.03'),
+      checkup: { taskIndex: 1, taskCount: 5, checkupId: 'run-1' },
+      audition: { index: 1, count: 4, unlocksFirst: 'a', unlocksLast: 'b' },
+      workout: { item: { stage: 'review' } as never, itemIndex: 0, itemCount: 3, take: 1 },
+    };
+    expect(contextChip(crowded, target(1))).toBe('Check-up · 2 of 5');
+    expect(contextChip(crowded, { kind: 'record', levelId: 'runs.03' })).toBe('Check-up · 2 of 5');
+  });
+
+  it('is plain: no jargon and no exclamation mark', () => {
+    for (let i = 0; i < CHECKUP_TASKS.length; i++) expect(jargonIn(contextChip(task(i), target(i)) ?? '')).toEqual([]);
+  });
+
+  it('leaves every other chip as it was', () => {
+    expect(contextChip({ ...base, checkup: null }, LEVEL)).toBeNull();
+    expect(contextChip({ ...base, checkup: undefined }, { kind: 'record', levelId: 'foundations.03' })).toBe('Record attempt');
+  });
+});
+
+describe('singTitle: the voice check-up', () => {
+  const base = makePrepared('foundations.03');
+
+  it('titles a task of the check-up by its plain title, not the audition exercise or level it is sung as', () => {
+    CHECKUP_TASKS.forEach((t, taskIndex) => {
+      expect(singTitle({ ...base, level: null, checkup: { taskIndex, taskCount: 5, checkupId: 'run-1' } })).toBe(t.title);
+    });
+    expect(singTitle({ ...base, checkup: { taskIndex: 2, taskCount: 5, checkupId: 'run-1' } })).toBe('Slide up and down');
+  });
+
+  it('falls back to the level or exercise when the task is not one the battery knows', () => {
+    expect(singTitle({ ...base, checkup: { taskIndex: 9, taskCount: 5, checkupId: 'run-1' } })).toBe('Sustain I');
   });
 });
 

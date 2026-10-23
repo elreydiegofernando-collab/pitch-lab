@@ -65,14 +65,10 @@ export function detrend(times: readonly number[], values: readonly number[], win
   return out;
 }
 
-/**
- * Oscillation rate (Hz) from upward zero crossings of a detrended track,
- * linearly interpolated for sub-frame precision. NaN when fewer than two
- * crossings are found (can't bound a cycle).
- */
-export function estimateRateHz(times: readonly number[], detrended: readonly number[]): number {
+/** Times of the upward zero crossings of `detrended` between samples `from` and `to` (exclusive), linearly interpolated for sub-frame precision. */
+function upwardCrossings(times: readonly number[], detrended: readonly number[], from: number, to: number): number[] {
   const crossings: number[] = [];
-  for (let i = 1; i < detrended.length; i++) {
+  for (let i = from + 1; i < to; i++) {
     const prev = detrended[i - 1];
     const curr = detrended[i];
     if (prev < 0 && curr >= 0) {
@@ -80,9 +76,40 @@ export function estimateRateHz(times: readonly number[], detrended: readonly num
       crossings.push(times[i - 1] + frac * (times[i] - times[i - 1]));
     }
   }
-  if (crossings.length < 2) return NaN;
-  const span = crossings[crossings.length - 1] - crossings[0];
-  const cycles = crossings.length - 1;
+  return crossings;
+}
+
+/**
+ * Oscillation rate (Hz) from upward zero crossings of a detrended track,
+ * linearly interpolated for sub-frame precision. NaN when fewer than two
+ * crossings are found (can't bound a cycle).
+ *
+ * `maxGapSec` reads the track as separate runs wherever two consecutive samples are further apart than that, and counts
+ * cycles and the time they took within each run only. Without it the rate is cycles over the time from the first
+ * crossing to the last, so a stretch with no samples in it (an unvoiced dropout between voiced frames) adds time but no
+ * cycles and drags the rate down: a 5.5 Hz vibrato with a few 0.7 s dropouts in it reads 2 to 4 Hz. Chrome's fake
+ * microphone drops chunks like that now and then, so the vibrato e2e (e2e/vibrato.e2e.test.ts) always sets `maxGapSec`.
+ */
+export function estimateRateHz(times: readonly number[], detrended: readonly number[], maxGapSec?: number): number {
+  if (maxGapSec === undefined) {
+    const crossings = upwardCrossings(times, detrended, 0, detrended.length);
+    if (crossings.length < 2) return NaN;
+    const span = crossings[crossings.length - 1] - crossings[0];
+    const cycles = crossings.length - 1;
+    return span > 0 ? cycles / span : NaN;
+  }
+  let cycles = 0;
+  let span = 0;
+  let runStart = 0;
+  for (let i = 1; i <= detrended.length; i++) {
+    if (i < detrended.length && times[i] - times[i - 1] <= maxGapSec) continue;
+    const crossings = upwardCrossings(times, detrended, runStart, i);
+    if (crossings.length >= 2) {
+      cycles += crossings.length - 1;
+      span += crossings[crossings.length - 1] - crossings[0];
+    }
+    runStart = i;
+  }
   return span > 0 ? cycles / span : NaN;
 }
 

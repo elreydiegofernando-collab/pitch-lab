@@ -21,14 +21,14 @@ function phraseLabel(row: PhraseRow): string {
 export interface LyricsStripProps {
   rows: readonly PhraseRow[];
   cursor: ReadonlySignal<LyricCursor | null>;
-  /** Shown when nothing plays: the selected phrase (the first one for the whole song). */
+  /** Shown when nothing plays: the selected phrase (the first of joined ones; the first of all for the whole song). */
   selection: SongSelection;
 }
 
 export function LyricsStrip(props: LyricsStripProps): JSX.Element {
   const { rows } = props;
   const c = props.cursor.value;
-  const index = c ? c.phrase : (props.selection ?? 0);
+  const index = c ? c.phrase : (props.selection?.from ?? 0);
   const row = rows[index];
   const next = rows[index + 1];
   const lineRef = useRef<HTMLParagraphElement>(null);

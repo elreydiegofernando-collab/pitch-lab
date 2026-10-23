@@ -14,6 +14,13 @@
  * iOS: listen() and sing() do their audio work synchronously, before anything awaits, so call them straight from the
  * click handler. A take stopped in its count-in, interrupted (a call, Siri, a route change) or abandoned by leaving
  * the screen writes nothing; once the attempt is written, the rest of the take is finished even if the screen goes.
+ *
+ * A voice check-up task (RunTarget 'checkup', src/checkup/types.ts CHECKUP_TASKS) is sung like the take it is logged as:
+ * the Range finder as a practice rep of its level (so a pass saves the range), each placement test as an audition take.
+ * Unlike the audition, every test can be sung whatever the one before it did (the check-up never stops at a miss), and
+ * any task can be sung again while the check-up runs. Every take is tagged with the check-up's id, and the engine grants
+ * a tagged test's levels only when it was the audition's next test as it was sung (progress/engine.ts): a check-up never
+ * grants more than the audition could.
  */
 import { batch, signal, untracked, type ReadonlySignal } from '@preact/signals';
 import { buildDemo } from '../audio/demos';
@@ -22,6 +29,7 @@ import { musicalClickGain } from '../audio/synth';
 import type { AudioEngine, EngineError } from '../audio/engine-types';
 import type { MetronomeHandle, ReferenceSynth, ScheduledHandle } from '../audio/synth-types';
 import { TAKE_PRE_ROLL_SEC, TakeRecorder, encodeTake, roundTripSeconds, toInputTime, type TakeResult } from '../audio/take-recorder';
+import { CHECKUP_TASKS } from '../checkup/types';
 import { clamp01 } from '../core/math';
 import type { TargetNote, VibratoStyle } from '../core/types';
 import {
@@ -59,10 +67,12 @@ import {
   isFeatureUnlocked,
   isLevelOpenable,
   isRecordAttemptAllowed,
+  isWorldUnlocked,
   levelRequirementHint,
   nextAuditionExercise,
   requirementHint,
   withRoutines,
+  worldRequirementHint,
   type AttemptSource,
   type ProgressSnapshot,
 } from '../progress';
@@ -72,6 +82,7 @@ import { deviceSettings, settings } from '../state/settings';
 import { DEFAULT_SETTINGS } from '../state/settings-types';
 import { isQuotaError, newId } from '../storage';
 import type { AttemptRecord, TakeRecord } from '../storage/schema';
+import { activeCheckup, recordCheckupTake } from './checkup';
 import { auditionTests, unlockEvents } from './flow';
 import { RANGE_FINDER_NO_RECORDS, TAKE_AUDIO_NOT_KEPT } from './messages';
 import { polishLine } from './polish';
@@ -247,12 +258,16 @@ interface Resolved {
   bpm: number;
   audition: PreparedRun['audition'];
   workout: PreparedRun['workout'];
+  /** Check-up only (else absent): the task, and the id every take of it carries. */
+  checkup?: NonNullable<PreparedRun['checkup']>;
 }
 
 interface Prepared {
   run: PreparedRun;
   source: AttemptSource;
   profileId: string;
+  /** The check-up the take belongs to, captured when it was prepared; null for any other take. */
+  checkupId: string | null;
 }
 
 const UNKNOWN: RunError = { code: 'unknown', message: 'This exercise is not available. Go back and choose it again from the map.' };
@@ -340,7 +355,39 @@ function resolveTarget(target: RunTarget, snap: ProgressSnapshot, log: readonly 
         workout: { item, itemIndex: target.itemIndex, itemCount: session.workout.items.length, take: session.results[target.itemIndex].attemptIds.length + 1 },
       };
     }
+    case 'checkup':
+      return resolveCheckupTask(target.taskIndex, snap, log);
   }
+}
+
+const UNKNOWN_TASK: RunError = { code: 'unknown', message: 'This check-up task is not available. Go back to the check-up and carry on from there.' };
+
+/**
+ * One task of the running check-up. The Range finder is its level's practice rep (always open: it is the first level);
+ * a placement test is an audition take of its own world's audition, in an open world (Foundations always is), sung
+ * whatever the test before it did. What a passed test grants is the engine's call: only when it was the audition's next
+ * test as it was sung, in order, inside its world only, never the Range finder (progress/engine.ts), as for the audition.
+ */
+function resolveCheckupTask(taskIndex: number, snap: ProgressSnapshot, log: readonly AttemptRecord[]): Resolved | RunError {
+  const task = Number.isInteger(taskIndex) ? CHECKUP_TASKS[taskIndex] : undefined;
+  if (!task) return UNKNOWN_TASK;
+  const session = activeCheckup.value;
+  if (!session) return locked('Start the check-up first.');
+  if (session.finishedAt !== null) return locked('This check-up is finished. Start a new check-up to sing it again.');
+  const def = getExercise(task.exerciseId);
+  const world = def ? getWorld(def.worldId) : undefined;
+  if (!def || !world) return UNKNOWN_TASK;
+  const checkup = { taskIndex, taskCount: CHECKUP_TASKS.length, checkupId: session.checkupId };
+  if (task.logAs.kind === 'practice') {
+    const level = getLevel(task.logAs.levelId);
+    if (!level || level.exerciseId !== def.id) return UNKNOWN_TASK;
+    if (!isLevelOpenable(level.id, snap)) return locked(levelRequirementHint(level.id, snap, WORLDS));
+    return { def, level, world, source: { type: 'level', level }, bpm: levelTempo(def, level.id, snap, log), audition: null, workout: null, checkup };
+  }
+  if (!world.audition?.exerciseIds.includes(def.id)) return UNKNOWN_TASK;
+  if (!isWorldUnlocked(world.id, snap)) return locked(worldRequirementHint(world.id, snap, WORLDS));
+  // Sung at its own tempo, as the audition sings it.
+  return { def, level: null, world, source: { type: 'audition' }, bpm: def.tempoBpm, audition: null, workout: null, checkup };
 }
 
 function prepare(target: RunTarget): Prepared | RunError {
@@ -354,6 +401,7 @@ function prepare(target: RunTarget): Prepared | RunError {
   return {
     profileId: profile.id,
     source: resolved.source,
+    checkupId: resolved.checkup?.checkupId ?? null,
     run: {
       target,
       def,
@@ -366,8 +414,15 @@ function prepare(target: RunTarget): Prepared | RunError {
       usingDefaultRange: !effectiveRange(profile.range, profile.voiceType).saved,
       audition: resolved.audition,
       workout: resolved.workout,
+      checkup: resolved.checkup ?? null,
     },
   };
+}
+
+/** A clean check-up take's last line: the check-up moves on whatever the take did, so it promises no tally or retry. */
+function checkupPolishLine(p: PreparedRun): string {
+  const c = p.checkup;
+  return c && c.taskIndex + 1 >= c.taskCount ? 'Clean take. That was the last task: your results are next.' : 'Clean take. On to the next task.';
 }
 
 // ---------------------------------------------------------------- the microphone
@@ -430,8 +485,8 @@ class Runner implements ExerciseRunner {
   readonly outcome: ReadonlySignal<TakeOutcome | null> = this.outcomeSig;
   readonly error: ReadonlySignal<RunError | null> = this.errorSig;
 
-  /** What the take is written as, and for whom; null when preparing failed. */
-  private readonly attemptFor: { source: AttemptSource; profileId: string } | null = null;
+  /** What the take is written as, for whom, and for which check-up (if any); null when preparing failed. */
+  private readonly attemptFor: { source: AttemptSource; profileId: string; checkupId: string | null } | null = null;
   private synth: ReferenceSynth | null = null;
   private demo: { handle: ScheduledHandle; ctx: BaseAudioContext } | null = null;
   private take: TakeState | null = null;
@@ -450,7 +505,7 @@ class Runner implements ExerciseRunner {
       this.phaseSig.value = 'error';
     } else {
       this.preparedSig.value = result.run;
-      this.attemptFor = { source: result.source, profileId: result.profileId };
+      this.attemptFor = { source: result.source, profileId: result.profileId, checkupId: result.checkupId };
     }
   }
 
@@ -818,6 +873,7 @@ class Runner implements ExerciseRunner {
       evaluation,
       metrics: analysis.metrics,
       takeId,
+      checkupId: owner.checkupId,
     });
 
     // The commit point: a take abandoned before here writes nothing.
@@ -860,8 +916,9 @@ class Runner implements ExerciseRunner {
       }
     }
     const nextBpm = p.ladder ? nextTempo(def, realized.bpm, analysis.metrics, conditions) : null;
-    // A clean take's line says what is next for THIS take (a rung, a closed test, a routine, every tally lit).
-    if (tip.id === POLISH_TIP.id) tip = { ...tip, text: polishLine(p, attempt, nextBpm) };
+    // A clean take's line says what is next for THIS take (a rung, a closed test, a routine, every tally lit, the next
+    // check-up task).
+    if (tip.id === POLISH_TIP.id) tip = { ...tip, text: this.target.kind === 'checkup' ? checkupPolishLine(p) : polishLine(p, attempt, nextBpm) };
     const outcome: TakeOutcome = {
       id: attempt.id,
       prepared: p,
@@ -882,6 +939,9 @@ class Runner implements ExerciseRunner {
     lastOutcome.value = outcome;
     // A warm-up or cool-down is completion: one where nothing came through is not done (the report says so).
     if (this.target.kind === 'workout' && !(silent && p.level === null)) recordWorkoutTake(this.target.itemIndex, outcome);
+    // Every check-up take counts as its task sung, silent or not (its results say what was measured); the report offers it
+    // again first when it measured nothing (flow.ts), and the last task's take ends the check-up only once it measured.
+    if (this.target.kind === 'checkup') recordCheckupTake(this.target.taskIndex, outcome);
     batch(() => {
       this.outcomeSig.value = outcome;
       this.originSig.value = null;

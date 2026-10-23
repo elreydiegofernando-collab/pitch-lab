@@ -2,7 +2,8 @@
  * Home, the hub (docs/DESIGN.md 13.1): one tap to keep going. The Continue card is the next number on the set list;
  * below it the Momentum chip (once the dashboard is earned), the training destinations (a locked one stays in place as a
  * static `Locked` line, SPEC 11.1) and the utilities. First run, per profile: the voice-care note, then the headphone and
- * Setup prompt.
+ * Setup prompt, then the voice check-up card (src/ui/worlds/CheckupCard.tsx), which sits above Continue on a profile that
+ * has sung nothing and just under it otherwise.
  */
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
@@ -28,7 +29,9 @@ import { deviceSettings, settings, settingsReady, updateDeviceSettings, updateSe
 import { AppBar } from '../components/AppBar';
 import { Banner } from '../components/Banner';
 import type { Icon } from '../components/icon';
+import { useHomeCard } from '../checkup/home-card';
 import { BootFailed, BootSkeleton } from '../worlds/BootStates';
+import { CheckupCard } from '../worlds/CheckupCard';
 import { ContinueCard } from '../worlds/ContinueCard';
 import { DestinationRow } from '../worlds/DestinationRow';
 import { HeadphoneSheet, VoiceCareSheet } from '../worlds/FirstRunSheets';
@@ -150,6 +153,7 @@ function UtilityList(): JSX.Element {
 
 export function Home(): JSX.Element {
   const phase = bootPhase.value;
+  const checkup = useHomeCard();
   const [settingsAreReady, setSettingsAreReady] = useState(false);
   const [headphonesDismissed, setHeadphonesDismissed] = useState(false);
   const [showAddToHomeScreen] = useState(() => isIOS() && !isStandalone());
@@ -190,7 +194,11 @@ export function Home(): JSX.Element {
           {phase === 'failed' ? <BootFailed /> : null}
           {phase === 'ready' ? (
             <>
-              <ContinueCard />
+              {/* A new profile starts with the voice check-up (or finishes one it left part way): that card comes first, and
+                  Continue steps back to a secondary button. Every other state of the card sits just under Continue. */}
+              {checkup.above ? <CheckupCard card={checkup} /> : null}
+              <ContinueCard quiet={checkup.above} />
+              {checkup.above ? null : <CheckupCard card={checkup} />}
               {isUnlocked('dashboard') ? <MomentumChip /> : null}
               {showAddToHomeScreen ? (
                 <Banner kind="info" message="Add Pitch Lab to your Home Screen for full-screen, offline use.">

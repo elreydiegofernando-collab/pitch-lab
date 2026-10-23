@@ -132,4 +132,24 @@ describe('buildSongAttempt', () => {
     });
     expect(songExerciseId('amazing-grace')).toBe('song.amazing-grace');
   });
+
+  it('carries the phrases, key and speed sung when given (a whole-song take as phrase null), and none of them otherwise', () => {
+    const base = { profileId: P1, songId: 'amazing-grace', score: 0.7, passed: true, metrics: {}, durationSec: 12 };
+    const phrase = { from: 2, to: 3 };
+    const out = buildSongAttempt({ ...base, phrase, songShift: -2, songSpeed: 0.75 });
+    expect(out).toMatchObject({ kind: 'song', songId: 'amazing-grace', phrase: { from: 2, to: 3 }, songShift: -2, songSpeed: 0.75 });
+    expect(out.phrase).not.toBe(phrase); // a copy: the caller's selection can change without touching the row
+    expect(buildSongAttempt({ ...base, phrase: null, songShift: 0, songSpeed: 1 })).toMatchObject({ phrase: null, songShift: 0, songSpeed: 1 });
+    const bare = buildSongAttempt(base);
+    for (const key of ['phrase', 'songShift', 'songSpeed', 'checkupId']) expect(key in bare, key).toBe(false);
+  });
+});
+
+describe('buildAttempt: a voice check-up take', () => {
+  it('carries the check-up id, and only a check-up take does', () => {
+    const audition = exerciseDef('foundations.audition.2', { kind: 'audition' });
+    expect(buildAttempt(input({ def: audition, source: { type: 'audition' }, checkupId: 'c-1' }))).toMatchObject({ kind: 'audition', levelId: null, checkupId: 'c-1' });
+    expect(buildAttempt(input({ checkupId: 'c-1' }))).toMatchObject({ kind: 'practice', levelId: LEVEL.id, checkupId: 'c-1' });
+    for (const checkupId of [undefined, null, '']) expect('checkupId' in buildAttempt(input({ checkupId })), String(checkupId)).toBe(false);
+  });
 });

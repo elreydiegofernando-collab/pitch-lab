@@ -6,6 +6,8 @@
  * next screen skips the report). unlockEvents: what changed between the snapshots around a take, for the one
  * celebratory moment (DESIGN.md §9).
  */
+import { isTaskMeasured } from '../checkup/summary';
+import { CHECKUP_TASKS } from '../checkup/types';
 import { WORLDS, getLevel, nextLevel, worldsUnlockedBy } from '../exercises';
 import type { LevelDef, WorldDef } from '../exercises/types';
 import { LEVEL_REFS, auditionSpans, isLevelOpenable, isSongUnlocked, nextAuditionExercise } from '../progress';
@@ -92,7 +94,11 @@ function singRoute(target: RunTarget): Route {
  * and says so ("Sing at 68 bpm").
  * Audition: pass with a next test -> "Next test" (+ "See your placement" to stop there); miss or last test ->
  * "See your placement". Workout: "Next take" / "Next item" / "Finish workout", with the next step as a secondary.
- * Record: "Retry" + "Back to level".
+ * Record: "Retry" + "Back to level". Check-up: "Next task" after every task, pass or miss (a check-up never stops at a
+ * miss), with "Sing it again" beside it; "Sing it again" leads instead when the take measured nothing (silent, stopped
+ * early, gone quiet before its end), or when the Range finder saved no range and none was saved before (every later task
+ * would be sung in a default range). After the last task, "See your results", which opens the check-up screen (its
+ * results once it is finished); led by "Sing it again" when that take measured nothing (it then did not end the check-up).
  */
 export function afterTakeActions(outcome: TakeOutcome): AfterTakeAction[] {
   const target = outcome.prepared.target;
@@ -128,6 +134,21 @@ export function afterTakeActions(outcome: TakeOutcome): AfterTakeAction[] {
       if (outcome.prepared.level === null && outcome.analysis.tipContext.noVoice) return [action('retry', 'Retry', true, singRoute(target)), nextItem(false)];
       if (w.take < w.item.takes) return [action('next-take', 'Next take', true, singRoute(target)), nextItem(false)];
       return last ? [finish(true)] : [nextItem(true), finish(false)];
+    }
+    case 'checkup': {
+      const { prepared } = outcome;
+      const c = prepared.checkup;
+      const taskIndex = c?.taskIndex ?? target.taskIndex;
+      const taskCount = c?.taskCount ?? CHECKUP_TASKS.length;
+      const again = (primary: boolean) => action('retry', 'Sing it again', primary, singRoute({ kind: 'checkup', taskIndex }));
+      const measured = isTaskMeasured(taskIndex, outcome.attempt);
+      if (taskIndex + 1 >= taskCount) {
+        const results = (primary: boolean) => action('checkup-results', 'See your results', primary, routeOf('checkup'));
+        return measured ? [results(true)] : [again(true), results(false)];
+      }
+      const nextTask = (primary: boolean) => action('next-task', 'Next task', primary, singRoute({ kind: 'checkup', taskIndex: taskIndex + 1 }));
+      const noRange = prepared.def.kind === 'range-finder' && !outcome.rangeSaved && prepared.usingDefaultRange;
+      return !measured || noRange ? [again(true), nextTask(false)] : [nextTask(true), again(false)];
     }
   }
 }

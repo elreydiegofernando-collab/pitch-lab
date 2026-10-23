@@ -18,6 +18,8 @@ vi.mock('../../audio/engine', () => ({
     output: null,
     onFrame: () => () => undefined,
     onState: () => () => undefined,
+    // A mic that never comes up: a take started here ends in the mic error, which is all these tests need.
+    start: async () => undefined,
     stop: async () => undefined,
   }),
 }));
@@ -55,6 +57,7 @@ vi.mock('../../state/session', async () => {
   const snapshot = signal(computeSnapshot('p1', WORLDS, passed, Date.parse('2026-10-22T12:00:00Z')));
   return {
     snapshot,
+    attemptLog: signal(passed),
     isUnlocked: (id: never) => isFeatureUnlocked(id, snapshot.value),
     appStorage: signal(null),
     activeProfile: signal({
@@ -79,9 +82,10 @@ vi.mock('../../state/settings', async () => {
   };
 });
 
-import { resetRouterForTests, routeOf } from '../../router';
+import { installRouteGuard, resetRouterForTests, route, routeOf } from '../../router';
 import { getBundledLibrary } from '../../song/library';
-import { activeProfile } from '../../state/session';
+import type { AttemptRecord } from '../../storage/schema';
+import { activeProfile, attemptLog } from '../../state/session';
 import { deviceSettings } from '../../state/settings';
 import { loadSongs } from '../../state/songs';
 import { SongPlayer, rememberedKey } from './SongPlayer';
@@ -205,5 +209,94 @@ describe('Song player', () => {
     await until(() => c.querySelector('.pl-locked'));
     expect(c.querySelector('[data-testid="song-player"]')).toBeNull();
     expect(c.textContent).toContain('Pass the Runs & Riffs Boss Recital to unlock this song.');
+  });
+});
+
+describe('Learning the song', () => {
+  const base = attemptLog.value;
+  let me = activeProfile.value!;
+  const q = (c: HTMLElement, id: string): HTMLElement | null => c.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+  let seq = 0;
+  function sung(phrase: { from: number; to: number } | null, score: number, songSpeed = 1): AttemptRecord {
+    seq += 1;
+    const at = new Date(Date.parse('2026-10-22T13:00:00Z') + seq * 60_000).toISOString();
+    return {
+      id: `song-${seq}`,
+      profileId: 'p1',
+      createdAt: at,
+      updatedAt: at,
+      deletedAt: null,
+      exerciseId: 'song.twinkle',
+      levelId: null,
+      kind: 'song',
+      score,
+      passed: score >= 0.7,
+      mastery: 0,
+      metrics: { 'song.phraseScore': score },
+      durationSec: 4,
+      tonicMidi: 60,
+      tempoBpm: null,
+      takeId: null,
+      songId: 'twinkle',
+      phrase,
+      songShift: 0,
+      songSpeed,
+    };
+  }
+
+  beforeEach(() => {
+    me = activeProfile.value!;
+  });
+  afterEach(() => {
+    activeProfile.value = me;
+    attemptLog.value = base;
+  });
+
+  it('walks the path: listen first, then the first phrase slowly, set up and started in one tap', async () => {
+    activeProfile.value = { ...me, id: 'p-learn', profileId: 'p-learn' }; // a singer with nothing remembered for this song
+    deviceSettings.value = { ...deviceSettings.value, latency: { wired: CALIBRATION } };
+    const c = await open('twinkle');
+    await until(() => q(c, 'learn-panel'));
+    expect(q(c, 'learn-count')?.textContent).toBe('Step 1 of 7');
+    expect(q(c, 'learn-step')?.textContent).toBe('Listen to the whole song');
+    expect(q(c, 'learn-learned')?.textContent).toBe('0 of 2 phrases learned');
+    q(c, 'learn-start')!.click(); // Listen: the whole song plays, and the path moves on for this visit
+    await until(() => (q(c, 'learn-count')?.textContent === 'Step 2 of 7' ? true : null));
+    expect(q(c, 'learn-step')?.textContent).toBe('Phrase 1, slowly: “Twinkle, twinkle, little star”');
+    expect(q(c, 'learn-start')?.textContent).toBe('Sing it slowly');
+
+    q(c, 'learn-start')!.click(); // set up phrase 1, slowly, looping, and start the take
+    await until(() => (c.querySelector('[data-phrase="0"]')?.getAttribute('aria-pressed') === 'true' ? true : null));
+    expect(c.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toBe('75%');
+    expect(c.querySelector('[aria-label="Loop the phrase"]')?.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('waits for a calibration before a sung step', async () => {
+    activeProfile.value = { ...me, id: 'p-learn-2', profileId: 'p-learn-2' };
+    attemptLog.value = [...base, sung({ from: 0, to: 1 }, 0.4, 0.75)];
+    const c = await open('twinkle');
+    await until(() => q(c, 'learn-panel'));
+    expect(q(c, 'learn-step')?.textContent).toBe('Phrase 1, slowly: “Twinkle, twinkle, little star”');
+    expect((q(c, 'learn-start') as HTMLButtonElement).disabled).toBe(true);
+    expect(c.textContent).toContain('Calibrate latency first so your takes line up.');
+  });
+
+  it('shows each phrase’s best and a learned glyph from the log, and links to the song’s progress', async () => {
+    attemptLog.value = [...base, sung({ from: 0, to: 1 }, 0.85), sung({ from: 1, to: 2 }, 0.55), sung({ from: 1, to: 2 }, 0.95, 0.75)];
+    const c = await open('twinkle');
+    await until(() => q(c, 'learn-panel'));
+    const [first, second] = [c.querySelector<HTMLElement>('[data-phrase="0"]')!, c.querySelector<HTMLElement>('[data-phrase="1"]')!];
+    expect(first.getAttribute('aria-label')).toBe('Phrase 1, Twinkle, twinkle, little star, learned, best 85%');
+    expect(first.classList.contains('pl-song-pill--on')).toBe(true);
+    expect(first.querySelector('.pl-song-pill__learned')).not.toBeNull();
+    expect(first.textContent).toContain('85');
+    // A slowed take is practice: the best is the full-speed one.
+    expect(second.getAttribute('aria-label')).toBe('Phrase 2, How I wonder what, not learned yet, best 55%');
+    expect(second.classList.contains('pl-song-pill--off')).toBe(true);
+    expect(q(c, 'learn-learned')?.textContent).toBe('1 of 2 phrases learned');
+
+    installRouteGuard(() => ({ ok: true })); // the session's guard opens an earned song's progress (guard.ts)
+    q(c, 'learn-progress')!.click();
+    expect(route.value).toEqual(routeOf('song-progress', { songId: 'twinkle' }));
   });
 });

@@ -16,7 +16,14 @@
  *    latency = the route's calibration) and scored ON THE SLOWED TIMELINE, where the singer really sang: the notes
  *    are stretched to the take's speed, scored, and the phrase scores are mapped back to song time. Then
  *    buildSongAttempt -> session.recordAttempt (a song attempt never passes a level) and the take is saved (pitch
- *    track, plus audio when the profile keeps it).
+ *    track on the take's own timeline, plus audio when the profile keeps it);
+ *  - every attempt records what the take covered, so the log alone tells a song's progress (song/practice.ts): its
+ *    phrases ([from, to) into pitchedView(song).phrases: the ones it finished, or null for the whole song sung through),
+ *    its key (songShift) and its speed (songSpeed). Then the coach reads the take (coaching/song.ts coachSongTake) on
+ *    the song's own clock, against the log it was written into, for the take sheet's coaching card.
+ *
+ * A selection is a stretch of Song.phrases ([from, to): one phrase, phrases joined, or null for the whole song), so a
+ * learning-path step (pitched phrase indices) maps onto it with selectionOfPitched.
  *
  * Scoring needs the route's latency calibration: without one, sing() refuses and says so. listen(), play() and
  * sing() are called straight from click handlers: the AudioContext (and, for sing, the mic) start there, before
@@ -32,17 +39,20 @@ import type { LatencyCalibration } from '../audio/latency-types';
 import { musicalClickGain } from '../audio/synth';
 import type { ReferenceSynth, ScheduledHandle } from '../audio/synth-types';
 import { TakeRecorder, encodeTake, roundTripSeconds, toInputTime, type TakeAudio } from '../audio/take-recorder';
+import { coachSongTake } from '../coaching/song';
+import type { Coaching } from '../coaching/types';
 import { CONFIG } from '../config';
-import type { PitchTrack, TargetNote } from '../core/types';
+import type { PitchFrame, PitchTrack, TargetNote } from '../core/types';
 import { WsolaStretcher } from '../dsp/wsola';
 import { effectiveRange } from '../exercises/transpose';
 import { buildSongAttempt, songExerciseId, type AttemptFields } from '../progress/attempt';
 import { getSynth } from '../state/audio';
-import { activeProfile, appStorage, recordAttempt } from '../state/session';
+import { activeProfile, appStorage, attemptLog, recordAttempt } from '../state/session';
 import { TAKE_AUDIO_NOT_KEPT } from './messages';
 import { deviceSettings, settings } from '../state/settings';
 import type { Settings } from '../state/settings-types';
 import { isPitchedNote, pitchedView, type PitchedView } from '../song/pitched';
+import { SONG_PASS_SCORE, type PitchedSpan } from '../song/practice';
 import { backingTimeAt, phraseIndexAt, songTimeAtBacking } from '../song/timing';
 import { rangeFit, suggestTransposition, transposeSong, type RangeFit } from '../song/transpose';
 import type { Song, SongNote } from '../song/types';
@@ -62,10 +72,10 @@ export const PHRASE_TAIL_SEC = 0.5;
 /** Count-in clicks before a take's first note (the first note falls on the next beat). */
 export const COUNT_IN_BEATS = 3;
 /**
- * A song take reads as passed at this duration-weighted phrase score (the first pass tier the catalog asks of a
- * level). It decides the attempt's `passed` and the result's verdict only: a song never passes a level. PROVISIONAL.
+ * A song take reads as passed at this duration-weighted phrase score (song/practice.ts, where a phrase counts as
+ * learned at it too). It decides the attempt's `passed` and the result's verdict only: a song never passes a level.
  */
-export const SONG_PASS_SCORE = 0.7;
+export { SONG_PASS_SCORE };
 /** The key stepper's reach either way, semitones. */
 export const MAX_TRANSPOSE = 12;
 /** The backing-offset slider's reach either side of the chart's own offset, ms (DESIGN.md §13.8). */
@@ -96,8 +106,14 @@ const EPS = 1e-6;
 
 // ---------------------------------------------------------------- types
 
-/** A phrase index into Song.phrases, or null for the whole song. */
-export type SongSelection = number | null;
+/** Song.phrases indices [from, to): one phrase ({ from: i, to: i + 1 }), or phrases joined. */
+export interface PhraseSpan {
+  from: number;
+  to: number;
+}
+
+/** What is selected to play and sing: a stretch of Song.phrases, or null for the whole song. */
+export type SongSelection = PhraseSpan | null;
 
 export type SongPhase =
   | 'idle'
@@ -163,6 +179,8 @@ export interface SongTakeResult {
   selection: SongSelection;
   speed: SongSpeed;
   shift: number;
+  /** What the attempt recorded it covered: [from, to) into pitchedView(song).phrases, or null for the whole song. */
+  phrase: PitchedSpan | null;
   phrases: SongPhraseResult[];
   /** song.phraseScore: 0..1, duration-weighted over the phrases. */
   score: number;
@@ -179,6 +197,8 @@ export interface SongTakeResult {
   audio: TakeAudio | null;
   /** Phrases left out because the take was stopped before they ended. */
   unfinished: number;
+  /** The coach's reading of the take (coaching/song.ts); null if it could not be made (the breakdown still shows). */
+  coaching: Coaching | null;
 }
 
 export interface SongError {
@@ -210,6 +230,8 @@ export interface SongSessionDeps {
   latency(): LatencyCalibration | null;
   /** session.recordAttempt: appends the attempt for the ACTIVE profile and recomputes progress. */
   recordAttempt(fields: AttemptFields): Promise<{ attempt: AttemptRecord }>;
+  /** The active profile's attempt log (session.attemptLog), read after a take is written: the coach's history. */
+  log(): readonly AttemptRecord[];
   /** Decodes a backing-track file (MP3 or WAV). */
   decodeAudio(bytes: ArrayBuffer): Promise<AudioBuffer>;
   /** A one-channel AudioBuffer holding `samples` (a stretched backing, a take's audio). */
@@ -272,6 +294,11 @@ export interface SongSession {
   setOffsetMs(ms: number): void;
   /** Play (or stop) the selection once. Call straight from the click handler. */
   listen(): void;
+  /**
+   * Play (or stop) `selection` once at `speed`, leaving the chosen phrase and speed as they are (the coaching card's
+   * "Listen slowly"). Call straight from the click handler.
+   */
+  listenTo(selection: SongSelection, speed: SongSpeed): void;
   /** Play (or pause) from the selection on; with loop on, the selected phrase over and over. Call straight from the click handler. */
   play(): void;
   /** Record a take of the selection. Call straight from the click handler: the mic starts here. */
@@ -310,19 +337,60 @@ export function phraseRows(song: Song): PhraseRow[] {
   });
 }
 
+/** The selection of one phrase (index into Song.phrases). */
+export function onePhrase(index: number): PhraseSpan {
+  return { from: index, to: index + 1 };
+}
+
+/** The same stretch of the song (null = the whole song). */
+export function sameSelection(a: SongSelection, b: SongSelection): boolean {
+  if (a === null || b === null) return a === b;
+  return a.from === b.from && a.to === b.to;
+}
+
+/** A selection that fits a song of `phraseCount` phrases. */
+export function isValidSelection(selection: SongSelection, phraseCount: number): boolean {
+  if (selection === null) return true;
+  const { from, to } = selection;
+  return Number.isInteger(from) && Number.isInteger(to) && from >= 0 && to > from && to <= phraseCount;
+}
+
+/** The pitched phrases a selection scores (indices into pitchedView(song).phrases, in order): every one for the whole song. */
+export function scoredPhrasesOf(rows: readonly PhraseRow[], selection: SongSelection): number[] {
+  const out: number[] = [];
+  for (const row of rows) {
+    if (row.pitchedIndex === null) continue;
+    if (selection === null || (row.index >= selection.from && row.index < selection.to)) out.push(row.pitchedIndex);
+  }
+  return out;
+}
+
+/**
+ * The selection that sings pitched phrases [from, to) (a learning-path step, an attempt's `phrase`); null stays the
+ * whole song, and undefined is a span this song does not have.
+ */
+export function selectionOfPitched(rows: readonly PhraseRow[], span: PitchedSpan | null): SongSelection | undefined {
+  if (span === null) return null;
+  const first = rows.find((r) => r.pitchedIndex === span.from);
+  const last = rows.find((r) => r.pitchedIndex === span.to - 1);
+  if (!first || !last || span.to <= span.from) return undefined;
+  return { from: first.index, to: last.index + 1 };
+}
+
 /**
  * The window a selection plays and is sung over: from PHRASE_LEAD_SEC before its first note to PHRASE_TAIL_SEC
- * after its last one. A phrase covers its own notes, the whole song (null) every note; `toEnd` runs a phrase on to
- * the end of the song (Play without loop). Null when the selection has no notes.
+ * after its last one. Phrases cover their own notes, the whole song (null) every note; `toEnd` runs the selection on
+ * to the end of the song (Play without loop). Null when the selection has no notes.
  */
 export function selectionWindow(song: Song, selection: SongSelection, opts: { toEnd?: boolean } = {}): SongWindow | null {
   let from = 0;
   let to = song.notes.length;
   if (selection !== null) {
-    const phrase = song.phrases[selection];
-    if (!phrase) return null;
-    from = Math.max(0, phrase.from);
-    to = opts.toEnd ? song.notes.length : Math.min(phrase.to, song.notes.length);
+    const first = song.phrases[selection.from];
+    const last = song.phrases[selection.to - 1];
+    if (!first || !last || selection.to <= selection.from) return null;
+    from = Math.max(0, first.from);
+    to = opts.toEnd ? song.notes.length : Math.min(last.to, song.notes.length);
   }
   if (to <= from) return null;
   let first = Infinity;
@@ -344,6 +412,14 @@ export function nextScorablePhrase(rows: readonly PhraseRow[], index: number): n
 /** The pitched notes of a window (the guide melody and the target bars), song time. */
 export function windowNotes(song: Song, window: SongWindow): SongNote[] {
   return song.notes.slice(window.from, window.to).filter(isPitchedNote);
+}
+
+/**
+ * A take's pitch line (take time: 0 at the window start, real seconds at the take's speed) on the song's own clock:
+ * song time = `originSongSec` + take time x `speed`. What the coach and the then-and-now drawing read.
+ */
+export function toSongClock(track: PitchTrack, originSongSec: number, speed: number): PitchFrame[] {
+  return track.map((f) => ({ ...f, t: originSongSec + f.t * speed }));
 }
 
 /**
@@ -502,6 +578,7 @@ function defaultDeps(): SongSessionDeps {
       return d.latency[d.route] ?? null;
     },
     recordAttempt,
+    log: () => attemptLog.value,
     // Decoding needs no gesture: before the first tap there is no AudioContext, so an offline one decodes (at the
     // usual phone rate; playback resamples if the real context differs).
     decodeAudio: (bytes) => (engine.context ?? new OfflineAudioContext(1, 1, 48_000)).decodeAudioData(bytes),
@@ -569,7 +646,7 @@ export function createSongSession(original: Song, opts: { recordId?: string | nu
   const shift = signal(suggestedShift);
   const speed = signal<SongSpeed>(1);
   const loop = signal(false);
-  const selection = signal<SongSelection>(original.phrases.length > 0 ? 0 : null);
+  const selection = signal<SongSelection>(original.phrases.length > 0 ? onePhrase(0) : null);
   const guide = signal(true);
   const metronome = signal(false);
   const backingVolume = signal(0.8);
@@ -776,7 +853,8 @@ export function createSongSession(original: Song, opts: { recordId?: string | nu
 
   // ---------------------------------------------------------------- listen / play
 
-  function startListening(kind: 'listen' | 'play'): void {
+  /** Listen or Play the selection, or (`only`, Listen) another stretch at another speed, leaving the choices alone. */
+  function startListening(kind: 'listen' | 'play', only?: { selection: SongSelection; speed: SongSpeed }): void {
     if (disposed || busyTaking()) return;
     stopTakePlayback();
     const current = phase.value;
@@ -792,11 +870,12 @@ export function createSongSession(original: Song, opts: { recordId?: string | nu
       return;
     }
     stopPlayback();
+    const sel = only ? only.selection : selection.value;
     const repeat = kind === 'play' && loop.value;
-    const w = selectionWindow(song.value, selection.value, { toEnd: kind === 'play' && !repeat });
+    const w = isValidSelection(sel, rows.length) ? selectionWindow(song.value, sel, { toEnd: kind === 'play' && !repeat }) : null;
     if (!w) return;
-    const s = speed.value;
-    playFrom = selection.value ?? 0;
+    const s = only ? only.speed : speed.value;
+    playFrom = sel?.from ?? 0;
     batch(() => {
       error.value = null;
       phase.value = kind === 'listen' ? 'listening' : 'playing';
@@ -856,13 +935,6 @@ export function createSongSession(original: Song, opts: { recordId?: string | nu
     });
   }
 
-  /** The view.phrases the selection scores: the selected phrase, or every phrase of the whole song. */
-  function scoredPhrases(sel: SongSelection): number[] {
-    if (sel === null) return view.value.phrases.map((_, i) => i);
-    const pitched = rows[sel]?.pitchedIndex ?? null;
-    return pitched === null ? [] : [pitched];
-  }
-
   function cancelTake(): void {
     const t = take;
     takeToken++;
@@ -883,7 +955,7 @@ export function createSongSession(original: Song, opts: { recordId?: string | nu
       return;
     }
     const sel = selection.value;
-    const phrases = scoredPhrases(sel);
+    const phrases = scoredPhrasesOf(rows, sel);
     const w = selectionWindow(song.value, sel);
     if (phrases.length === 0 || !w) {
       fail('nothing-to-score', 'This phrase has no sung pitches to score (it is spoken or rapped). Pick another phrase.');
@@ -1012,6 +1084,10 @@ export function createSongSession(original: Song, opts: { recordId?: string | nu
     const score = metrics['song.phraseScore'] ?? 0;
     const passed = score >= SONG_PASS_SCORE;
     const sungSec = Math.min(t.passSec, reached);
+    // What the take covered: the whole song sung through, or exactly the phrases it finished (a whole-song take stopped
+    // after two phrases is a take of those two: its score is theirs).
+    const covered: PitchedSpan | null =
+      t.selection === null && finished.length === t.phrases.length ? null : { from: finished[0], to: finished[finished.length - 1] + 1 };
 
     let attempt: AttemptRecord | null = null;
     let attemptError: string | null = null;
@@ -1020,22 +1096,24 @@ export function createSongSession(original: Song, opts: { recordId?: string | nu
     const profile = deps.profile();
     const storage = deps.storage();
     const takeId = newId();
+    const fields: AttemptFields = buildSongAttempt({
+      profileId: profile?.id ?? '',
+      songId: original.id,
+      score,
+      passed,
+      metrics,
+      durationSec: sungSec,
+      tonicMidi: v.notes.length > 0 ? v.notes[0].midi : null,
+      takeId,
+      phrase: covered,
+      songShift: t.shift,
+      songSpeed: t.speed,
+    });
     if (!profile) {
       attemptError = 'No singer profile is active, so this take was not saved.';
     } else {
       try {
-        ({ attempt } = await deps.recordAttempt(
-          buildSongAttempt({
-            profileId: profile.id,
-            songId: original.id,
-            score,
-            passed,
-            metrics,
-            durationSec: sungSec,
-            tonicMidi: v.notes.length > 0 ? v.notes[0].midi : null,
-            takeId,
-          }),
-        ));
+        ({ attempt } = await deps.recordAttempt(fields));
       } catch (err) {
         attemptError = `This take could not be saved (${messageOf(err)}). Your score is shown here only.`;
       }
@@ -1051,6 +1129,28 @@ export function createSongSession(original: Song, opts: { recordId?: string | nu
       }
     }
 
+    // The coaching: this take, on the song's own clock, against the log it was written into (a take that could not be
+    // written is coached as it stands, against the log before it). It never holds up or blanks the result.
+    let coaching: Coaching | null = null;
+    try {
+      const coached: AttemptRecord = attempt ?? { ...fields, id: `unsaved-${takeId}`, createdAt: new Date().toISOString(), updatedAt: '', deletedAt: null };
+      coaching = coachSongTake(
+        {
+          song: { ...song.value, notes: v.notes, phrases: v.phrases },
+          phrase: covered,
+          shift: t.shift,
+          speed: t.speed,
+          track: toSongClock(recorded.track, t.window.start, t.speed),
+          scores,
+          attempt: coached,
+        },
+        deps.log(),
+        { notation: prefs.notation, now: Date.now() },
+      );
+    } catch {
+      coaching = null;
+    }
+
     const phraseResults: SongPhraseResult[] = scores.map((ps) => {
       const index = originalOfPitched[ps.phraseIndex];
       return { phraseIndex: index, text: rows[index].text, score: { ...ps, phraseIndex: index } };
@@ -1059,6 +1159,7 @@ export function createSongSession(original: Song, opts: { recordId?: string | nu
       selection: t.selection,
       speed: t.speed,
       shift: t.shift,
+      phrase: covered,
       phrases: phraseResults,
       score,
       inTolerancePct: metrics['song.inTolerancePct'] ?? 0,
@@ -1069,6 +1170,7 @@ export function createSongSession(original: Song, opts: { recordId?: string | nu
       saveError,
       audio: recorded.audio,
       unfinished: t.phrases.length - finished.length,
+      coaching,
     };
     if (disposed) return;
     const scoresByPhrase = new Map(lastScores.value);
@@ -1090,7 +1192,7 @@ export function createSongSession(original: Song, opts: { recordId?: string | nu
       listenToken++;
       stopPlayback();
       batch(() => {
-        if (playing !== null) selection.value = playing;
+        if (playing !== null) selection.value = onePhrase(playing);
         phase.value = 'idle';
         timeline.value = null;
       });
@@ -1210,7 +1312,7 @@ export function createSongSession(original: Song, opts: { recordId?: string | nu
     },
     select(sel) {
       if (!settle()) return;
-      if (sel === null || (Number.isInteger(sel) && sel >= 0 && sel < rows.length)) selection.value = sel;
+      if (isValidSelection(sel, rows.length)) selection.value = sel === null ? null : { from: sel.from, to: sel.to };
     },
     // The guide, the metronome and the offset apply from the next playback or loop pass: what already sounds is
     // left alone (adjusting the offset against a looping phrase is the point of looping it).
@@ -1247,6 +1349,7 @@ export function createSongSession(original: Song, opts: { recordId?: string | nu
       }, OFFSET_SAVE_DEBOUNCE_MS);
     },
     listen: () => startListening('listen'),
+    listenTo: (sel, s) => startListening('listen', { selection: sel, speed: s }),
     play: () => startListening('play'),
     sing,
     stop,

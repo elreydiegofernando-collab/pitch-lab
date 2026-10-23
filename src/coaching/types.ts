@@ -155,7 +155,11 @@ export interface SongCoachingFile {
   appVersion: string;
   song: import('../song/types').Song;
   profile: { name: string; voiceType: string; range: VocalRange | null };
-  settings: { notation: Notation };
+  settings: {
+    notation: Notation;
+    /** The pitch detector the takes were sung with (Settings), so audio is rebuilt with the same one; absent in older files (MPM, the default). */
+    detector?: DetectorKind;
+  };
   device: { route: string; latencyMs: number | null; userAgent: string };
   /** Newest first: up to 8 takes of this song. */
   takes: Array<{
@@ -165,6 +169,11 @@ export interface SongCoachingFile {
     /** Half steps from the chart's key, and the playback speed (0.5, 0.75 or 1). */
     shift: number;
     speed: number;
+    /**
+     * The saved pitch line (storage/track-codec.ts encoding) on the take's own timeline: t = 0 at the start of the window
+     * it was sung over (one second before the first note of its phrases), in real seconds, so song time = window start +
+     * t x speed (coaching/song-export.ts). Null when the take was not saved.
+     */
     track: TakeRecord['track'] | null;
     audioWavBase64: string | null;
   }>;

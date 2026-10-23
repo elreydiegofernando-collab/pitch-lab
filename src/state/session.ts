@@ -15,6 +15,8 @@
  * session run one at a time, so a take can never be written into a log that is being swapped for another profile's.
  */
 import { batch, signal, untracked } from '@preact/signals';
+import { isCheckupFinished } from '../checkup/summary';
+import { CHECKUP_TASKS } from '../checkup/types';
 import { WORLDS, getExercise } from '../exercises';
 import type { VoiceType } from '../exercises/transpose';
 import { computeSnapshot, isFeatureUnlocked, withRoutines } from '../progress';
@@ -22,6 +24,7 @@ import type { AttemptFields } from '../progress/attempt';
 import type { FeatureId, ProgressSnapshot } from '../progress/types';
 import { installRouteGuard, resetTo, revalidate, type Route } from '../router';
 import { auditionRun } from '../runtime/audition-run';
+import { abandonCheckup, activeCheckup, resumeCheckup } from '../runtime/checkup';
 import { guardRoute } from '../runtime/guard';
 import { lastOutcome } from '../runtime/runner';
 import type { GuardContext } from '../runtime/types';
@@ -58,10 +61,15 @@ function snapshotFor(profileId: string, log: readonly AttemptRecord[], now: numb
   });
 }
 
-/** What the route guard judges with, read from the signals at the moment of the navigation. */
+/**
+ * What the route guard judges with, read from the signals at the moment of the navigation: a check-up's tasks are open
+ * while it runs, and its results once the active profile's log holds it finished.
+ */
 function guardContext(): GuardContext {
   const index = songIndex.value;
   const workout = activeWorkout.value;
+  const checkup = activeCheckup.value;
+  const log = attemptLog.value;
   return {
     snapshot: snapshot.value,
     worlds: WORLDS,
@@ -69,6 +77,8 @@ function guardContext(): GuardContext {
     songsLoaded: songsLoaded.value,
     hasOutcome: lastOutcome.value !== null,
     workoutItems: workout && workout.finishedAt === null ? workout.workout.items.length : null,
+    checkupTasks: checkup && checkup.finishedAt === null ? CHECKUP_TASKS.length : null,
+    hasCheckup: (checkupId) => isCheckupFinished(log, checkupId),
   };
 }
 
@@ -95,17 +105,23 @@ function songIndexOrCap(): Promise<void> {
   return Promise.race([loadSongs(), cap]).finally(() => clearTimeout(timer));
 }
 
-/** Load the active profile (creating the default when none is live), its settings, log and snapshot. */
+/**
+ * Load the active profile (creating the default when none is live), its settings, log and snapshot, and pick its
+ * unfinished voice check-up up again from the log while it is recent (runtime/checkup.ts resumeCheckup): iOS often
+ * closes a home-screen app left in the background, and the tasks already sung are in the log.
+ */
 async function loadActive(storage: AppStorage): Promise<void> {
   const active = await storage.profiles.active();
   const [list, log] = await Promise.all([storage.profiles.list(), storage.attempts.listByProfile(active.id)]);
   await loadSettings({ kv: storage.kv, profileId: active.id, profileDurable: storage.db.persistent, persistent: storage.persistent });
-  const next = snapshotFor(active.id, log, Date.now());
+  const now = Date.now();
+  const next = snapshotFor(active.id, log, now);
   batch(() => {
     profiles.value = list;
     activeProfile.value = active;
     attemptLog.value = log;
     snapshot.value = next;
+    resumeCheckup(log, active.id, now);
   });
 }
 
@@ -178,11 +194,15 @@ async function ready(): Promise<{ storage: AppStorage; profile: ProfileRecord }>
   return { storage, profile };
 }
 
-/** A take's outcome, a running workout and an audition run belong to the profile (and the log) they were made with. */
+/**
+ * A take's outcome, a running workout or check-up and an audition run belong to the profile (and the log) they were made
+ * with. (Loading a profile then picks up that profile's own unfinished check-up from its log: loadActive.)
+ */
 function clearTakeState(): void {
   lastOutcome.value = null;
   auditionRun.value = null;
   abandonWorkout();
+  abandonCheckup();
 }
 
 function withProfile(list: readonly ProfileRecord[], updated: ProfileRecord): ProfileRecord[] {

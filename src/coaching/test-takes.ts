@@ -3,6 +3,7 @@
  * analyzers, scorer and tip picker, exactly as the runner judges a take, plus a way to force any tip so each family's
  * locator can be checked on a known fault. Imported only by tests.
  */
+import { CHECKUP_TASKS } from '../checkup/types';
 import type { PitchFrame } from '../core/types';
 import { WORLDS, analyzeTake, canPassAtTempo, evaluate, getExercise, getLevel, getWorld, passRequirements, pickTip, realize, reportTiles, startTempo } from '../exercises';
 import type { TakeAnalysis } from '../exercises/analyze';
@@ -92,6 +93,29 @@ export function attemptOf(take: SungTake | null, extra: Partial<AttemptRecord> =
     takeId: null,
     ...extra,
   };
+}
+
+/**
+ * A finished voice check-up in the log, as the runner logs one: task `poor` sung poorly and every other task at its best
+ * (heard in full, every metric read). Match and hold sung poorly (1) makes pitch and steadiness the focus; the siren (2),
+ * slides.
+ */
+export function checkupWithFocus(poor: number, checkupId = 'c1'): AttemptRecord[] {
+  return CHECKUP_TASKS.map((task, i) => {
+    const def = getExercise(task.exerciseId);
+    if (!def) throw new Error(`no exercise ${task.exerciseId}`);
+    const r = realize(def, null, 'unknown', { bpm: def.tempoBpm });
+    return attemptOf(null, {
+      exerciseId: def.id,
+      kind: task.logAs.kind === 'practice' ? 'practice' : 'audition',
+      levelId: task.logAs.kind === 'practice' ? task.logAs.levelId : null,
+      passed: i !== poor,
+      metrics: Object.fromEntries(def.scoring.map((t) => [t.metric, i === poor ? t.worst : t.best])),
+      durationSec: r.countInSec + r.totalSec,
+      tempoBpm: def.tempoBpm,
+      checkupId,
+    });
+  });
 }
 
 /** The progress of a log (real catalog and engine), as the runner hands it to the report. */

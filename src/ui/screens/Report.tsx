@@ -4,15 +4,19 @@
  * the replay of the trace against the targets, the coaching (CoachCard: where it slipped, marked on the replay from its
  * spot chips, with more help the more misses in a row) and playback of the take. Its next steps come from
  * afterTakeActions and open with replace, so Back from the next screen skips the report. Nothing here is colour-only.
+ * A task of the voice check-up is measured, never graded: its plain task title, a calm verdict ("Sung", or why it
+ * measured nothing) and no score ring.
  */
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import { MicOff } from 'lucide-preact';
 import { back, previousRoute, replace, sameRoute } from '../../router';
 import { CONFIG } from '../../config';
+import { isTaskMeasured } from '../../checkup/summary';
 import { coachTake, tipOnly } from '../../coaching/coach';
 import type { CoachMove } from '../../coaching/types';
 import { canPassAtTempo, rangeFromMeasurement } from '../../exercises';
+import { finishCheckup } from '../../runtime/checkup';
 import { afterTakeActions } from '../../runtime/flow';
 import { lastOutcome } from '../../runtime/runner';
 import type { AfterTakeAction, ExerciseRunner, TakeOutcome } from '../../runtime/types';
@@ -25,7 +29,8 @@ import { CoachCard, hasSlowDemo } from '../practice/CoachCard';
 import { PlaybackControls } from '../practice/PlaybackControls';
 import { RangeCard } from '../practice/RangeCard';
 import { ReportBar } from '../practice/ReportBar';
-import { MetricTiles, VerdictLine, notJudgedLine, type Verdict } from '../practice/ReportParts';
+import { singTitle } from '../practice/copy';
+import { MetricTiles, VerdictLine, notJudgedLine, unmeasuredLine, type UnmeasuredReason, type Verdict } from '../practice/ReportParts';
 import { prefersReducedMotion } from '../practice/motion';
 import { tryCreateRunner } from '../practice/runner-handle';
 import { ScoreReveal } from '../practice/ScoreReveal';
@@ -51,38 +56,78 @@ function isRangeFinder(outcome: TakeOutcome): boolean {
   return outcome.prepared.def.kind === 'range-finder';
 }
 
+/** A task of the voice check-up: a check-up, not a test, so its report gives no score and no grade. */
+function isCheckupTask(outcome: TakeOutcome): boolean {
+  return outcome.prepared.target.kind === 'checkup';
+}
+
+/**
+ * Why a check-up task's take measured nothing (silent, stopped early, or not all of it heard: checkup/summary.ts reads
+ * it the same way), or null when it measured something. A folded take is said as for any other take.
+ */
+function unmeasuredReason(outcome: TakeOutcome): UnmeasuredReason | null {
+  const { prepared, evaluation, analysis, attempt } = outcome;
+  if (prepared.target.kind !== 'checkup' || evaluation.notJudged === 'folded') return null;
+  if (analysis.tipContext.noVoice) return 'silent';
+  if (evaluation.notJudged === 'stopped') return 'stopped';
+  return isTaskMeasured(prepared.checkup?.taskIndex ?? prepared.target.taskIndex, attempt) ? null : 'quiet';
+}
+
 /**
  * True when this take can light a level's tally lights (progress/engine.ts): a level, workout-level or record take at the
- * level's pass tempo. An audition test, a routine and a lower rung of a tempo ladder show their score with no lights.
+ * level's pass tempo. An audition test, a check-up task, a routine and a lower rung of a tempo ladder light none.
  */
 function showsTally(outcome: TakeOutcome): boolean {
   const { prepared } = outcome;
-  if (prepared.target.kind === 'audition' || prepared.level === null) return false;
+  if (prepared.target.kind === 'audition' || prepared.target.kind === 'checkup' || prepared.level === null) return false;
   return canPassAtTempo(prepared.def, prepared.bpm);
+}
+
+/**
+ * A check-up task's verdict, never a grade: "Sung" for a take that measured its task (a miss is no failure: the check-up
+ * goes on and its results say how it went), "Passed" for a test that passed (it can open levels, as in the audition),
+ * "Range saved", and for a take that measured nothing "Nothing came through" or "Not measured" (the report offers it again).
+ */
+function judgeCheckupTask(outcome: TakeOutcome): Judgement {
+  const { evaluation, attempt } = outcome;
+  if (evaluation.notJudged === 'folded') return { kind: 'not-judged', word: 'Not judged', celebrate: false };
+  const unmeasured = unmeasuredReason(outcome);
+  if (unmeasured === 'silent') return { kind: 'not-yet', word: 'Nothing came through', celebrate: false };
+  if (unmeasured) return { kind: 'not-judged', word: 'Not measured', celebrate: false };
+  if (attempt.passed) return { kind: 'passed', word: isRangeFinder(outcome) && outcome.rangeSaved ? 'Range saved' : 'Passed', celebrate: true };
+  return { kind: 'done', word: 'Sung', celebrate: false };
 }
 
 /**
  * How the take went. The attempt is the log's truth (a lower rung of a tempo ladder is practice, never a level pass), the
  * evaluation is how the take did against the pass rule at the tempo it was sung: a rung can be passed without the level.
- * A take stopped part way was not judged; a routine is completion (Done), never a pass with a celebration.
+ * A take stopped part way was not judged; a routine is completion (Done), never a pass with a celebration; a check-up
+ * task is measured, never graded (judgeCheckupTask).
  */
 function judge(outcome: TakeOutcome): Judgement {
   const { evaluation, attempt, prepared, analysis } = outcome;
+  if (isCheckupTask(outcome)) return judgeCheckupTask(outcome);
   if (evaluation.notJudged) return { kind: 'not-judged', word: 'Not judged', celebrate: false };
   if (isRoutineTake(outcome)) {
     if (analysis.tipContext.noVoice) return { kind: 'not-yet', word: 'Nothing came through', celebrate: false };
     if (evaluation.unsung) return { kind: 'not-yet', word: 'Not finished', celebrate: false };
     return { kind: 'done', word: 'Done', celebrate: false };
   }
-  if (attempt.passed) return { kind: 'passed', word: isRangeFinder(outcome) ? 'Range saved' : 'Passed', celebrate: true };
+  // "Range saved" only when it was: a pass whose range would not save says so in its banner, and is a plain pass.
+  if (attempt.passed) return { kind: 'passed', word: isRangeFinder(outcome) && outcome.rangeSaved ? 'Range saved' : 'Passed', celebrate: true };
   if (evaluation.passed) return { kind: 'passed', word: `Passed at ${prepared.bpm} bpm`, celebrate: false };
   return { kind: 'not-yet', word: 'Not yet', celebrate: false };
 }
 
-/** What was sung, in a line: "Sustain I", or for a ladder "Run 3 · sung at 72 bpm", with the tempo the level passes at when lower. */
+/**
+ * What was sung, in a line: "Sustain I", a check-up task by its plain title ("Slide up and down", as the Sing screen named
+ * it, never the audition's exercise title), or for a ladder "Run 3 · sung at 72 bpm", with the tempo the level passes at
+ * when lower.
+ */
 function captionOf(outcome: TakeOutcome): string {
   const { prepared } = outcome;
-  if (isRangeFinder(outcome) && outcome.attempt.passed) return 'Every exercise now fits your voice.';
+  if (isRangeFinder(outcome) && outcome.attempt.passed && outcome.rangeSaved) return 'Every exercise now fits your voice.';
+  if (isCheckupTask(outcome)) return singTitle(prepared);
   const name = prepared.level && prepared.level.kind !== 'boss' ? prepared.level.title : prepared.def.title;
   if (!prepared.ladder) return name;
   const sung = `${name} · sung at ${prepared.bpm} bpm`;
@@ -100,6 +145,9 @@ function ReportView(props: { outcome: TakeOutcome }): JSX.Element {
   const { prepared, analysis, take, evaluation } = outcome;
   const def = prepared.def;
   const verdict = judge(outcome);
+  const checkupTask = isCheckupTask(outcome);
+  const unmeasured = unmeasuredReason(outcome);
+  const reasonLine = unmeasured ? unmeasuredLine(unmeasured) : evaluation.notJudged ? notJudgedLine(evaluation.notJudged, prepared.target.kind === 'audition') : null;
   const notation = settings.value.notation;
   const actions = useMemo(() => afterTakeActions(outcome), [outcome]);
   const runs = analysis.details.runs;
@@ -161,13 +209,17 @@ function ReportView(props: { outcome: TakeOutcome }): JSX.Element {
 
   const act = (action: AfterTakeAction): void => {
     // "Finish workout" ends the workout first, so the Workout screen opens on its summary (finishWorkout is idempotent)
-    // rather than on the list of items, where the singer would have to end it a second time.
+    // rather than on the list of items, where the singer would have to end it a second time. "See your results" ends the
+    // check-up the same way (finishCheckup: the last task's take usually has already), so its screen opens on the results.
     if (action.kind === 'finish-workout') finishWorkout();
-    // "Back to level" / "Finish workout" when that very screen sits right beneath the report (the take was started from
-    // it): go back to it. Replacing the report with it would stack a second copy, and the next Back would seem to do
-    // nothing. Every other action replaces the report (a new entry: the audition's "See your placement" relies on that).
+    if (action.kind === 'checkup-results') finishCheckup();
+    // "Back to level" / "Finish workout" / "See your results" when that very screen sits right beneath the report (the
+    // take was started from it): go back to it. Replacing the report with it would stack a second copy, and the next
+    // Back would seem to do nothing. Every other action replaces the report (a new entry: the audition's "See your
+    // placement" relies on that).
     const beneath = previousRoute.peek();
-    if ((action.kind === 'level' || action.kind === 'finish-workout') && beneath && sameRoute(beneath, action.route)) {
+    const returns = action.kind === 'level' || action.kind === 'finish-workout' || action.kind === 'checkup-results';
+    if (returns && beneath && sameRoute(beneath, action.route)) {
       back();
       return;
     }
@@ -192,10 +244,11 @@ function ReportView(props: { outcome: TakeOutcome }): JSX.Element {
             word={verdict.word}
             caption={captionOf(outcome)}
             ladderLine={climbed ? `Next take at ${outcome.nextBpm} bpm` : null}
-            reasonLine={evaluation.notJudged ? notJudgedLine(evaluation.notJudged, prepared.target.kind === 'audition') : null}
+            reasonLine={reasonLine}
           />
 
-          {isRangeFinder(outcome) ? null : (
+          {/* No score ring for the Range finder (it measures) or a check-up task (a check-up, not a test). */}
+          {isRangeFinder(outcome) || checkupTask ? null : (
             <ScoreReveal
               score={evaluation.score}
               tally={outcome.attempt.mastery}

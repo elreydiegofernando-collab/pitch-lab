@@ -13,6 +13,7 @@ import './styles/practice.css';
 import './styles/worlds.css';
 import './styles/song.css';
 import './styles/progress.css';
+import './styles/checkup.css';
 import { App } from './app';
 import { getEngine } from './audio/engine';
 import { activePitchView } from './state/pitch-view-registry';

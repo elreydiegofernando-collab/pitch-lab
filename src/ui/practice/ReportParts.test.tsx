@@ -9,7 +9,8 @@ import type { AfterTakeAction } from '../../runtime/types';
 import type { VocalRange } from '../../storage/schema';
 import { RangeCard, rangeLabel } from './RangeCard';
 import { ReportBar, splitActions } from './ReportBar';
-import { MetricTiles, VerdictLine, notJudgedLine } from './ReportParts';
+import { jargonIn } from '../../coaching/plain';
+import { MetricTiles, VerdictLine, notJudgedLine, unmeasuredLine } from './ReportParts';
 
 let container: HTMLElement;
 
@@ -71,6 +72,19 @@ describe('VerdictLine', () => {
     await show(<VerdictLine verdict="not-judged" word="Not judged" caption="Sirens & glides" ladderLine={null} reasonLine={notJudgedLine('stopped')} />);
     expect(container.querySelector('[data-testid="verdict-reason"]')?.textContent).toBe('Stopped early: practice only, not judged for the level.');
     expect(container.textContent).not.toContain('saved range');
+  });
+
+  it('says why a check-up task measured nothing, in plain words that never judge', () => {
+    const lines = (['stopped', 'quiet', 'silent'] as const).map(unmeasuredLine);
+    expect(lines).toEqual([
+      'Stopped early, so this task was not measured.',
+      'Not all of this task was heard, so it was not measured.',
+      'Nothing came through the microphone, so this task was not measured.',
+    ]);
+    for (const line of lines) {
+      expect(jargonIn(line), line).toEqual([]);
+      expect(line).not.toMatch(/judged|test|level|fail/i);
+    }
   });
 });
 

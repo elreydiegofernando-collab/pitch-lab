@@ -167,6 +167,10 @@ From the `ui-ux-pro-max` rules (accessibility and touch first, then performance,
 - **First run, per profile:**
   1. The **voice-care sheet**: warm up, hydrate, never sing through pain or hoarseness, rest, don't strain for range, plus "This is not medical advice." and a "Got it" button that sets `voiceCareSeen`.
   2. Then the existing headphone/Setup prompt.
+- **Voice check-up card** (`src/ui/checkup/home-card.ts`, §13.15). It only invites: it opens the check-up's own screen or its results.
+  - A profile that has sung nothing: "Start with a 4-minute voice check-up", above the Continue card, with the amber button. Continue then steps back to a secondary button, so Home keeps one amber button.
+  - A check-up left part way: "Finish your voice check-up", above the Continue card in the same way.
+  - A profile that has sung but never took one: "Take your voice check-up". Once the last one is three weeks old: "Time for a re-check". Otherwise a quiet row to the latest results.
 - **Memorable thing:** the Continue card reads like the next number on the set list.
 
 ### 13.2 World map (the setlist path)
@@ -216,7 +220,8 @@ From the `ui-ux-pro-max` rules (accessibility and touch first, then performance,
     - a 2 px `--tally` progress hairline across the top of the canvas;
     - Sing becomes **Stop**.
   - **analyzing:** the canvas freezes and the button shows "Scoring…" with an inline spinner.
-- **Context chips** (top-right of the canvas, one at a time): "96 bpm · rung 3 of 4" for a ladder, "Test 2 of 4" for an audition, "Workout · 3 of 6" for a workout.
+- **Context chips** (top-right of the canvas, one at a time): "Check-up · 2 of 5" for a check-up task (it wins over the rest), "96 bpm · rung 3 of 4" for a ladder, "Test 2 of 4" for an audition, "Workout · 3 of 6" for a workout.
+- **A check-up task** is titled by its plain task title ("Slide up and down"). With no range saved it shows the info Banner "Using a default range until you pass the Range finder." under the readouts (it has no Level screen to say so), except on the Range finder task itself.
 - **Errors:** a mic block or interruption shows an inline Banner with the fix and "Try again". Nothing is written.
 - **Desktop keys:** Space = Sing/Stop, L = Listen, Esc = back (it stops the take first).
 - **Memorable thing:** the target bar "locks" while you're inside the band (§1). Nothing else competes with it.
@@ -234,7 +239,7 @@ Top to bottom:
    - **Try this:** the tip.
    - **More help with each miss in a row** on this exercise, with a line saying why ("Third try in a row, so here is a step-by-step."): why it happens from the second miss, a numbered step-by-step from the third, an easier way in from the fourth (one step deeper with each miss).
    - **Since last time:** the same measures on the previous take and this one, in the same words, each marked better, not as good or about the same with a glyph and words (a measure one take could not read is left out; the score stands in when nothing else compares).
-   - **Moves**, all secondary buttons (the report's own action stays the one amber button): Send to Claude from the third miss; from the fourth, Listen slowly (or Listen again, without a slow demo) and "Practise" an earlier level, offered only when the help names a level that comes before this one and is already passed (never the Range finder).
+   - **Moves**, all secondary buttons (the report's own action stays the one amber button): Send to Claude from the third miss; from the fourth, Listen slowly (or Listen again, without a slow demo) and "Practise" an earlier level, offered only when the help names a level that comes before this one and is already passed (never the Range finder). When that level trains a focus of the latest voice check-up (§13.15), "Practise" is offered from the second miss instead: the coaching leans on what the check-up found. The song coach (§13.9) does the same.
    - **Rest:** after six misses in a row, or eight takes in twenty minutes, a voice-care note: rest a few minutes, sip some water, stop if anything hurts, scratches or goes hoarse.
    - **A pass** shows "Next" with the take's own line (the next rung, every tally lit) and nothing more.
    - If the coaching ever fails to build, the take's own tip still shows: the report never goes blank over it.
@@ -245,7 +250,12 @@ Top to bottom:
 **Special cases:**
 - **Celebration (pass only, §9):** the ring count-up, the tally lights in a 120 ms stagger, and an **Unlocked** strip listing what opened (`LockOpen` glyph and the unlock event titles). Reduced motion makes it instant.
 - **Folded take:** "Not judged: this exercise doesn't fit your saved range", the score greyed, and the unfit-range coaching.
-- **Range finder pass:** a range card showing comfortable C3–A4 and extended A2–C5 on a mini keyboard strip.
+- **Range finder pass:** a range card showing comfortable C3–A4 and extended A2–C5 on a mini keyboard strip. The verdict says "Range saved" only when the range was saved; otherwise it is a plain "Passed" beside the banner that says so.
+- **A check-up task** (§13.15) is measured, never graded:
+  - Its caption is the plain task title, and it shows no score ring and no tally lights.
+  - The verdict is "Sung" (`Check`) for a take that measured its task, pass or miss, and "Passed" for a test that passed, with the Unlocked strip when it opened levels.
+  - A take that measured nothing says so: "Not measured" with "Stopped early, so this task was not measured." or "Not all of this task was heard, so it was not measured.", or "Nothing came through" for a silent take.
+  - Actions: "Next task" (primary) and "Sing it again". "Sing it again" leads instead after a take that measured nothing, and after a Range finder take that saved no range when none was saved before. After the last task, "See your results" ends the check-up and returns to its screen.
 - **Ladder:** "Next take at 104 bpm" under the verdict when the tempo climbed.
 - **Memorable thing:** the ring and the three lights lighting in sequence, the app's one celebration.
 
@@ -284,9 +294,10 @@ The line "Your files stay on this device." sits under the picker. Parser errors 
 - **Lyrics strip under the canvas:**
   - the current phrase in `body` 20 px, with the current syllable underlined in `--tally`;
   - the next phrase in `--text-lo`.
-- **Phrase scrubber:** one pill per phrase, showing its last score as a number with an on/off tint. It scrolls horizontally inside its own row, so the page itself never scrolls sideways.
+- **Phrase scrubber, which is also the song's progress strip:** "Whole song", then one pill per phrase showing its best full-speed score from the log as a number and a `Check` glyph once the phrase is learned (a full-speed take at the pass score, `src/song/practice.ts`), tinted on (learned) or off (sung, not yet learned). The number and the glyph carry the meaning; the tint only repeats it. Phrases joined into one selection are all marked selected. It scrolls horizontally inside its own row, so the page itself never scrolls sideways.
+- **"Learn this song" panel:** the learning path's current step ("Step 4 of 17": listen, each phrase slowly then at full speed, pairs joined, the whole song), with one **secondary** action that sets the step up (its phrases, speed and loop) and starts it, and a link to the song's progress (§13.16). The bar's Sing stays the screen's one amber button. The path is a suggestion: the scrubber still picks any phrase.
 - **Bottom bar:** Listen (the melody or backing for the selected phrase), **Sing** (the phrase, or the whole song), More (offset, backing volume, metronome).
-- **After a take:** a sheet with the phrase-by-phrase breakdown (phrase text, score bar and %, in-tolerance %), the overall score, and the actions "Retry phrase" / "Next phrase".
+- **After a take:** a sheet with the phrase-by-phrase breakdown (phrase text, score bar and %, in-tolerance %), the overall score, the coaching card (§13.5's CoachCard: where it went wrong by syllable and time as static spot chips, more help with each miss in a row on the same phrases, "since last time", Listen slowly and the moves, all secondary), and the actions "Retry phrase" / "Next phrase". After a pass, the forward action is the path's next step ("Full speed", "Next phrase", "Phrases 2 and 3", "Whole song").
 - **No latency calibration for this route:** a Banner, "Calibrate latency first so your takes line up.", linking to Setup.
 - **Memorable thing:** the lyric line with the tally underline walking the syllables.
 
@@ -297,11 +308,12 @@ The line "Your files stay on this device." sits under the picker. Parser errors 
 - **Range over time:** a band chart (x = date, y = note) between the lowest and highest clean notes, with note names on the y axis, plus a table toggle.
 - **Personal bests:** a list, shown once Personal records unlock.
 - **Practice minutes:** this week against last week.
+- **Check-ups:** each finished voice check-up, newest first, with its date and its focus, opening its results (§13.15); a "Re-check" button once one is due; before the first one, an offer to take it.
 - Locked skills do not appear at all (SPEC §12).
 
 ### 13.11 Daily workout
 - **Before:** a 5 / 10 / 20 min segmented control (saved as `workoutMinutes`), then the plan, grouped by stage: Warm-up, From *World*, Review, Cool-down.
-  - Each item shows its title and its reason caption ("Your weakest skill: Crispness").
+  - Each item shows its title and its reason caption ("Your weakest skill: Crispness"). The levels behind the latest voice check-up's focus lead the weakness ranking (`src/runtime/workout.ts`), so the plan leans on them until a re-check shows otherwise; only open levels are ever planned.
   - Takes ×N and an estimated duration.
   - The total sits at the bottom.
   - Primary button: **Start workout**.
@@ -328,3 +340,23 @@ The line "Your files stay on this device." sits under the picker. Parser errors 
 - **Layout:** the Live layout, with the vibrato zone band on the trace (§8).
 - **Readouts:** three big readouts: rate (Hz), extent (±¢), centring (¢). Each shows the style's zone ("Pop 5–7 Hz") and an in-zone glyph.
 - **Flags:** wobble, bleat and straight appear as chips. Straight tone is neutral (`--text-mid`, `Info` glyph). Wobble and bleat use `--alert` with a glyph.
+
+### 13.15 Voice check-up
+**A check-up, not a test** (owner, 2026-10-22): about four minutes, the five tasks of `CHECKUP_TASKS` (the Range finder, then the four Foundations placement tests), sung on the Sing screen through the runner. Nothing in it can lower progress, and it grants only what the placement audition could (`src/progress/engine.ts`).
+- **One route (`checkup`), three states**, read from the running session and the log:
+  - **Intro:** "A check-up, not a test", two plain sentences, the five tasks as a numbered list, the voice-care line, and a primary **Start**. A re-check names the last check-up and links to its results.
+  - **Part way:** "Task 3 of 5" with **Continue** and a quiet "Start over". It promises only what the app keeps: a check-up left part way is picked up again when Pitch Lab opens within a day of its first task (`resumeCheckup`).
+  - **Results:** the range in note names (or its span in words), "Then and now" with its headline from the second check-up on, each skill as a word and a glyph with the engine's sentence, what to focus on, where you start with **Continue**, and what opened.
+- **Ratings** are words and glyphs in the text-safe hues ("Solid", "Getting there", "Focus here", "Not measured"), never a grade and never an alarm colour. A crack is something to focus on, never a fail. The range is measured, not graded: an octave or more is "Solid".
+- **Focus** offers its level as a button only when the level is openable; otherwise a `<Locked>` line.
+- **Check-up results (`checkup-results`):** a finished check-up set against the one before it, with the held-note and slide pitch lines from the saved takes (the report's replay). The pair stacks on a phone, older first, and sits in two columns from 720 px. A take that was not saved gets a plain sentence.
+- **Memorable thing:** "Then and now", one plain line per skill ("Slides: 5 breaks then, 1 break now").
+
+### 13.16 Song progress
+One song's practice (route `song-progress`), read from the log (`src/song/practice.ts`). Nothing here is amber: the screen informs, and the player is one tap back.
+- **The next step** of the learning path, and how many phrases are learned.
+- **Phrase by phrase:** its words, best and latest full-speed score, how many takes, and learned (a glyph and the word).
+- **The whole song:** its best and latest score, and its takes.
+- **Then and now:** the first take of the song against the best whole-song take, with their scores and their pitch lines drawn over the song's notes (inline SVG, with "Show as table").
+- **Send to Claude** for the song: up to eight recent takes, with their audio only when Include audio is ticked.
+- A song the singer has not earned is refused by the route guard, and the screen checks again (fail closed).
