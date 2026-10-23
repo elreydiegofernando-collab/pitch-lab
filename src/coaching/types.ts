@@ -141,3 +141,31 @@ export interface CoachingFile {
     audioWavBase64: string | null;
   }>;
 }
+
+/**
+ * The song coaching file ("Send to Claude" from a song): the song as charted (notes, lyrics, phrases) and its recent
+ * takes, each with the phrases it covered, its key and speed, and its pitch line. The song is the owner's own chart
+ * (bundled public domain, or his own import): the file stays his, saved through the share sheet, never committed.
+ */
+export interface SongCoachingFile {
+  app: 'pitch-lab';
+  kind: 'song-coaching';
+  version: typeof COACHING_FILE_VERSION;
+  exportedAt: string;
+  appVersion: string;
+  song: import('../song/types').Song;
+  profile: { name: string; voiceType: string; range: VocalRange | null };
+  settings: { notation: Notation };
+  device: { route: string; latencyMs: number | null; userAgent: string };
+  /** Newest first: up to 8 takes of this song. */
+  takes: Array<{
+    attempt: AttemptRecord;
+    /** [from, to) into pitchedView(song).phrases; null for the whole song. */
+    phrase: { from: number; to: number } | null;
+    /** Half steps from the chart's key, and the playback speed (0.5, 0.75 or 1). */
+    shift: number;
+    speed: number;
+    track: TakeRecord['track'] | null;
+    audioWavBase64: string | null;
+  }>;
+}

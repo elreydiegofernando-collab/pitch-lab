@@ -37,7 +37,13 @@ export type RunTarget =
   /** The world's NEXT placement-audition test (nextAuditionExercise), sung in order, stopping at the first miss. */
   | { kind: 'audition'; worldId: WorldId }
   /** One item of the active daily workout (runtime/workout.ts activeWorkout). */
-  | { kind: 'workout'; itemIndex: number };
+  | { kind: 'workout'; itemIndex: number }
+  /**
+   * One task of the active voice check-up (runtime/checkup.ts activeCheckup; src/checkup/types.ts CHECKUP_TASKS): the
+   * Range finder is logged as a practice take of its level, the placement tests as audition takes (the engine grants
+   * their levels in order, as for the audition), every one tagged with the check-up's id.
+   */
+  | { kind: 'checkup'; taskIndex: number };
 
 // ---------------------------------------------------------------- the runner
 
@@ -78,6 +84,8 @@ export interface PreparedRun {
   audition: { index: number; count: number; unlocksFirst: string; unlocksLast: string } | null;
   /** Workout only: the item being sung, which take of it this is (1-based), and where it sits in the workout (itemIndex 0-based). */
   workout: { item: WorkoutItem; itemIndex: number; itemCount: number; take: number } | null;
+  /** Check-up only: the task being sung (0-based), how many there are, and the check-up's id. */
+  checkup?: { taskIndex: number; taskCount: number; checkupId: string } | null;
 }
 
 export type UnlockEvent =
@@ -191,6 +199,8 @@ export interface AfterTakeAction {
     | 'next-take' //        the same workout item again (it asks for more takes)
     | 'next-item' //        the next workout item
     | 'finish-workout' //   the workout summary
+    | 'next-task' //        the check-up's next task
+    | 'checkup-results' //  the check-up's results (after its last task)
     | 'level' //            back to the level screen
     | 'map';
   /** Button label: "Retry", "Next level", "Next test", "See your placement", "Next take", "Next item", "Finish workout", "Back to level", "World map". */
@@ -215,4 +225,8 @@ export interface GuardContext {
   hasOutcome: boolean;
   /** The active workout's item count; null when no workout is running. */
   workoutItems: number | null;
+  /** The active check-up's task count; null when none is running. Optional: absent reads as null. */
+  checkupTasks?: number | null;
+  /** A finished check-up of the active profile with this id exists. Optional: absent reads as none. */
+  hasCheckup?: (checkupId: string) => boolean;
 }

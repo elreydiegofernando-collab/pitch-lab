@@ -4,11 +4,12 @@
  */
 import { describe, expect, it } from 'vitest';
 import { COACHING_TIPS, GENERAL_TIP_IDS } from '../../exercises/tips';
+import { SONG_TIP_IDS } from '../song-tips';
 import { getLevel } from '../../exercises';
 import { LADDER_PARTS, LADDERS, ladderFor } from './index';
 
 /** Every id a take's tip can have: the rule table's, and the general tips' (no voice, stopped, unsung, polish, ...). */
-const TIP_IDS = [...COACHING_TIPS.map((t) => t.id), ...GENERAL_TIP_IDS];
+const TIP_IDS = [...COACHING_TIPS.map((t) => t.id), ...GENERAL_TIP_IDS, ...SONG_TIP_IDS];
 const prefixOf = (id: string): string => id.split('.')[0];
 
 /** Units, symbols and jargon a singer relearning music should never have to decode. */

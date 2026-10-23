@@ -33,6 +33,9 @@ export type RouteName =
   | 'sing'
   | 'report'
   | 'audition'
+  // The voice check-up (open from the start: it measures, and grants only what the placement audition may)
+  | 'checkup'
+  | 'checkup-results'
   // Earned tools and features
   | 'vibrato-meter'
   | 'dashboard'
@@ -40,10 +43,11 @@ export type RouteName =
   // Song Stage
   | 'songs'
   | 'song-import'
-  | 'song';
+  | 'song'
+  | 'song-progress';
 
 /** What a take is sung for (src/runtime/types.ts RunTarget, flattened to strings for the route). */
-export type SingTargetKind = 'level' | 'record' | 'audition' | 'workout';
+export type SingTargetKind = 'level' | 'record' | 'audition' | 'workout' | 'checkup';
 
 /** The params each route reads. Values are strings; the router never parses them. */
 export interface RouteParams {
@@ -61,11 +65,16 @@ export interface RouteParams {
   /**
    * level/record: levelId. audition: worldId (the runner sings that world's NEXT test).
    * workout: itemIndex (into the active workout's items, as a decimal string).
+   * checkup: itemIndex (the task of the active check-up, as a decimal string).
    */
   sing: { target: SingTargetKind; levelId?: string; worldId?: string; itemIndex?: string };
   /** Shows the runner's last outcome (src/runtime/runner.ts lastOutcome). */
   report: Record<string, never>;
   audition: { worldId: string };
+  /** The voice check-up: its intro, the run in progress, then its results. */
+  checkup: Record<string, never>;
+  /** A finished check-up (src/checkup), compared with the one before it. */
+  'checkup-results': { checkupId: string };
   'vibrato-meter': Record<string, never>;
   dashboard: Record<string, never>;
   workout: Record<string, never>;
@@ -73,6 +82,8 @@ export interface RouteParams {
   'song-import': Record<string, never>;
   /** songId: Song.id (bundled slug or imported content id). */
   song: { songId: string };
+  /** One song's practice progress: phrase by phrase, then and now. */
+  'song-progress': { songId: string };
 }
 
 /** A route: its name and that route's params. `route.value.name === 'level'` narrows `params` to `{ levelId }`. */
@@ -121,6 +132,7 @@ const BARE_LINKS: ReadonlySet<RouteName> = new Set<RouteName>([
   'workout',
   'songs',
   'song-import',
+  'checkup',
 ]);
 
 function decodePart(part: string | undefined): string | null {
@@ -151,6 +163,10 @@ export function parseDeepLink(hash: string): Route | null {
       return arg === null ? null : routeOf('audition', { worldId: arg });
     case 'song':
       return arg === null ? null : routeOf('song', { songId: arg });
+    case 'song-progress':
+      return arg === null ? null : routeOf('song-progress', { songId: arg });
+    case 'checkup-results':
+      return arg === null ? null : routeOf('checkup-results', { checkupId: arg });
     default:
       if (arg !== null || !BARE_LINKS.has(name as RouteName)) return null;
       return { name: name as RouteName, params: {} } as Route;

@@ -93,6 +93,13 @@ function singVerdict(route: Extract<Route, { name: 'sing' }>, ctx: GuardContext)
       if (n !== null && target.itemIndex >= 0 && target.itemIndex < n) return OK;
       return refuse(routeOf('workout'), 'Start a workout first.');
     }
+    case 'checkup': {
+      // The check-up is open from the start (it measures; its placement tests grant only what the audition may), but
+      // a task is sung only inside a running check-up, by its index.
+      const n = ctx.checkupTasks ?? null;
+      if (n !== null && target.taskIndex >= 0 && target.taskIndex < n) return OK;
+      return refuse(routeOf('checkup'), 'Start the check-up first.');
+    }
   }
 }
 
@@ -134,7 +141,12 @@ export function guardRoute(route: Route, ctx: GuardContext): GuardVerdict {
     case 'song-import':
       return featureVerdict('song.import', ctx);
     case 'song':
+    case 'song-progress':
       return songVerdict(route.params.songId, ctx);
+    case 'checkup':
+      return OK;
+    case 'checkup-results':
+      return ctx.hasCheckup?.(route.params.checkupId) ? OK : refuse(routeOf('checkup'), 'That check-up is not on this device.');
     default:
       // Every always-open route returned above; anything else is unknown and stays shut.
       return refuse(routeOf('home'), 'Not available.');

@@ -25,6 +25,9 @@ import { NotSavingBanner, useBreakReminder } from './ui/components/GlobalNotices
 import { ToastRegion } from './ui/components/Toast';
 import { About } from './ui/screens/About';
 import { Audition } from './ui/screens/Audition';
+import { Checkup } from './ui/screens/Checkup';
+import { CheckupResults } from './ui/screens/CheckupResults';
+import { SongProgress } from './ui/screens/SongProgress';
 import { Dashboard } from './ui/screens/Dashboard';
 import { Data } from './ui/screens/Data';
 import { Diagnostics } from './ui/screens/Diagnostics';
@@ -84,6 +87,12 @@ function CurrentScreen(): JSX.Element {
       return <SongImport />;
     case 'song':
       return <SongPlayer />;
+    case 'song-progress':
+      return <SongProgress />;
+    case 'checkup':
+      return <Checkup />;
+    case 'checkup-results':
+      return <CheckupResults />;
     default: {
       const exhaustive: never = name;
       throw new Error(`Unknown route: ${String(exhaustive)}`);

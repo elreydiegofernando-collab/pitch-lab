@@ -51,6 +51,20 @@ export interface AttemptRecord extends RecordBase {
    */
   takeId: string | null;
   songId?: string | null;
+  /**
+   * The voice check-up session this take belonged to (src/checkup): every task of one check-up shares the id, so a
+   * check-up is read back from the log alone. Null or absent for any other take.
+   */
+  checkupId?: string | null;
+  /**
+   * A song take's phrases: [from, to) indices into the song's phrases as sung (pitchedView), e.g. { from: 2, to: 3 } for
+   * phrase 3 alone. Null or absent for a whole-song take and for every non-song take.
+   */
+  phrase?: { from: number; to: number } | null;
+  /** A song take's transposition in half steps from the chart's own key (0 = as written). Null or absent otherwise. */
+  songShift?: number | null;
+  /** A song take's playback speed (0.5, 0.75 or 1). Null or absent otherwise. */
+  songSpeed?: number | null;
 }
 
 export interface TakeRecord extends RecordBase {
@@ -70,7 +84,7 @@ export interface SongRecord extends RecordBase {
 /** Fields a v2 sync may transmit, per store. Anything not listed never leaves the device. */
 export const SYNCABLE: Readonly<Record<string, readonly string[]>> = {
   profiles: ['id', 'profileId', 'createdAt', 'updatedAt', 'deletedAt', 'name', 'voiceType', 'range'],
-  attempts: ['id', 'profileId', 'createdAt', 'updatedAt', 'deletedAt', 'exerciseId', 'levelId', 'kind', 'score', 'passed', 'mastery', 'metrics', 'durationSec', 'tonicMidi', 'tempoBpm', 'songId'],
+  attempts: ['id', 'profileId', 'createdAt', 'updatedAt', 'deletedAt', 'exerciseId', 'levelId', 'kind', 'score', 'passed', 'mastery', 'metrics', 'durationSec', 'tonicMidi', 'tempoBpm', 'songId', 'checkupId', 'phrase', 'songShift', 'songSpeed'],
   // takes, songs (may contain user-imported content) and binaries are local-only in v2.
 };
 

@@ -6,6 +6,7 @@ import type { CoachLadder } from '../types';
 import { LADDERS_ACCURACY } from './accuracy';
 import { LADDERS_EXPRESSION } from './expression';
 import { LADDERS_ONSET_GLIDE } from './onset-glide';
+import { LADDERS_SONG } from './song';
 import { LADDERS_VIBRATO } from './vibrato';
 
 /** Which tip-id prefixes each part covers (the first dot-separated segment of the id). */
@@ -14,6 +15,7 @@ export const LADDER_PARTS = [
   { name: 'onset-glide', prefixes: ['onset', 'glide', 'transition'], ladders: LADDERS_ONSET_GLIDE },
   { name: 'vibrato', prefixes: ['vib', 'pulse'], ladders: LADDERS_VIBRATO },
   { name: 'expression', prefixes: ['scoop', 'fall', 'slide', 'turn', 'flip', 'inflection', 'run', 'dyn'], ladders: LADDERS_EXPRESSION },
+  { name: 'song', prefixes: ['song'], ladders: LADDERS_SONG },
 ] as const;
 
 export const LADDERS: Readonly<Record<string, CoachLadder>> = Object.freeze(

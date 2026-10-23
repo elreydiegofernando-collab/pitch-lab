@@ -17,6 +17,8 @@ export function paramsForTarget(target: RunTarget): RouteParams['sing'] {
       return { target: 'audition', worldId: target.worldId };
     case 'workout':
       return { target: 'workout', itemIndex: String(target.itemIndex) };
+    case 'checkup':
+      return { target: 'checkup', itemIndex: String(target.taskIndex) };
   }
 }
 
@@ -28,10 +30,11 @@ export function targetFromParams(params: Readonly<RouteParams['sing']>): RunTarg
       return params.levelId ? { kind: params.target, levelId: params.levelId } : null;
     case 'audition':
       return params.worldId && WORLD_IDS.has(params.worldId) ? { kind: 'audition', worldId: params.worldId as WorldId } : null;
-    case 'workout': {
+    case 'workout':
+    case 'checkup': {
       const raw = params.itemIndex;
       if (raw === undefined || !/^\d{1,4}$/.test(raw)) return null;
-      return { kind: 'workout', itemIndex: Number(raw) };
+      return params.target === 'workout' ? { kind: 'workout', itemIndex: Number(raw) } : { kind: 'checkup', taskIndex: Number(raw) };
     }
     default:
       return null;
@@ -48,5 +51,7 @@ export function targetKey(target: RunTarget): string {
       return `audition:${target.worldId}`;
     case 'workout':
       return `workout:${target.itemIndex}`;
+    case 'checkup':
+      return `checkup:${target.taskIndex}`;
   }
 }
