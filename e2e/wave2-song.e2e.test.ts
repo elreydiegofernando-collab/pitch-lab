@@ -1,7 +1,7 @@
 /**
  * Song Stage through the real UI of the production build, for a singer who has earned it (a hand-built backup that passes
- * Foundations): the song player asks for a latency calibration before the first take, the calibration is done through
- * Setup (the Tap method, with the taps made on the audio clock so their timing is as steady as a person's best), Listen
+ * Foundations): the song player asks for the timing check (the latency calibration) before the first take, the check is
+ * done through Setup (the Tap method, with the taps made on the audio clock so their timing is as steady as a person's best), Listen
  * plays the melody, a phrase is sung into the fake microphone, the take sheet reads the take phrase by phrase, and the
  * attempt and the recording land in Data & backup. Leaving the player turns the mic off.
  *
@@ -92,14 +92,14 @@ describe('Wave 2 - Song Stage, through the real UI', () => {
     await browser?.close();
   });
 
-  it('asks for a latency calibration before the first take, and Calibrate leads to Setup', async () => {
+  it('asks for the timing check before the first take, and Calibrate leads to Setup', async () => {
     await page.getByTestId('dest-songs').click();
     await page.getByTestId('song-row').first().waitFor({ timeout: 15_000 });
     state.songTitle = (((await page.getByTestId('song-row').first().locator('.pl-song-row__title').textContent()) ?? '').trim());
     await page.getByTestId('song-row').first().click();
     await page.getByTestId('song-player').waitFor({ state: 'visible', timeout: 15_000 });
 
-    expect(await page.getByTestId('song-player').textContent()).toContain('Calibrate latency first so your takes line up.');
+    expect(await page.getByTestId('song-player').textContent()).toContain('Run the timing check in Setup first, so your takes line up.');
     const primary = page.getByTestId('song-primary');
     expect((await primary.textContent())?.trim()).toBe('Calibrate');
     await primary.click();
@@ -111,13 +111,16 @@ describe('Wave 2 - Song Stage, through the real UI', () => {
     // Step 1: say how you listen. Steps 2 and 3 (microphone, audio check) are skipped over.
     await page.getByRole('radio', { name: 'Wired' }).click();
     for (let step = 1; step < 4; step++) await page.getByRole('button', { name: 'Next' }).click();
-    expect(await page.getByText('Step 4 of 5: Latency calibration').count()).toBe(1);
+    expect(await page.getByText('Step 4 of 5: Timing check').count()).toBe(1);
 
     await page.getByRole('radio', { name: 'Tap' }).click();
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     const verdict = page.getByText('Good', { exact: true });
     await verdict.waitFor({ timeout: 30_000 });
-    expect(await page.getByText(/\d+ ms/).first().textContent(), 'a plausible round trip').toMatch(/^\s*\d{2,3} ms/);
+    // The delay is said in words, never in milliseconds: a plausible round trip is a tenth of a second up to about a second.
+    expect(((await page.getByTestId('timing-delay').textContent()) ?? '').trim(), 'a plausible round trip, in words').toMatch(
+      /^(A split second|About (a tenth of a second|a quarter of a second|a third of a second|half a second|three quarters of a second|a second))$/,
+    );
     await page.getByRole('button', { name: 'Save' }).click();
     state.calibrated = true;
 
@@ -159,10 +162,10 @@ describe('Wave 2 - Song Stage, through the real UI', () => {
     await page.getByRole('button', { name: 'Back' }).first().click();
     await page.waitForFunction(() => window.__pitchlab?.info().state === 'idle', undefined, { timeout: 10_000 });
 
-    // The attempt (10 passed levels + this take) and the recording, titled by the song.
+    // The attempt (every Foundations level passed + this take) and the recording, titled by the song.
     await openFromHome(page, 'util-data');
     await page.getByTestId('storage-card').waitFor();
-    expect(await page.getByTestId('storage-card').textContent()).toMatch(/Attempts11Recordings1/);
+    expect(await page.getByTestId('storage-card').textContent()).toMatch(new RegExp(`Attempts${FOUNDATIONS_RUN.length + 1}Recordings1`));
     const row = page.getByTestId('recording-row');
     await row.waitFor();
     expect(await row.textContent()).toContain(state.songTitle);

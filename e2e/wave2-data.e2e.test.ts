@@ -2,6 +2,7 @@
  * Data & backup and Song Stage, driven with a hand-built backup (e2e/backup-fixture.ts) the way a singer restoring a
  * backup from another device would: a profile whose attempt log passes Foundations through its Boss Recital opens Song
  * Stage and its songs, with the songs that need a later world shown locked; a backup that stops one level short does not;
+ * a backup made before Foundations became lessons keeps what still counts and puts the singer on the first new lesson;
  * and a file that is not a backup changes nothing and says so in plain words.
  */
 import fs from 'node:fs';
@@ -10,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Browser, BrowserContext, Page } from 'playwright-core';
 import { PREVIEW_URL, ROOT_DIR, TONE_WAV_PATH } from './config';
 import { launchWithFakeMic } from './chrome';
-import { FOUNDATIONS_RUN, craftBackup } from './backup-fixture';
+import { FOUNDATIONS_RUN, FOUNDATIONS_RUN_BEFORE_LESSONS, craftBackup } from './backup-fixture';
 import { dismissFirstRun, goHome, openDeepLink, openFromHome, recordScreens, screensSeen, waitForToast } from './ui';
 
 /** A locked song's line. Screen readers hear "Locked." first (the Locked component), so it is in the text too. */
@@ -76,11 +77,11 @@ describe('Wave 2 - restoring a backup, and what it opens', () => {
       expect(await page.getByTestId('continue-card').textContent()).toContain('Range finder');
 
       const crafted = craftBackup({ profileId: 'e2e-crafted-tenor', name: 'Crafted Tenor', voiceType: 'tenor', passed: FOUNDATIONS_RUN });
-      expect(crafted.attempts).toBe(10);
+      expect(crafted.attempts).toBe(FOUNDATIONS_RUN.length);
       const report = await importFile('foundations-complete.json', crafted.json);
       expect(report).toContain('Backup imported.');
       expect(report).toContain('Added 1 profile.');
-      expect(report).toContain('Added 10 attempts to the practice history.');
+      expect(report).toContain(`Added ${FOUNDATIONS_RUN.length} attempts to the practice history.`);
       expect(report).toContain('Replaced the empty starter profile.');
 
       // After: the next number on the set list is the first level of the world the Boss Recital opened.
@@ -173,12 +174,13 @@ describe('Wave 2 - restoring a backup, and what it opens', () => {
   it('a log that stops one level short of the Boss Recital leaves Song Stage locked', async () => {
     await freshDevice();
     try {
-      const crafted = craftBackup({ profileId: 'e2e-crafted-nearly', name: 'Nearly There', passed: FOUNDATIONS_RUN.slice(0, 9) });
+      const crafted = craftBackup({ profileId: 'e2e-crafted-nearly', name: 'Nearly There', passed: FOUNDATIONS_RUN.slice(0, -1) });
       expect(await importFile('foundations-short.json', crafted.json)).toContain('Backup imported.');
 
       await goHome(page);
       const card = page.getByTestId('continue-card');
       expect(await card.getAttribute('data-world')).toBe('foundations');
+      expect(await card.textContent()).toContain('Lesson 13');
       expect(await card.textContent()).toContain('Boss Recital');
       expect(await page.getByTestId('dest-dashboard').getAttribute('data-locked')).toBeNull(); // a first level passed opens it
       expect(await page.getByTestId('dest-songs').getAttribute('data-locked')).toBe('true');
@@ -193,6 +195,87 @@ describe('Wave 2 - restoring a backup, and what it opens', () => {
       await context.close();
     }
   }, 60_000);
+
+  it('a backup made before Foundations became lessons keeps what still counts, and puts the singer on Hold it steady', async () => {
+    // The owner's own situation (2026-10-23): Range finder, Pitch match, Sustain I and Sustain II passed under the old ids.
+    // The first three are the same lessons now, so they stand; Sustain II is gone (Hold it steady is a new lesson with a new
+    // id: it judges a wobble, which Sustain II never did), so the singer is on Hold it steady, the fourth lesson.
+    await freshDevice();
+    try {
+      const crafted = craftBackup({ profileId: 'e2e-crafted-owner', name: 'Old Backup', voiceType: 'tenor', passed: FOUNDATIONS_RUN_BEFORE_LESSONS.slice(0, 4) });
+      const report = await importFile('before-lessons.json', crafted.json);
+      expect(report).toContain('Backup imported.');
+      expect(report).toContain('Added 4 attempts to the practice history.');
+
+      await goHome(page);
+      const card = page.getByTestId('continue-card');
+      expect(await card.getAttribute('data-lesson'), 'the lesson the singer is on').toBe('foundations.13');
+      const cardText = (await card.textContent()) ?? '';
+      expect(cardText).toMatch(/Next up\s*\S\s*Lesson 4/i);
+      expect(cardText).toContain('Hold it steady');
+      expect(await page.getByTestId('continue-practice').textContent(), 'a lesson not started says so').toBe('New lesson');
+      expect(await page.getByTestId('dest-dashboard').getAttribute('data-locked'), 'a level passed opens the dashboard').toBeNull();
+      expect(await page.getByTestId('dest-songs').getAttribute('data-locked'), 'Song Stage is still earned').toBe('true');
+
+      // The map: what counts is passed, the new lesson is the one in progress, and the old Sustain II has no place.
+      await page.getByTestId('dest-map').click();
+      await page.getByTestId('map-screen').waitFor();
+      for (const id of ['foundations.01', 'foundations.02', 'foundations.03']) expect(await page.getByTestId(`node-${id}`).getAttribute('data-state'), id).toBe('passed');
+      expect(await page.getByTestId('node-foundations.13').getAttribute('data-state')).toBe('current');
+      expect(await page.getByTestId('node-foundations.10').getAttribute('data-state')).toBe('locked');
+      expect(await page.getByTestId('node-foundations.10').textContent()).toContain('Pass Hold it steady to unlock.');
+      expect(await page.locator('[data-testid="node-foundations.04"]').count(), 'Sustain II is no longer a lesson').toBe(0);
+      expect(await page.locator('[data-testid^="node-foundations."]').count()).toBe(13);
+      expect(await page.getByTestId('world-foundations').textContent()).toContain('3 of 13');
+
+      // Hold it steady opens as a first lesson does: Learn open by itself, nothing practised, nothing taken.
+      await page.getByTestId('node-foundations.13').locator('button').click();
+      await page.getByTestId('level-screen').waitFor();
+      expect(await page.getByTestId('level-label').textContent()).toContain('Lesson 4');
+      expect(await page.getByTestId('lesson-title').textContent()).toBe('Hold it steady');
+      expect(await page.getByTestId('part-learn').getAttribute('data-state')).toBe('now');
+      await page.getByTestId('learn-page').waitFor();
+      expect(await page.getByTestId('check-status').textContent()).toContain('Not taken yet');
+
+      // A lesson passed in the old backup is passed, but its Learn and Practise were never done here: they say so.
+      await goHome(page);
+      await page.getByTestId('dest-map').click();
+      await page.getByTestId('node-foundations.03').locator('button').click();
+      await page.getByTestId('level-screen').waitFor();
+      expect(await page.getByTestId('lesson-title').textContent()).toBe('Hold it');
+      expect(await page.getByTestId('part-check').getAttribute('data-state')).toBe('done');
+      expect(await page.getByTestId('part-learn').getAttribute('data-state')).toBe('next');
+      expect(await page.getByTestId('part-practise').getAttribute('data-state')).toBe('next');
+      expect(await page.getByTestId('check-status').textContent()).toContain('Passed');
+      expect(faults).toEqual([]);
+    } finally {
+      await context.close();
+    }
+  }, 90_000);
+
+  it('a whole backup from before the lessons does not skip the new ones: Song Stage waits until they are passed', async () => {
+    await freshDevice();
+    try {
+      const crafted = craftBackup({ profileId: 'e2e-crafted-oldfull', name: 'Old Full Run', voiceType: 'tenor', passed: FOUNDATIONS_RUN_BEFORE_LESSONS });
+      const report = await importFile('before-lessons-full.json', crafted.json);
+      expect(report).toContain('Backup imported.');
+      expect(report).toContain(`Added ${FOUNDATIONS_RUN_BEFORE_LESSONS.length} attempts to the practice history.`);
+
+      await goHome(page);
+      const card = page.getByTestId('continue-card');
+      expect(await card.getAttribute('data-lesson'), 'the first lesson with no pass yet').toBe('foundations.13');
+      expect(await page.getByTestId('dest-songs').getAttribute('data-locked'), 'the old Boss Recital pass waits behind the new lessons').toBe('true');
+      expect(await page.getByTestId('dest-vibrato-meter').getAttribute('data-locked')).toBe('true');
+
+      await openDeepLink(page, '#/songs');
+      await page.getByTestId('home-screen').waitFor({ state: 'visible', timeout: 15_000 });
+      await waitForToast(page, 'Pass the Foundations Boss Recital to open Song Stage.');
+      expect(await screensSeen(page)).not.toContain('songs-screen');
+      expect(faults).toEqual([]);
+    } finally {
+      await context.close();
+    }
+  }, 90_000);
 
   it('says so in plain words, and changes nothing, when the file is not a backup', async () => {
     await freshDevice();
@@ -253,7 +336,7 @@ describe('Wave 2 - restoring a backup, and what it opens', () => {
       await page.getByTestId('import-file').setInputFiles({ name: 'foundations-complete.json', mimeType: 'application/json', buffer: Buffer.from(crafted.json, 'utf8') });
       const report = (await page.getByTestId('import-report').textContent()) ?? '';
       expect(report).toContain('Backup imported.');
-      expect(report).toContain('Added 10 attempts to the practice history.');
+      expect(report).toContain(`Added ${FOUNDATIONS_RUN.length} attempts to the practice history.`);
       await goHome(page);
       expect(await page.getByTestId('continue-card').getAttribute('data-world')).toBe('vibrato');
       expect(await page.getByTestId('profile-chip').getAttribute('aria-label')).toContain('Round Tripper');
@@ -262,7 +345,7 @@ describe('Wave 2 - restoring a backup, and what it opens', () => {
       // The same file again adds nothing and says so.
       const again = await importFile('foundations-complete.json', crafted.json);
       expect(again).toContain('Nothing new in that backup.');
-      expect(again).toContain('Skipped 10 attempts that were already here.');
+      expect(again).toContain(`Skipped ${FOUNDATIONS_RUN.length} attempts that were already here.`);
       expect(faults).toEqual([]);
     } finally {
       await context.close();
@@ -281,7 +364,7 @@ describe('Wave 2 - restoring a backup, and what it opens', () => {
       expect(report).toContain('Could not read 1 attempt, so it was left out.');
 
       await goHome(page);
-      expect(await page.getByTestId('continue-card').textContent(), 'the two readable attempts count').toContain('Sustain I');
+      expect(await page.getByTestId('continue-card').textContent(), 'the two readable attempts count').toContain('Hold it');
     } finally {
       await context.close();
     }

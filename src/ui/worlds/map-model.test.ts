@@ -6,6 +6,12 @@ import { attempt, attemptsThrough, passAudition, snapshotOf } from './test-suppo
 
 const model = (levelId: string | null, extra: Parameters<typeof snapshotOf>[1] = []) => buildMapModel(snapshotOf(levelId, extra), WORLDS);
 const world = (m: ReturnType<typeof model>, id: string) => m.find((w) => w.world.id === id)!;
+/** How many levels Foundations has, and its audition's first test and last covered level (Sirens). */
+const FOUNDATIONS = WORLDS.find((w) => w.id === 'foundations')!;
+const N = FOUNDATIONS.levels.length;
+const FIRST_TEST = FOUNDATIONS.audition!.exerciseIds[0];
+const SIREN_END = FOUNDATIONS.audition!.unlockThrough[FOUNDATIONS.audition!.unlockThrough.length - 1];
+const fill = <T,>(n: number, v: T): T[] => Array<T>(n).fill(v);
 
 describe('buildMapModel: a fresh profile', () => {
   const m = model(null);
@@ -44,22 +50,22 @@ describe('buildMapModel: a fresh profile', () => {
   });
 
   it('makes the first level current and every other level a locked node with a requirement line', () => {
-    expect(foundations.nodes).toHaveLength(10);
-    expect(foundations.nodes.map((n) => n.state)).toEqual(['current', ...Array(9).fill('locked')]);
+    expect(foundations.nodes).toHaveLength(13);
+    expect(foundations.nodes.map((n) => n.state)).toEqual(['current', ...fill(N - 1, 'locked')]);
     expect(foundations.current?.id).toBe('foundations.01');
     const snap = snapshotOf(null);
     for (const node of foundations.nodes.slice(1)) {
       expect(node.hint, node.level.id).toBe(levelRequirementHint(node.level.id, snap, WORLDS));
     }
     expect(foundations.nodes[1].hint).toBe('Pass Range finder to unlock.');
-    expect(foundations.nodes[2].hint).toBe('Pass Pitch match to unlock.');
+    expect(foundations.nodes[2].hint).toBe('Pass Match one note to unlock.');
     expect(foundations.nodes[0].hint).toBeNull();
   });
 
   it('numbers the nodes from 1 and flags the Boss Recital as the last one', () => {
-    expect(foundations.nodes.map((n) => n.number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(foundations.nodes.map((n) => n.number)).toEqual(Array.from({ length: N }, (_, i) => i + 1));
     expect(foundations.nodes.filter((n) => n.boss).map((n) => n.level.id)).toEqual(['foundations.boss']);
-    expect(foundations.nodes[9].boss).toBe(true);
+    expect(foundations.nodes[N - 1].boss).toBe(true);
   });
 
   it('has nothing to light yet: the cable starts at the first node, which is the one the singer is on', () => {
@@ -72,7 +78,7 @@ describe('buildMapModel: a fresh profile', () => {
   });
 
   it('counts passed levels', () => {
-    expect([foundations.passed, foundations.total]).toEqual([0, 10]);
+    expect([foundations.passed, foundations.total]).toEqual([0, N]);
     expect([world(m, 'vibrato').passed, world(m, 'vibrato').total]).toEqual([0, 9]);
   });
 });
@@ -82,15 +88,15 @@ describe('buildMapModel: partway through Foundations', () => {
   const nodes = world(m, 'foundations').nodes;
 
   it('marks passed, current and locked nodes in order, and only passed and current ones as openable', () => {
-    expect(nodes.map((n) => n.state)).toEqual(['passed', 'passed', 'passed', 'current', ...Array(6).fill('locked')]);
-    expect(nodes.map((n) => n.openable)).toEqual([true, true, true, true, ...Array(6).fill(false)]);
+    expect(nodes.map((n) => n.state)).toEqual(['passed', 'passed', 'passed', 'current', ...fill(N - 4, 'locked')]);
+    expect(nodes.map((n) => n.openable)).toEqual([true, true, true, true, ...fill(N - 4, false)]);
     expect(world(m, 'foundations').passed).toBe(3);
-    expect(world(m, 'foundations').current?.id).toBe('foundations.04');
+    expect(world(m, 'foundations').current?.id).toBe('foundations.13'); // Hold it steady, the fourth lesson
   });
 
   it('lights the cable from the first node through the current one', () => {
-    expect(nodes.map((n) => n.litAbove)).toEqual([false, true, true, true, false, false, false, false, false, false]);
-    expect(nodes.map((n) => n.litBelow)).toEqual([true, true, true, false, false, false, false, false, false, false]);
+    expect(nodes.map((n) => n.litAbove)).toEqual([false, true, true, true, ...fill(N - 4, false)]);
+    expect(nodes.map((n) => n.litBelow)).toEqual([true, true, true, ...fill(N - 3, false)]);
   });
 
   it('carries the best score and mastery of a passed node, and null for one never scored', () => {
@@ -101,7 +107,7 @@ describe('buildMapModel: partway through Foundations', () => {
   });
 
   it('keeps the current level in progress as current after a failed attempt, with its best score', () => {
-    const failed = attempt({ levelId: 'foundations.04', passed: false, score: 0.42 });
+    const failed = attempt({ levelId: 'foundations.13', passed: false, score: 0.42 });
     const again = buildMapModel(snapshotOf('foundations.03', [failed]), WORLDS);
     const current = world(again, 'foundations').nodes[3];
     expect(current.state).toBe('current');
@@ -109,29 +115,38 @@ describe('buildMapModel: partway through Foundations', () => {
     expect(current.attempts).toBe(1);
   });
 
-  it('offers the audition from the first level it can still open (the first test is still next while Sustain II is open)', () => {
-    expect(world(m, 'foundations').audition).toEqual({ kind: 'available', tests: 4, reach: 'Sustain II – Legato lines' });
+  it('offers the audition from the first level it can still open (the first test is still next while Hold it steady is open)', () => {
+    expect(world(m, 'foundations').audition).toEqual({ kind: 'available', tests: 4, reach: 'Hold it steady – Sirens' });
   });
 });
 
 describe('buildMapModel: audition rows', () => {
   it('offers the whole audition once the Range finder is sung', () => {
     const row = world(model('foundations.01'), 'foundations').audition;
-    expect(row).toEqual({ kind: 'available', tests: 4, reach: 'Pitch match – Legato lines' });
+    expect(row).toEqual({ kind: 'available', tests: 4, reach: 'Match one note – Sirens' });
   });
 
   it('hides the row when nothing is left to open', () => {
-    expect(world(model('foundations.09'), 'foundations').audition).toBeNull();
+    expect(world(model(SIREN_END), 'foundations').audition).toBeNull();
   });
 
   it('marks levels an audition passed, and keeps offering the tests that are left', () => {
-    const m = model('foundations.01', [passAudition('foundations', 1)]);
+    const m = model('foundations.01', [attempt({ kind: 'audition', exerciseId: FIRST_TEST, levelId: null, passed: true })]);
     const nodes = world(m, 'foundations').nodes;
     expect(nodes.slice(0, 4).map((n) => n.state)).toEqual(['passed', 'passed', 'passed', 'passed']);
     expect(nodes.slice(1, 4).every((n) => n.viaAudition)).toBe(true);
     expect(nodes[0].viaAudition).toBe(false);
     expect(nodes[4].state).toBe('current');
-    expect(world(m, 'foundations').audition).toEqual({ kind: 'available', tests: 3, reach: 'Sirens & glides – Legato lines' });
+    expect(world(m, 'foundations').audition).toEqual({ kind: 'available', tests: 3, reach: 'Two notes, one step apart – Sirens' });
+  });
+
+  it('keeps what a pass of the audition before the rebuild granted then, and no more: Hold it steady is still to sing', () => {
+    // The old first test covered Pitch match, Sustain I and Sustain II; Sustain II became Hold it steady, which judges wobble.
+    const m = model('foundations.01', [passAudition('foundations', 1)]);
+    const nodes = world(m, 'foundations').nodes;
+    expect(nodes.slice(0, 4).map((n) => n.state)).toEqual(['passed', 'passed', 'passed', 'current']);
+    expect(nodes[3].level.id).toBe('foundations.13');
+    expect(world(m, 'foundations').audition).toEqual({ kind: 'available', tests: 4, reach: 'Hold it steady – Sirens' });
   });
 });
 

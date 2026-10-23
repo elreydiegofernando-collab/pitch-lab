@@ -57,7 +57,7 @@ describe('clean singing', () => {
   });
 
   it('gets the "clean take" message, not a correction', () => {
-    expect(run(ex('foundations.sustain.2'), GOOD_SINGER).tip.id).toBe('general.polish');
+    expect(run(ex('foundations.steady.1'), GOOD_SINGER).tip.id).toBe('general.polish');
   });
 });
 
@@ -111,9 +111,14 @@ describe('each fault fails the levels that train against it', () => {
     expect(tip.id).toBe('dyn.flat-soft');
   });
 
-  it('scooping into notes fails crispness and the interval jumps, with the SPEC tip', () => {
-    for (const id of ['foundations.staccato.1', 'foundations.intervals.1', 'foundations.intervals.2']) {
-      const { e, tip } = run(ex(id), { ...GOOD_SINGER, scoopCents: 120, settleTauMs: 120 });
+  it('scooping into notes fails clean starts, and sliding slowly into the landing fails the jumps, with the SPEC tip', () => {
+    // Clean starts judges the scoop itself; the jump lessons judge how soon the landing note is found (the scoop is
+    // taught later), so only a scoop slow enough to keep the singer searching fails them.
+    const scooped = run(ex('foundations.clean-starts.1'), { ...GOOD_SINGER, scoopCents: 120, settleTauMs: 120 });
+    expect(scooped.e.passed).toBe(false);
+    expect(scooped.tip.id).toBe('onset.scoop-big');
+    for (const id of ['foundations.jumps.1', 'foundations.jumps.2']) {
+      const { e, tip } = run(ex(id), { ...GOOD_SINGER, scoopCents: 150, settleTauMs: 260 });
       expect(e.passed, id).toBe(false);
       expect(tip.id, id).toBe('onset.scoop-big');
     }
@@ -126,13 +131,13 @@ describe('each fault fails the levels that train against it', () => {
     }
   });
 
-  it('a steady 30-cent sharp tells the singer to sing lower, and fails studio sustains but not easy ones', () => {
+  it('a steady 30-cent sharp tells the singer to sing lower, and fails the narrower zone of Hold it steady but not Hold it', () => {
     const sharp = { ...GOOD_SINGER, biasCents: 30 };
-    const easy = run(ex('foundations.sustain.1'), sharp);
-    const studio = run(ex('foundations.legato.1'), sharp);
+    const easy = run(ex('foundations.hold.1'), sharp);
+    const narrower = run(ex('foundations.steady.1'), sharp);
     expect(easy.e.passed).toBe(true);
-    expect(studio.e.passed).toBe(false);
-    expect(studio.tip.id).toBe('acc.sharp');
+    expect(narrower.e.passed).toBe(false);
+    expect(narrower.tip.id).toBe('acc.sharp');
   });
 });
 
@@ -147,7 +152,8 @@ describe('lazy singers: a hold or a figure that was not sung does not pass (nega
   };
 
   it('coming in late, or stopping early, on every long hold fails the held-note levels; a quarter of the note is only a breath and a reaction time', () => {
-    for (const id of ['foundations.pitch-match.1', 'foundations.sustain.1', 'foundations.sustain.2', 'foundations.audition.1']) {
+    // Match one note asks for short echoes (two seconds); the long holds are in Hold it, Hold it steady and the audition.
+    for (const id of ['foundations.hold.1', 'foundations.steady.1', 'foundations.audition.5']) {
       const def = ex(id);
       const { realized, plan, take } = sung(def);
       const holds = plan.accuracy.filter((n) => n.end - n.start >= 2.5);
@@ -173,7 +179,7 @@ describe('lazy singers: a hold or a figure that was not sung does not pass (nega
   });
 
   it('a hole of half a second in the middle of a siren is a break, marked on the trace and counted; the breath between sirens is not', () => {
-    const def = ex('foundations.siren.1');
+    const def = ex('foundations.sirens.1');
     const { realized, plan, take } = sung(def);
     expect(judge(def, realized, take).a.details.cracks, 'a clean take has no break').toEqual([]);
     const g = plan.glides[0];
@@ -186,13 +192,13 @@ describe('lazy singers: a hold or a figure that was not sung does not pass (nega
     expect(o.a.metrics['glide.cracks']).toBeGreaterThanOrEqual(1);
   });
 
-  it('is fair to a slow beginner: 0.9 s late on every Pitch match note still passes, at a reduced score; 1.2 s late does not (CONFIG.accuracy.lateStartAllowanceSec)', () => {
-    const def = ex('foundations.pitch-match.1');
+  it('is fair to a slow beginner: 0.75 s late on every two-second Match one note echo still passes, at a reduced score; 1.2 s late does not (CONFIG.accuracy.lateStartAllowanceSec)', () => {
+    const def = ex('foundations.match.1');
     const { realized, plan, take } = sung(def);
     const late = (sec: number) => judge(def, realized, plan.accuracy.reduce((t, n) => unvoiced(t, n.start, n.start + sec), take)).e;
     const clean = judge(def, realized, take).e;
-    expect(late(0.9).passed).toBe(true);
-    expect(late(0.9).score).toBeLessThan(clean.score - 0.05);
+    expect(late(0.75).passed).toBe(true);
+    expect(late(0.75).score).toBeLessThan(clean.score - 0.05);
     expect(late(1.2).passed).toBe(false);
   });
 
@@ -261,12 +267,15 @@ describe('lazy singers: a hold or a figure that was not sung does not pass (nega
           }
         }
       }
-      // The hole this closes: the metrics of the part that was sung pass these on their own (sirens at 20%, a Boss at 60%).
-      expect(passedOnMetricsAlone).toEqual(expect.arrayContaining(['foundations.siren.1@0.2', 'foundations.legato.1@0.4', 'dynamics.boss-recital@0.6']));
+      // The hole this closes: the metrics of the part that was sung pass these on their own (small slides at 20%, sirens at
+      // 40%, Hold it steady at 60%, a Boss at 60%).
+      expect(passedOnMetricsAlone).toEqual(
+        expect.arrayContaining(['foundations.slides.1@0.2', 'foundations.sirens.1@0.4', 'foundations.steady.1@0.6', 'dynamics.boss-recital@0.6']),
+      );
     });
 
     it('a take stopped part way is practice: not judged, whatever its metrics say', () => {
-      const def = ex('foundations.siren.1');
+      const def = ex('foundations.sirens.1');
       const realized = realize(def, saved, 'tenor');
       const take = singTake(realized, good(def));
       const stoppedAt = 0.3 * realized.totalSec;
@@ -286,12 +295,12 @@ describe('lazy singers: a hold or a figure that was not sung does not pass (nega
     });
 
     it('a Boss Recital needs every note; a level forgives one note in ten; the Range finder measures, so it is exempt', () => {
-      expect(reachHolds(ex('foundations.boss-recital'), { reached: 19, total: 20 })).toBe(false);
-      expect(reachHolds(ex('foundations.boss-recital'), { reached: 20, total: 20 })).toBe(true);
-      expect(reachHolds(ex('foundations.legato.1'), { reached: 18, total: 20 })).toBe(true);
-      expect(reachHolds(ex('foundations.legato.1'), { reached: 17, total: 20 })).toBe(false);
-      expect(reachHolds(ex('foundations.sustain.1'), { reached: 2, total: 3 })).toBe(false);
-      expect(reachHolds(ex('foundations.range-finder.1'), { reached: 0, total: 6 })).toBe(true);
+      expect(reachHolds(ex('foundations.boss-tune'), { reached: 19, total: 20 })).toBe(false);
+      expect(reachHolds(ex('foundations.boss-tune'), { reached: 20, total: 20 })).toBe(true);
+      expect(reachHolds(ex('foundations.five-notes.1'), { reached: 18, total: 20 })).toBe(true);
+      expect(reachHolds(ex('foundations.five-notes.1'), { reached: 17, total: 20 })).toBe(false);
+      expect(reachHolds(ex('foundations.hold.1'), { reached: 2, total: 3 })).toBe(false);
+      expect(reachHolds(ex('foundations.range.1'), { reached: 0, total: 6 })).toBe(true);
       // The one-hold case: a single swell sung for half of it is not sung.
       const def = ex('dynamics.audition.3');
       const realized = realize(def, saved, 'tenor');
@@ -468,7 +477,7 @@ describe('ranges: nothing is folded for a singer who passed the Range finder', (
 });
 
 describe('the Range finder', () => {
-  const def = ex('foundations.range-finder.1');
+  const def = ex('foundations.range.1');
 
   /** Holds `low` and then `high` for three seconds each, like a singer exploring less (or more) than the guides. */
   function sweep(low: number, high: number) {
@@ -501,7 +510,7 @@ describe('the Range finder', () => {
 
 describe('what the take report gets', () => {
   it('ignores the breaths between siren phrases but marks a break inside a glide', () => {
-    const def = ex('foundations.siren.1');
+    const def = ex('foundations.sirens.1');
     expect(run(def, GOOD_SINGER).a.details.cracks).toEqual([]);
     const realized = realize(def, null, 'tenor');
     const glide = realized.notes.find((n) => n.toMidi !== undefined && n.toMidi - n.midi === 12)!;
@@ -526,9 +535,9 @@ describe('what the take report gets', () => {
 
   it('measures against the level\'s tolerance, never a user setting', () => {
     const sharp = { ...GOOD_SINGER, biasCents: 30 };
-    const easy = run(ex('foundations.sustain.1'), sharp).a.details.accuracy[0].result.inTolerancePct;
-    const studio = run(ex('foundations.legato.1'), sharp).a.details.accuracy[0].result.inTolerancePct;
-    expect(CONFIG.tolerance.easy).toBeGreaterThan(CONFIG.tolerance.studio);
-    expect(easy).toBeGreaterThan(studio);
+    const easy = run(ex('foundations.hold.1'), sharp).a.details.accuracy[0].result.inTolerancePct;
+    const narrower = run(ex('foundations.steady.1'), sharp).a.details.accuracy[0].result.inTolerancePct;
+    expect(CONFIG.tolerance.easy).toBeGreaterThan(CONFIG.tolerance.default);
+    expect(easy).toBeGreaterThan(narrower);
   });
 });

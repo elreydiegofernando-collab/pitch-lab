@@ -40,7 +40,7 @@ const LADDER = {
 function coaching(depth: 1 | 2 | 3 | 4, over: Partial<Coaching> = {}): Coaching {
   const misses = depth === 1 ? 1 : depth === 2 ? 2 : depth === 3 ? 3 : 5;
   const moves: CoachMove[] = [];
-  if (depth === 4) moves.push({ kind: 'listen-slow' }, { kind: 'practise-level', levelId: 'foundations.02', title: 'Pitch match' });
+  if (depth === 4) moves.push({ kind: 'listen-slow' }, { kind: 'practise-level', levelId: 'foundations.02', title: 'Match one note' });
   if (depth >= 3) moves.push({ kind: 'send-to-claude' });
   return {
     depth,
@@ -109,9 +109,33 @@ describe('CoachCard: the depths', () => {
     listenButton.click();
     expect(listen).toHaveBeenCalledTimes(1);
     const practise = q<HTMLButtonElement>('[data-testid="coach-practise"]')!;
-    expect(practise.textContent).toBe('Practise Pitch match');
+    expect(practise.textContent).toBe('Practise Match one note');
     practise.click();
-    expect(onMove).toHaveBeenCalledWith({ kind: 'practise-level', levelId: 'foundations.02', title: 'Pitch match' });
+    expect(onMove).toHaveBeenCalledWith({ kind: 'practise-level', levelId: 'foundations.02', title: 'Match one note' });
+  });
+
+  it('makes each music word in its prose tappable where it first appears, once per card (review R7)', async () => {
+    await show({
+      coaching: coaching(3, {
+        problem: { tipId: 'acc.sharp', metric: 'accuracy.absBiasCents', what: 'On average you sang sharp by about a half step.', spots: [] },
+        tip: 'Aim a little lower: sharp means too high.',
+        why: 'A note sung sharp sits about a half step too high when the jaw is tight.',
+      }),
+    });
+    const terms = all('[data-testid="coach-card"] button[data-term]');
+    expect(terms.map((t) => [t.dataset.term, t.textContent])).toEqual([
+      ['sharp', 'sharp'],
+      ['half-step', 'half step'],
+      ['note', 'note'], // first met in the why
+    ]);
+    // Inside the "what": the first time each word appears; the tip and the why repeat them as plain text.
+    expect(q('[data-testid="coach-what"] button[data-term="sharp"]')).not.toBeNull();
+    expect(q('[data-testid="tip"] button[data-term]')).toBeNull();
+    expect(q('[data-testid="coach-why"] button[data-term="sharp"]')).toBeNull();
+    await act(() => {
+      terms[0].click();
+    });
+    expect(document.querySelector('[role="dialog"]')?.getAttribute('aria-label')).toBe('Sharp');
   });
 
   it('reads "Listen again" without a slow demo, "Stop" while it plays, and hides the listen with no demo to play', async () => {

@@ -26,6 +26,7 @@ import { encodeTrack } from '../../storage/track-codec';
 import { attemptAt, takeRecord } from '../progress/test-fixtures';
 import { byTestId, comparisonOf, flush, mount, profileRecord, snapshotOf, summaryOf, textOf, waitUntil, type Mounted } from '../checkup/test-support';
 import { NOT_SAVED, NOT_SUNG } from '../checkup/saved-take';
+import { COMPARED_TASKS } from '../checkup/TakeCompare';
 import { formatDate } from '../progress/format';
 import { CheckupResults } from './CheckupResults';
 
@@ -84,7 +85,7 @@ beforeEach(() => {
   lines.clear();
   activeCheckup.value = null;
   activeProfile.value = { ...profileRecord('Daniel'), range: RANGE };
-  snapshot.value = snapshotOf('foundations.04');
+  snapshot.value = snapshotOf('foundations.09');
   vi.mocked(checkupsOf).mockReset();
   vi.mocked(checkupsOf).mockReturnValue([older, newer]);
   vi.mocked(compareCheckups).mockClear();
@@ -138,7 +139,7 @@ describe('CheckupResults: a check-up and the one before it', () => {
   it('offers to practise what to focus on, when it is open', async () => {
     const c = await show();
     byTestId<HTMLButtonElement>(c, 'checkup-practise-slides')!.click();
-    expect(route.value).toEqual(routeOf('level', { levelId: 'foundations.05' }));
+    expect(route.value).toEqual(routeOf('level', { levelId: 'foundations.12' }));
   });
 
   it('goes back with Done', async () => {
@@ -158,7 +159,9 @@ describe('CheckupResults: the pitch lines, then and now', () => {
     const takes = byTestId(c, 'checkup-takes')!;
     expect(textOf(takes.querySelector('h2'))).toBe('Your pitch lines');
     expect(textOf(takes)).toContain('The line is your voice and the bars are the notes you were asked to sing. Your older check-up comes first, then this one.');
-    expect([...takes.querySelectorAll('.ck-take__title')].map((el) => textOf(el))).toEqual([CHECKUP_TASKS[1].title, CHECKUP_TASKS[2].title]);
+    // The held notes and the slide, wherever the battery sings them.
+    expect(COMPARED_TASKS.map((i) => CHECKUP_TASKS[i].skills[0].skill)).toEqual(['pitch', 'slides']);
+    expect([...takes.querySelectorAll('.ck-take__title')].map((el) => textOf(el))).toEqual(COMPARED_TASKS.map((i) => CHECKUP_TASKS[i].title));
     expect([...takes.querySelectorAll('.ck-pair__label')].map((el) => textOf(el))).toEqual([
       `Then · ${formatDate(older.finishedAt)}`,
       `Now · ${formatDate(newer.finishedAt)}`,
@@ -195,12 +198,13 @@ describe('CheckupResults: the pitch lines, then and now', () => {
     await waitUntil(() => replays(c) === 4);
     const asked = get.mock.calls.map((call) => call[0]).sort();
     expect(asked).toEqual(
-      [older, newer].flatMap((s) => [1, 2].map((i) => `${s.tasks[i].attemptId}-take`)).sort(),
+      [older, newer].flatMap((s) => COMPARED_TASKS.map((i) => `${s.tasks[i].attemptId}-take`)).sort(),
     );
   });
 
   it('says in a sentence when a take was not saved or a task was not sung, and draws the rest', async () => {
-    attemptLog.value = [...attemptsOf(older, [2]), ...attemptsOf({ ...newer, tasks: newer.tasks.map((t, i) => (i === 1 ? { ...t, attemptId: null } : t)) })];
+    const [held, slide] = COMPARED_TASKS;
+    attemptLog.value = [...attemptsOf(older, [slide]), ...attemptsOf({ ...newer, tasks: newer.tasks.map((t, i) => (i === held ? { ...t, attemptId: null } : t)) })];
     const c = await show();
     await waitUntil(() => c.querySelectorAll('[data-testid="checkup-line-col"][data-status="loading"]').length === 0);
     const messages = [...c.querySelectorAll('[data-testid="checkup-line-missing"]')].map((el) => textOf(el)).sort();

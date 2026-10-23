@@ -39,7 +39,7 @@ let container: HTMLElement;
 async function mount(list: ProfileRecord[] = [me, sam]): Promise<void> {
   session.profiles.value = list;
   session.activeProfile.value = list[0];
-  session.snapshot.value = snapshotOf(passWorld('foundations', 'foundations.04', { profileId: 'p1' }), Date.now(), 'p1');
+  session.snapshot.value = snapshotOf(passWorld('foundations', 'foundations.13', { profileId: 'p1' }), Date.now(), 'p1');
   session.appStorage.value = {
     attempts: { listByProfile: async (id: string) => (id === 'p2' ? passWorld('foundations', 'foundations.02', { profileId: 'p2' }) : []) },
   } as unknown as AppStorage;
@@ -106,11 +106,11 @@ describe('Profiles: the list', () => {
     expect(text(rows[0])).toContain('Daniel Reyes');
     expect(text(rows[0])).toContain('Tenor');
     expect(text(rows[0])).toContain('C3–A4');
-    expect(text(rows[0])).toContain('Up next: Sirens & glides (Foundations)'); // the active profile reads the live snapshot
+    expect(text(rows[0])).toContain('Up next: Two notes, one step apart (Foundations)'); // the active profile reads the live snapshot
     expect(text(rows[1])).toContain('Sam');
     expect(text(rows[1])).toContain('Not sure');
     expect(text(rows[1])).toContain('Range not measured');
-    expect(text(rows[1])).toContain('Up next: Sustain I (Foundations)'); // another profile, from its own stored log
+    expect(text(rows[1])).toContain('Up next: Hold it (Foundations)'); // another profile, from its own stored log
   });
 
   it('marks the active profile with a check and makes it a non-button', async () => {

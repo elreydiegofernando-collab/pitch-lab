@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CHECKUP_TASKS } from '../../checkup/types';
 import { jargonIn } from '../../coaching/plain';
-import { getExercise, getLevel, getWorld } from '../../exercises';
+import { EXERCISES, getExercise, getLevel, getWorld } from '../../exercises';
 import type { PreparedRun, RunTarget } from '../../runtime/types';
 import { bossChain, contextChip, levelNumber, percent, singTitle, tempoLabel, toleranceLabel } from './copy';
 import { makePrepared } from './test-fakes';
@@ -13,12 +13,12 @@ describe('levelNumber', () => {
   it('counts a level by its place in its world, zero padded', () => {
     const world = getWorld('foundations');
     expect(levelNumber(world, getLevel('foundations.01')!)).toBe('01');
-    expect(levelNumber(world, getLevel('foundations.04')!)).toBe('04');
+    expect(levelNumber(world, getLevel('foundations.13')!)).toBe('04'); // Hold it steady: stored as 13, sung fourth
     expect(levelNumber(world, getLevel('foundations.09')!)).toBe('09');
   });
 
   it('still answers for a level whose world is unknown', () => {
-    expect(levelNumber(undefined, getLevel('foundations.04')!)).toBe('01');
+    expect(levelNumber(undefined, getLevel('foundations.13')!)).toBe('01');
   });
 });
 
@@ -36,15 +36,17 @@ describe('tolerance and tempo chips', () => {
   });
 
   it('gives the tempo of a metronome exercise, and none for a held note', () => {
-    expect(tempoLabel(def('foundations.06'))).toBe('84 bpm');
+    const clicked = EXERCISES.find((e) => e.retired === undefined && e.metronome && (e.tempoLadder?.length ?? 0) <= 1)!;
+    expect(tempoLabel(clicked)).toBe(`${clicked.tempoBpm} bpm`);
     expect(tempoLabel(def('foundations.03'))).toBeNull();
+    expect(tempoLabel(def('foundations.06'))).toBeNull(); // Clean starts: no clicks, the app plays each chunk first
     expect(tempoLabel({ tempoBpm: 72, tempoLadder: [72], metronome: true })).toBe('72 bpm');
   });
 });
 
 describe('bossChain', () => {
   it('lists the cue that opens each section of the take, in order', () => {
-    expect(bossChain(def('foundations.boss'))).toEqual(['Hold it steady and straight', 'Attack the octave dead centre', 'Legato down the scale']);
+    expect(bossChain(def('foundations.boss'))).toEqual(['Hold it steady', 'Do-re-mi', 'Jump up to sol', 'Step back down', 'Slide home']);
   });
 
   it('skips the Listen and Sing labels, and repeats', () => {
@@ -141,18 +143,19 @@ describe('singTitle: the voice check-up', () => {
     CHECKUP_TASKS.forEach((t, taskIndex) => {
       expect(singTitle({ ...base, level: null, checkup: { taskIndex, taskCount: 5, checkupId: 'run-1' } })).toBe(t.title);
     });
-    expect(singTitle({ ...base, checkup: { taskIndex: 2, taskCount: 5, checkupId: 'run-1' } })).toBe('Slide up and down');
+    const siren = CHECKUP_TASKS.findIndex((t) => t.skills.some((s) => s.skill === 'slides'));
+    expect(singTitle({ ...base, checkup: { taskIndex: siren, taskCount: 5, checkupId: 'run-1' } })).toBe('Slide up and down');
   });
 
   it('falls back to the level or exercise when the task is not one the battery knows', () => {
-    expect(singTitle({ ...base, checkup: { taskIndex: 9, taskCount: 5, checkupId: 'run-1' } })).toBe('Sustain I');
+    expect(singTitle({ ...base, checkup: { taskIndex: 9, taskCount: 5, checkupId: 'run-1' } })).toBe('Hold it');
   });
 });
 
 describe('titles and percentages', () => {
   it('titles the Sing screen with the level, or the exercise for an audition test', () => {
     const prepared = makePrepared('foundations.03');
-    expect(singTitle(prepared)).toBe('Sustain I');
+    expect(singTitle(prepared)).toBe('Hold it');
     expect(singTitle({ ...prepared, level: null })).toBe(prepared.def.title);
   });
 

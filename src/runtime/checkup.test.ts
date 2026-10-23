@@ -8,7 +8,7 @@ import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeTrack, sequence } from '../analysis/fixtures';
 import type { EngineError, EngineState, Recording } from '../audio/engine-types';
-import type { MetronomeHandle, NoteSpec, ScheduledHandle } from '../audio/synth-types';
+import type { GlideSpec, MetronomeHandle, NoteSpec, ScheduledHandle } from '../audio/synth-types';
 import { CHECKUP_TASKS } from '../checkup/types';
 import type { PitchFrame } from '../core/types';
 import { WORLDS, getExercise, realize, type ExerciseDef, type RealizedExercise } from '../exercises';
@@ -88,8 +88,10 @@ class FakeSynth {
     const startAt = spec.startAt ?? 0;
     return { startAt, endAt: startAt + spec.duration, stop: () => undefined };
   }
-  playGlide(): ScheduledHandle {
-    throw new Error('the runner never plays glides itself');
+  /** A Listen slide (the siren task plays the siren as it is sung). */
+  playGlide(spec: GlideSpec): ScheduledHandle {
+    const startAt = spec.startAt ?? 0;
+    return { startAt, endAt: startAt + spec.holdBefore + spec.glideDuration + spec.holdAfter, stop: () => undefined };
   }
   playSequence(): ScheduledHandle {
     throw new Error('the runner never plays sequences itself');
@@ -335,7 +337,7 @@ describe('a check-up through the runner', () => {
     // 1. The Range finder: a practice rep of its level. A pass saves the range.
     let runner = r.runnerMod.createRunner({ kind: 'checkup', taskIndex: 0 });
     expect(runner.prepared.value).toMatchObject({
-      def: { id: 'foundations.range-finder.1' },
+      def: { id: 'foundations.range.1' },
       level: { id: 'foundations.01' },
       world: { id: 'foundations' },
       audition: null,
@@ -345,7 +347,7 @@ describe('a check-up through the runner', () => {
     });
     outcomes.push(await singWhole(r, runner, rangeSweep(45, 72)));
     runner.dispose();
-    expect(outcomes[0].attempt).toMatchObject({ kind: 'practice', levelId: 'foundations.01', exerciseId: 'foundations.range-finder.1', passed: true, checkupId });
+    expect(outcomes[0].attempt).toMatchObject({ kind: 'practice', levelId: 'foundations.01', exerciseId: 'foundations.range.1', passed: true, checkupId });
     expect(outcomes[0].rangeSaved).toBe(true);
     expect(r.session.activeProfile.value?.range).toMatchObject({ extended: { low: 45, high: 72 } });
     expect(r.flow.afterTakeActions(outcomes[0])).toEqual([
@@ -353,30 +355,31 @@ describe('a check-up through the runner', () => {
       { kind: 'retry', label: 'Sing it again', primary: false, route: routeOf('sing', { target: 'checkup', itemIndex: '0' }) },
     ]);
 
-    // 2. Match and hold: an audition take, sung in the range just saved.
+    // 2. Match and hold: an audition take, sung in the range just saved. It vouches for Hold it steady too.
     runner = r.runnerMod.createRunner({ kind: 'checkup', taskIndex: 1 });
-    expect(runner.prepared.value).toMatchObject({ def: { id: 'foundations.audition.1' }, level: null, usingDefaultRange: false, checkup: { taskIndex: 1 } });
+    expect(runner.prepared.value).toMatchObject({ def: { id: 'foundations.audition.5' }, level: null, usingDefaultRange: false, checkup: { taskIndex: 1 } });
     outcomes.push(await singWhole(r, runner, good));
     runner.dispose();
-    expect(outcomes[1].attempt).toMatchObject({ kind: 'audition', levelId: null, exerciseId: 'foundations.audition.1', passed: true, checkupId });
-    expect(outcomes[1].after.levels['foundations.04']).toMatchObject({ status: 'passed', viaAudition: true });
+    expect(outcomes[1].attempt).toMatchObject({ kind: 'audition', levelId: null, exerciseId: 'foundations.audition.5', passed: true, checkupId });
+    expect(outcomes[1].after.levels['foundations.13']).toMatchObject({ status: 'passed', viaAudition: true });
     // A clean check-up take promises the next task, never a tally to light or a retake.
     expect(outcomes[0].tip).toMatchObject({ id: 'general.polish', text: 'Clean take. On to the next task.' });
     expect(outcomes[1].tip).toMatchObject({ id: 'general.polish', text: 'Clean take. On to the next task.' });
 
-    // 3. The siren, sung three half steps off: a miss, but measured. The check-up goes on (it can be sung again).
+    // 3. The two notes near and far, sung three half steps off: a miss, but measured. The check-up goes on.
     outcomes.push(await singTask(r, 2, singer({ offsetSemis: 3 })));
-    expect(outcomes[2].attempt).toMatchObject({ kind: 'audition', exerciseId: 'foundations.audition.2', passed: false, checkupId });
+    expect(outcomes[2].attempt).toMatchObject({ kind: 'audition', exerciseId: 'foundations.audition.6', passed: false, checkupId });
     expect(kinds(r.flow.afterTakeActions(outcomes[2]))).toEqual(['next-task*', 'retry']);
 
-    // 4-5. Both later tests pass, but out of order (the siren missed): the engine grants nothing past Sirens & glides.
+    // 4-5. Both later tests pass (the siren played as it is sung), but out of order: the engine grants nothing past the
+    // steps lesson.
     outcomes.push(await singTask(r, 3, good));
     outcomes.push(await singTask(r, 4, good));
-    expect(outcomes[3].attempt).toMatchObject({ kind: 'audition', exerciseId: 'foundations.audition.3', passed: true, checkupId });
-    expect(outcomes[4].attempt).toMatchObject({ kind: 'audition', exerciseId: 'foundations.audition.4', passed: true, checkupId });
+    expect(outcomes[3].attempt).toMatchObject({ kind: 'audition', exerciseId: 'foundations.audition.7', passed: true, checkupId });
+    expect(outcomes[4].attempt).toMatchObject({ kind: 'audition', exerciseId: 'foundations.audition.8', passed: true, checkupId });
     const snap = r.session.snapshot.value;
-    expect(snap.levels['foundations.05'].status).toBe('current');
-    expect(['foundations.06', 'foundations.08', 'foundations.09'].map((id) => snap.levels[id].status)).toEqual(['locked', 'locked', 'locked']);
+    expect(snap.levels['foundations.10'].status).toBe('current');
+    expect(['foundations.07', 'foundations.11', 'foundations.12', 'foundations.05'].map((id) => snap.levels[id].status)).toEqual(['locked', 'locked', 'locked', 'locked']);
     expect(outcomes[3].unlocked).toEqual([]);
     expect(outcomes[4].unlocked).toEqual([]);
 
@@ -394,12 +397,12 @@ describe('a check-up through the runner', () => {
     const [summary] = r.summary.checkupsOf(log, () => null, 'sharps', r.session.activeProfile.value?.range);
     expect(summary.tasks.map((t) => t.attemptId)).toEqual(session.attemptIds);
     expect(summary.tasks.map((t) => t.passed)).toEqual([true, true, false, true, true]);
-    expect(summary.opened).toEqual(['foundations.02', 'foundations.03', 'foundations.04']);
-    expect(summary.startLevelId).toBe('foundations.05');
+    expect(summary.opened).toEqual(['foundations.02', 'foundations.03', 'foundations.13']);
+    expect(summary.startLevelId).toBe('foundations.10');
     expect(summary.range).toBe('B2–A4');
     // Sung to its end, three half steps off: heard in full, so rated (never "not measured"), and clearly short.
-    expect(summary.skills.find((s) => s.skill === 'slides')?.rating).toBe('focus');
-    expect(summary.focus).toContain('slides');
+    expect(summary.skills.find((s) => s.skill === 'starts')?.rating).toBe('focus');
+    expect(summary.focus).toContain('starts');
 
     // Finished: no task of it can be sung again.
     expect(r.runnerMod.createRunner({ kind: 'checkup', taskIndex: 4 }).error.value?.code).toBe('locked');
@@ -430,13 +433,13 @@ describe('a check-up through the runner', () => {
     expect(Object.values(after.levels).filter((l) => l.status === 'passed')).toEqual([]);
     expect(r.checkup.activeCheckup.value?.finishedAt).not.toBeNull();
 
-    // Weeks later the Range finder passes on its own level: Pitch match opens, and nothing the check-up sang counts.
+    // Weeks later the Range finder passes on its own level: Match one note opens, and nothing the check-up sang counts.
     const finder = r.runnerMod.createRunner({ kind: 'level', levelId: 'foundations.01' });
     const passed = await singWhole(r, finder, rangeSweep(45, 72));
     finder.dispose();
     expect(passed.attempt.passed).toBe(true);
     const later = r.session.snapshot.value;
-    expect(['foundations.01', 'foundations.02', 'foundations.03', 'foundations.05', 'foundations.09'].map((id) => later.levels[id].status)).toEqual(['passed', 'current', 'locked', 'locked', 'locked']);
+    expect(['foundations.01', 'foundations.02', 'foundations.03', 'foundations.13', 'foundations.05'].map((id) => later.levels[id].status)).toEqual(['passed', 'current', 'locked', 'locked', 'locked']);
     expect(Object.values(later.levels).some((l) => l.viaAudition)).toBe(false);
   });
 

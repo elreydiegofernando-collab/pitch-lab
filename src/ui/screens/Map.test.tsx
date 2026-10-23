@@ -18,11 +18,11 @@ vi.mock('../worlds/scroll', async (importOriginal) => ({
   revealElement: vi.fn(),
 }));
 
-import { WORLDS } from '../../exercises';
+import { WORLDS, getLevel } from '../../exercises';
 import { auditionRequirementHint, levelRequirementHint, worldRequirementHint } from '../../progress';
 import { resetRouterForTests, route, routeOf } from '../../router';
 import { lastOutcome } from '../../runtime/runner';
-import { activeProfile, bootError, bootPhase, snapshot } from '../../state/session';
+import { activeProfile, attemptLog, bootError, bootPhase, snapshot } from '../../state/session';
 import { songIndex, songsLoaded } from '../../state/songs';
 import { revealElement } from '../worlds/scroll';
 import { resetPowerOnForTests } from '../worlds/power-on';
@@ -45,6 +45,14 @@ import { Map as MapScreen } from './Map';
 
 const DOT = '·';
 let view: Mounted | null = null;
+/** Foundations in play order (its stored ids no longer run in order since the rebuild): the level at place `n` (1-based). */
+const ORDER = [...WORLDS[0].levels].sort((a, b) => a.index - b.index).map((l) => l.id);
+const at = (n: number): string => ORDER[n - 1];
+const BEFORE_BOSS = ORDER[ORDER.length - 2];
+/** The audition's tests today, a passed take of test `n` (1-based), and the last level any test covers (Sirens). */
+const TESTS = WORLDS[0].audition!.exerciseIds;
+const passTest = (n: number) => attempt({ kind: 'audition', exerciseId: TESTS[n - 1], levelId: null, passed: true });
+const SIREN_END = WORLDS[0].audition!.unlockThrough[TESTS.length - 1];
 
 async function showMap(): Promise<HTMLElement> {
   view = mount(<MapScreen />);
@@ -63,6 +71,7 @@ beforeEach(() => {
   bootError.value = null;
   activeProfile.value = profileRecord('Daniel');
   snapshot.value = snapshotOf(null);
+  attemptLog.value = [];
   lastOutcome.value = null;
   songIndex.value = new globalThis.Map();
   songsLoaded.value = true;
@@ -111,7 +120,7 @@ describe('Map: the setlist', () => {
   it('counts the passed levels of an open world', async () => {
     snapshot.value = snapshotOf('foundations.03');
     const c = await showMap();
-    expect(textOf(section(c, 'foundations').querySelector('.wl-world__count'))).toBe('3 of 10 levels passed');
+    expect(textOf(section(c, 'foundations').querySelector('.wl-world__count'))).toBe(`3 of ${ORDER.length} levels passed`);
     expect(section(c, 'vibrato').querySelector('.wl-world__count')).toBeNull();
   });
 });
@@ -155,21 +164,21 @@ describe('Map: only openable nodes are buttons', () => {
   it('makes passed and current nodes buttons, and locked nodes static text with their requirement', async () => {
     const c = await showMap();
     const cable = section(c, 'foundations').querySelector('ol.wl-cable')!;
-    expect(cable.querySelectorAll('.wl-node')).toHaveLength(10);
+    expect(cable.querySelectorAll('.wl-node')).toHaveLength(ORDER.length);
     expect(cable.querySelectorAll('button')).toHaveLength(4);
-    expect(cable.querySelectorAll('li.wl-node--locked')).toHaveLength(6);
-    for (const id of ['foundations.01', 'foundations.02', 'foundations.03', 'foundations.04']) {
+    expect(cable.querySelectorAll('li.wl-node--locked')).toHaveLength(ORDER.length - 4);
+    for (const id of ORDER.slice(0, 4)) {
       expect(node(c, id).querySelector('button'), id).not.toBeNull();
     }
-    expect(levelRequirementHint('foundations.05', snapshot.value, WORLDS)).toBe('Pass Sustain II to unlock.');
-    for (const level of WORLDS[0].levels.slice(4)) {
-      const li = node(c, level.id);
-      expect(li.querySelector('button'), level.id).toBeNull();
-      expect(li.querySelector('[role="button"], a'), level.id).toBeNull();
-      expect(textOf(li.querySelector('.pl-locked')), level.id).toContain(levelRequirementHint(level.id, snapshot.value, WORLDS)!);
+    expect(levelRequirementHint(at(5), snapshot.value, WORLDS)).toBe('Pass Hold it steady to unlock.');
+    for (const id of ORDER.slice(4)) {
+      const li = node(c, id);
+      expect(li.querySelector('button'), id).toBeNull();
+      expect(li.querySelector('[role="button"], a'), id).toBeNull();
+      expect(textOf(li.querySelector('.pl-locked')), id).toContain(levelRequirementHint(id, snapshot.value, WORLDS)!);
     }
     // Each locked node names the level that opens it, not the same line all the way down.
-    expect(textOf(node(c, 'foundations.06').querySelector('.pl-locked'))).toContain('Pass Sirens & glides to unlock.');
+    expect(textOf(node(c, at(6)).querySelector('.pl-locked'))).toContain('Pass Two notes, one step apart to unlock.');
   });
 
   it('opens a level from a passed node or the current node', async () => {
@@ -178,14 +187,14 @@ describe('Map: only openable nodes are buttons', () => {
     expect(route.value).toEqual(routeOf('level', { levelId: 'foundations.02' }));
     resetRouterForTests();
     installGuardOver(() => snapshot.peek());
-    node(c, 'foundations.04').querySelector('button')!.click();
-    expect(route.value).toEqual(routeOf('level', { levelId: 'foundations.04' }));
+    node(c, at(4)).querySelector('button')!.click();
+    expect(route.value).toEqual(routeOf('level', { levelId: at(4) }));
   });
 
   it('does nothing when a locked node is tapped', async () => {
     const c = await showMap();
-    node(c, 'foundations.07').click();
-    node(c, 'foundations.07').querySelector('.wl-node__row')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    node(c, at(7)).click();
+    node(c, at(7)).querySelector('.wl-node__row')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(route.value).toEqual(routeOf('home'));
   });
 
@@ -198,9 +207,9 @@ describe('Map: only openable nodes are buttons', () => {
 
   it('names each button for a screen reader with its place and state, and marks the current step', async () => {
     const c = await showMap();
-    expect(node(c, 'foundations.04').querySelector('button')!.getAttribute('aria-label')).toBe('Level 4: Sustain II. Up next.');
-    expect(node(c, 'foundations.01').querySelector('button')!.getAttribute('aria-label')).toBe('Level 1: Range finder. Range saved.');
-    expect(node(c, 'foundations.04').querySelector('button')!.getAttribute('aria-current')).toBe('step');
+    expect(node(c, at(4)).querySelector('button')!.getAttribute('aria-label')).toBe('Lesson 4: Hold it steady. Up next. New lesson.');
+    expect(node(c, 'foundations.01').querySelector('button')!.getAttribute('aria-label')).toBe('Lesson 1: Range finder. Range saved.');
+    expect(node(c, at(4)).querySelector('button')!.getAttribute('aria-current')).toBe('step');
     expect(node(c, 'foundations.03').querySelector('button')!.hasAttribute('aria-current')).toBe(false);
   });
 });
@@ -211,7 +220,7 @@ describe('Map: node status', () => {
       pass('foundations.01', { score: 0.93, mastery: 3 }),
       pass('foundations.02', { score: 0.93, mastery: 3 }),
       pass('foundations.03', { score: 0.88, mastery: 2 }),
-      pass('foundations.04', { score: 0.71, mastery: 1 }),
+      pass(at(4), { score: 0.71, mastery: 1 }),
     ]);
     const c = await showMap();
     // The Range finder measures the voice: it says so, with no score and no tally lights.
@@ -219,26 +228,30 @@ describe('Map: node status', () => {
     expect(node(c, 'foundations.01').querySelector('.pl-tally-lights')).toBeNull();
     expect(textOf(node(c, 'foundations.02').querySelector('.wl-node__status'))).toBe(`Best 93% ${DOT} Studio`);
     expect(textOf(node(c, 'foundations.03').querySelector('.wl-node__status'))).toBe(`Best 88% ${DOT} Solid`);
-    expect(textOf(node(c, 'foundations.04').querySelector('.wl-node__status'))).toBe(`Best 71% ${DOT} Passed`);
+    expect(textOf(node(c, at(4)).querySelector('.wl-node__status'))).toBe(`Best 71% ${DOT} Passed`);
     expect(node(c, 'foundations.02').querySelector('.pl-tally-lights')!.getAttribute('aria-label')).toContain('3 of 3');
     expect(node(c, 'foundations.03').querySelector('.pl-tally-lights')!.getAttribute('aria-label')).toContain('2 of 3');
-    expect(textOf(node(c, 'foundations.05').querySelector('.wl-node__status'))).toBe('Up next');
-    expect(node(c, 'foundations.05').querySelector('.pl-tally-lights')).toBeNull();
+    expect(textOf(node(c, at(5)).querySelector('.wl-node__status'))).toContain('Up next');
+    expect(node(c, at(5)).querySelector('.pl-tally-lights')).toBeNull();
   });
 
-  it('shows the best score so far on the current level, and the score as an arc of its ring', async () => {
-    snapshot.value = snapshotOf('foundations.03', [attempt({ levelId: 'foundations.04', passed: false, score: 0.42 })]);
+  it('says where the current lesson is, with its best on the check as an arc of its ring', async () => {
+    const take = attempt({ levelId: at(4), exerciseId: getLevel(at(4))!.exerciseId, passed: false, score: 0.42 });
+    snapshot.value = snapshotOf('foundations.03', [take]);
+    attemptLog.value = [take];
     const c = await showMap();
-    expect(textOf(node(c, 'foundations.04').querySelector('.wl-node__status'))).toBe(`Up next ${DOT} best 42%`);
+    // A lesson says where its practice is (after a missed check: the step that trains what it missed); the ring the best.
+    expect(textOf(node(c, at(4)).querySelector('.wl-node__status'))).toMatch(new RegExp(`^Up next ${DOT} Practice \\d of \\d$`));
+    expect(node(c, at(4)).querySelector('.pl-score-ring__arc')).not.toBeNull();
     const arc = node(c, 'foundations.01').querySelector('.pl-score-ring__arc')!;
     expect(arc).not.toBeNull();
-    expect(node(c, 'foundations.07').querySelector('.pl-score-ring__arc')).toBeNull();
+    expect(node(c, at(7)).querySelector('.pl-score-ring__arc')).toBeNull();
   });
 
   it('numbers the nodes in the ring', async () => {
     const c = await showMap();
     expect(textOf(node(c, 'foundations.01').querySelector('.wl-node__num'))).toBe('1');
-    expect(textOf(node(c, 'foundations.boss').querySelector('.wl-node__num'))).toBe('10');
+    expect(textOf(node(c, 'foundations.boss').querySelector('.wl-node__num'))).toBe(String(ORDER.length));
   });
 
   it('says a level was passed by audition', async () => {
@@ -254,12 +267,12 @@ describe('Map: node status', () => {
     const lit = (id: string) => [node(c, id).classList.contains('wl-node--lit-above'), node(c, id).classList.contains('wl-node--lit-below')];
     expect(lit('foundations.01')).toEqual([false, true]);
     expect(lit('foundations.03')).toEqual([true, true]);
-    expect(lit('foundations.04')).toEqual([true, false]);
-    expect(lit('foundations.05')).toEqual([false, false]);
+    expect(lit(at(4))).toEqual([true, false]);
+    expect(lit(at(5))).toEqual([false, false]);
   });
 
   it('gives the Boss Recital its own node: a larger ring under the label BOSS RECITAL, titled by its world', async () => {
-    snapshot.value = snapshotOf('foundations.09');
+    snapshot.value = snapshotOf(BEFORE_BOSS);
     const c = await showMap();
     const boss = node(c, 'foundations.boss');
     expect(boss.classList.contains('wl-node--boss')).toBe(true);
@@ -267,8 +280,8 @@ describe('Map: node status', () => {
     expect(textOf(boss.querySelector('.wl-node__kicker'))).toBe('Boss Recital');
     expect(textOf(boss.querySelector('.wl-node__title'))).toBe('Foundations');
     expect(boss.querySelector('.pl-score-ring')!.getAttribute('style')).toContain('64px');
-    expect(boss.querySelector('button')!.getAttribute('aria-label')).toBe('Foundations Boss Recital. Up next.');
-    expect(node(c, 'foundations.09').querySelector('.pl-score-ring')!.getAttribute('style')).toContain('56px');
+    expect(boss.querySelector('button')!.getAttribute('aria-label')).toBe(`Lesson ${ORDER.length}: Foundations Boss Recital. Up next. New lesson.`);
+    expect(node(c, BEFORE_BOSS).querySelector('.pl-score-ring')!.getAttribute('style')).toContain('56px');
   });
 });
 
@@ -291,19 +304,19 @@ describe('Map: placement audition row', () => {
     expect(row.tagName).toBe('BUTTON');
     expect(textOf(row)).toContain('Placement audition');
     expect(textOf(row)).toContain('Sing 4 short tests to skip ahead');
-    expect(textOf(row)).toContain('Can open Pitch match – Legato lines');
+    expect(textOf(row)).toContain('Can open Match one note – Sirens');
     row.click();
     expect(route.value).toEqual(routeOf('audition', { worldId: 'foundations' }));
   });
 
   it('counts the tests that are left', async () => {
-    snapshot.value = snapshotOf('foundations.01', [passAudition('foundations', 1), passAudition('foundations', 2)]);
+    snapshot.value = snapshotOf('foundations.01', [passTest(1), passTest(2)]);
     const c = await showMap();
     expect(textOf(byTestId(c, 'audition-row-foundations'))).toContain('Sing 2 short tests to skip ahead');
   });
 
   it('is hidden once nothing is left to open', async () => {
-    snapshot.value = snapshotOf('foundations.09');
+    snapshot.value = snapshotOf(SIREN_END);
     const c = await showMap();
     expect(byTestId(c, 'audition-row-foundations')).toBeNull();
   });
@@ -357,7 +370,7 @@ describe('Map: scrolling to where the singer is', () => {
     const c = await showMap();
     expect(revealElement).toHaveBeenCalledTimes(1);
     const [el, align] = vi.mocked(revealElement).mock.calls[0];
-    expect(el).toBe(node(c, 'foundations.04'));
+    expect(el).toBe(node(c, at(4)));
     expect(align).toBe('node');
   });
 
@@ -375,13 +388,13 @@ describe('Map: scrolling to where the singer is', () => {
     snapshot.value = snapshotOf('foundations.03');
     resetRouterForTests([routeOf('home'), routeOf('map', { worldId: 'nowhere' })]);
     const c = await showMap();
-    expect(vi.mocked(revealElement).mock.calls[0][0]).toBe(node(c, 'foundations.04'));
+    expect(vi.mocked(revealElement).mock.calls[0][0]).toBe(node(c, at(4)));
   });
 
   it('scrolls once, not on every re-render', async () => {
     snapshot.value = snapshotOf('foundations.03');
     await showMap();
-    snapshot.value = snapshotOf('foundations.04');
+    snapshot.value = snapshotOf(at(4));
     await flush();
     expect(revealElement).toHaveBeenCalledTimes(1);
   });
@@ -395,7 +408,7 @@ describe('Map: scrolling to where the singer is', () => {
     bootPhase.value = 'ready';
     await flush();
     expect(revealElement).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(revealElement).mock.calls[0][0]).toBe(node(c, 'foundations.04'));
+    expect(vi.mocked(revealElement).mock.calls[0][0]).toBe(node(c, at(4)));
   });
 
   it('does not scroll when every level is passed and no world is named', async () => {
@@ -433,20 +446,20 @@ describe('Map: power-on', () => {
   });
 
   it('powers on every level an audition test opened', async () => {
-    snapshot.value = snapshotOf('foundations.01', [passAudition('foundations', 1)]);
+    snapshot.value = snapshotOf('foundations.01', [passTest(1)]);
     lastOutcome.value = fakeOutcome({
       id: 'take-2',
       unlocked: [
-        { kind: 'level-opened', levelId: 'foundations.02', title: 'Pitch match' },
-        { kind: 'level-opened', levelId: 'foundations.03', title: 'Sustain I' },
-        { kind: 'level-opened', levelId: 'foundations.04', title: 'Sustain II' },
+        { kind: 'level-opened', levelId: 'foundations.02', title: 'Match one note' },
+        { kind: 'level-opened', levelId: 'foundations.03', title: 'Hold it' },
+        { kind: 'level-opened', levelId: at(4), title: 'Hold it steady' },
       ],
     });
     const c = await showMap();
     expect([...c.querySelectorAll('.wl-node--power-on')].map((el) => (el as HTMLElement).dataset.testid)).toEqual([
       'node-foundations.02',
       'node-foundations.03',
-      'node-foundations.04',
+      `node-${at(4)}`,
     ]);
   });
 

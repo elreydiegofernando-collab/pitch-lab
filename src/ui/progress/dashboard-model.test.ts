@@ -11,7 +11,7 @@ import {
   rangeSpans,
   worldCompletion,
 } from './dashboard-model';
-import { attemptAt, localOffsetMinutes, passWorld, snapshotOf } from './test-fixtures';
+import { attemptAt, levelsInOrder, localOffsetMinutes, passWorld, snapshotOf } from './test-fixtures';
 
 const OFFSET = localOffsetMinutes();
 const NOW = Date.now();
@@ -53,25 +53,26 @@ describe('momentumView', () => {
 
 describe('level map completion', () => {
   it('counts passed levels and names what is next, for open worlds only', () => {
-    const snapshot = snapshotOf(passWorld('foundations', 'foundations.04'));
+    const snapshot = snapshotOf(passWorld('foundations', 'foundations.13'));
     const rows = worldCompletion(snapshot, WORLDS);
     expect(rows.map((r) => r.world.id)).toEqual(['foundations']);
     expect(rows[0].passed).toBe(4);
-    expect(rows[0].total).toBe(10);
-    expect(rows[0].next?.id).toBe('foundations.05');
-    expect(completionText(rows[0])).toBe('4 of 10 levels · Next: Sirens & glides');
+    expect(rows[0].total).toBe(13);
+    expect(rows[0].next?.id).toBe('foundations.10');
+    expect(completionText(rows[0])).toBe('4 of 13 levels · Next: Two notes, one step apart');
   });
 
   it('says the Boss Recital is next when it is', () => {
-    const snapshot = snapshotOf(passWorld('foundations', 'foundations.09'));
-    expect(completionText(worldCompletion(snapshot, WORLDS)[0])).toBe('9 of 10 levels · Boss Recital next');
+    const order = levelsInOrder('foundations');
+    const snapshot = snapshotOf(passWorld('foundations', order[order.length - 2].id));
+    expect(completionText(worldCompletion(snapshot, WORLDS)[0])).toBe('12 of 13 levels · Boss Recital next');
   });
 
   it('opens Vibrato (and still lists Foundations) once the Foundations boss is passed, and says what is still shut', () => {
     const snapshot = snapshotOf(passWorld('foundations'));
     const rows = worldCompletion(snapshot, WORLDS);
     expect(rows.map((r) => r.world.id)).toEqual(['foundations', 'vibrato']);
-    expect(completionText(rows[0])).toBe('10 of 10 levels · Complete');
+    expect(completionText(rows[0])).toBe('13 of 13 levels · Complete');
     expect(rows[1].passed).toBe(0);
     expect(nextLockedWorld(snapshot, WORLDS)?.id).toBe('inflections');
   });
@@ -107,8 +108,8 @@ describe('personalBests', () => {
     // The Range finder's span is a measurement, never a personal best (pushing it means straining).
     expect(rows.map((r) => r.level.id)).toEqual(['foundations.02']);
     const pitchMatch = rows[0];
-    expect(pitchMatch.level.title).toBe('Pitch match');
-    expect(pitchMatch.metrics.map((m) => `${m.label} ${m.text}`)).toEqual(expect.arrayContaining(['In tune 92%', 'Typical miss 8¢', 'Settle 210 ms']));
+    expect(pitchMatch.level.title).toBe('Match one note');
+    expect(pitchMatch.metrics.map((m) => `${m.label} ${m.text}`)).toEqual(expect.arrayContaining(['In tune 92%', 'Typical miss 8¢', 'Time to find the note 210 ms']));
     expect(pitchMatch.bestScore).toBeGreaterThan(0);
   });
 

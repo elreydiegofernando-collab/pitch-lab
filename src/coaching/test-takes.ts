@@ -95,10 +95,14 @@ export function attemptOf(take: SungTake | null, extra: Partial<AttemptRecord> =
   };
 }
 
+/** The check-up's match-and-hold task and its siren, by the skills they rate (checkup/types.ts CHECKUP_TASKS). */
+export const CHECKUP_MATCH_HOLD = CHECKUP_TASKS.findIndex((t) => t.skills.some((s) => s.skill === 'pitch'));
+export const CHECKUP_SIREN = CHECKUP_TASKS.findIndex((t) => t.skills.some((s) => s.skill === 'slides'));
+
 /**
  * A finished voice check-up in the log, as the runner logs one: task `poor` sung poorly and every other task at its best
- * (heard in full, every metric read). Match and hold sung poorly (1) makes pitch and steadiness the focus; the siren (2),
- * slides.
+ * (heard in full, every metric read). Match and hold sung poorly (CHECKUP_MATCH_HOLD) makes pitch and steadiness the
+ * focus; the siren (CHECKUP_SIREN), slides.
  */
 export function checkupWithFocus(poor: number, checkupId = 'c1'): AttemptRecord[] {
   return CHECKUP_TASKS.map((task, i) => {

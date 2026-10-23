@@ -147,12 +147,13 @@ describe('realize: the take timeline', () => {
   });
 
   it('repeats in new keys and sounds each new starting pitch in the breath before it', () => {
-    const r = realize(ex('foundations.staccato.1'), null, 'tenor');
-    expect(r.notes).toHaveLength(15);
-    expect(r.notes[5].midi - r.notes[0].midi).toBe(2);
-    expect(r.notes[10].midi - r.notes[0].midi).toBe(4);
+    // A semitone oscillation, three times a whole tone higher each time (24 notes a key).
+    const r = realize(ex('vibrato.oscillation.2'), null, 'tenor');
+    expect(r.notes).toHaveLength(72);
+    expect(r.notes[24].midi - r.notes[0].midi).toBe(2);
+    expect(r.notes[48].midi - r.notes[0].midi).toBe(4);
     const keyTones = r.reference.filter((n) => n.start >= 0);
-    expect(keyTones.map((n) => n.midi)).toEqual([r.notes[5].midi, r.notes[10].midi]);
+    expect(keyTones.map((n) => n.midi)).toEqual([r.notes[24].midi, r.notes[48].midi]);
     for (const k of keyTones) expect(r.notes.some((n) => n.start < k.end && n.end > k.start)).toBe(false);
   });
 
@@ -205,9 +206,9 @@ describe('realize: where the material goes', () => {
     expect(usesExtendedRange(ex('foundations.siren.1'))).toBe(true);
     expect(usesExtendedRange(ex('inflections.flip.2'))).toBe(true);
     expect(usesExtendedRange(ex('foundations.range-finder.1'))).toBe(true);
-    expect(usesExtendedRange(ex('foundations.legato.1'))).toBe(false);
-    const legato = realize(ex('foundations.legato.1'), narrowComfort, 'unknown');
-    expect(legato.fit).toBe('extended'); // 11 semitones won't fit a 10-semitone comfortable range
+    expect(usesExtendedRange(ex('foundations.intervals.2'))).toBe(false);
+    const octaves = realize(ex('foundations.intervals.2'), narrowComfort, 'unknown');
+    expect(octaves.fit).toBe('extended'); // octave jumps (12 semitones) won't fit a 10-semitone comfortable range
     const sustain = realize(ex('foundations.sustain.1'), narrowComfort, 'unknown');
     expect(sustain.fit).toBe('fits');
     for (const m of pitches(sustain)) {
@@ -251,7 +252,8 @@ describe('realize: where the material goes', () => {
   });
 
   it('reports the span of the material over all repeats', () => {
-    expect(materialSpan(ex('foundations.staccato.1'))).toEqual({ lo: 0, hi: 11 });
+    expect(materialSpan(ex('vibrato.oscillation.2'))).toEqual({ lo: 0, hi: 5 }); // a semitone, up two whole tones
+    expect(materialSpan(ex('foundations.clean-starts.1'))).toEqual({ lo: 0, hi: 9 }); // the Listen steps count too
     expect(materialSpan(ex('inflections.boss-recital'))).toEqual({ lo: 1, hi: 12 });
     expect(materialSpan(ex('inflections.audition.4'))).toEqual({ lo: 0, hi: 12 });
   });

@@ -130,8 +130,8 @@ describe('the real run exercises', () => {
 });
 
 describe('the real sirens and legato lines', () => {
-  it('foundations.siren.1: smooth, no cracks, ends within tolerance; a cracked siren is counted', () => {
-    const def = FOUNDATIONS_EXERCISES.find((d) => d.id === 'foundations.siren.1') as ExerciseDef;
+  it('foundations.sirens.1: smooth, no cracks, ends within tolerance; a cracked siren is counted', () => {
+    const def = FOUNDATIONS_EXERCISES.find((d) => d.id === 'foundations.sirens.1') as ExerciseDef;
     const rz = real(def);
     const ideal = analyzeTake(def, rz, idealTrack(rz.notes, rz.totalSec), { vibratoStyle: 'pop' });
     expect(ideal.metrics['glide.cracks']).toBe(0);
@@ -149,12 +149,12 @@ describe('the real sirens and legato lines', () => {
     expect(evaluate(def, bad.metrics).score).toBeLessThan(evaluate(def, ideal.metrics).score);
   });
 
-  it('foundations.legato.1: clean connected lines are clean, and the rest between repeats is not counted as a transition', () => {
-    const def = FOUNDATIONS_EXERCISES.find((d) => d.id === 'foundations.legato.1') as ExerciseDef;
+  it('foundations.five-notes.1: clean connected lines are clean, and the breath between lines is not counted as a transition', () => {
+    const def = FOUNDATIONS_EXERCISES.find((d) => d.id === 'foundations.five-notes.1') as ExerciseDef;
     const rz = real(def);
     const a = analyzeTake(def, rz, idealTrack(rz.notes, rz.totalSec), { vibratoStyle: 'pop' });
     expect(a.metrics['transition.cleanRate']).toBe(1);
-    expect(a.plan.transitions.length).toBeGreaterThanOrEqual(2); // one connected line per repeat
+    expect(a.plan.transitions.length).toBeGreaterThanOrEqual(2); // one connected line per turn
   });
 });
 

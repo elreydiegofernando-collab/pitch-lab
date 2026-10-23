@@ -5,12 +5,12 @@
  * The words stay true to what the app measures:
  *  - onset.*: the start of each note sung after a silence (analysis/onset.ts): how far below the note it began (scoop),
  *    how far past it went (overshoot), how long until it stayed in the band (settle) and whether the sound faded in
- *    (breathy, an estimate from how fast it swells). Pitch match, Crispness, Interval jumps, the Boss Recital, auditions.
+ *    (breathy, an estimate from how fast it swells). Match one note, Clean starts, the jumps, the Boss Recital, auditions.
  *  - glide.*: each slide's pitch at the moment it is meant to end (end), its stalls, dips and jitter (smoothness), and
  *    breaks: a sudden jump in pitch, or the sound cutting out anywhere inside a phrase, a breath included
- *    (analysis/glide.ts, cracks.ts). Sirens & glides, its audition, and the Slides levels.
+ *    (analysis/glide.ts, cracks.ts). Small slides, Sirens, their audition test, and the Slides levels.
  *  - transition.*: each note change in a connected line, settled on the next note quickly and without going past it;
- *    a gap counts as change time (analysis/transitions.ts). Legato lines, the Boss Recital, its audition.
+ *    a gap counts as change time (analysis/transitions.ts). The steps, Five notes in a row, the Boss Recital, the audition.
  *
  * practiseLevelId names the earliest level that trains the skill; the coach offers it only once that level is passed.
  */
@@ -99,7 +99,7 @@ export const LADDERS_ONSET_GLIDE: Readonly<Record<string, CoachLadder>> = {
       'Once you arrive, let the note sit still; there’s nothing more to reach for.',
     ],
     easier: 'Sing the leaps more softly, and use the whole pause to hear each note before you place it. If high notes feel tight, scratchy or hoarse, stop and rest.',
-    practiseLevelId: 'foundations.06',
+    practiseLevelId: 'foundations.07',
   },
   'onset.overshoot-any': {
     tip: 'You’re barely going past your notes. Keep arriving gently, like setting something down, so the pitch stops right on the note.',
@@ -173,7 +173,7 @@ export const LADDERS_ONSET_GLIDE: Readonly<Record<string, CoachLadder>> = {
       'If it still steps, do one slow siren on a lip trill (lips loose, buzzing like a motorboat) before the next take.',
     ],
     easier: 'Between takes, practise one slow siren on a lip trill or on “ng” (the end of “sing”), only as high as feels easy, then sing the take on “oo” at that same easy volume. Slow practice is how the smooth line gets into your voice.',
-    practiseLevelId: 'foundations.05',
+    practiseLevelId: 'foundations.12',
   },
   'glide.smooth-any': {
     tip: 'Your slides are mostly smooth. Keep the speed even from start to finish, with no little pauses on the way.',
@@ -237,7 +237,7 @@ export const LADDERS_ONSET_GLIDE: Readonly<Record<string, CoachLadder>> = {
       'Aim at the middle of each new note, not past it, especially on the steps up.',
     ],
     easier: 'Sing just the first few notes on your own, slowly and softly, until each change feels clean, then add the rest. A softer sound makes quick, clean changes easier.',
-    practiseLevelId: 'foundations.07',
+    practiseLevelId: 'foundations.10',
   },
   'transition.any': {
     tip: 'Most of your note changes are clean. Keep the line connected, and let each note arrive cleanly before the next.',

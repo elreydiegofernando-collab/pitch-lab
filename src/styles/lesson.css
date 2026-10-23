@@ -1,0 +1,450 @@
+/**
+ * The lesson screens (docs/DESIGN.md 13.3): the lesson screen (Learn, Practise, Check on one cable), the practice
+ * report's verdict, and the lesson lines on the map and the Continue card. Tokens only: no new hues and no new fonts.
+ * Only transform and opacity animate (base.css makes every duration instant under reduced motion).
+ */
+
+/* ---------------------------------------------------------------- the lesson as a set list: three parts on one cable */
+
+.pl-lesson-set {
+  display: flex;
+  flex-direction: column;
+}
+
+.pl-part {
+  position: relative;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  column-gap: var(--sp-3);
+  padding-bottom: var(--sp-8);
+}
+.pl-part:last-child {
+  padding-bottom: 0;
+}
+
+/* The cable: from under this part's mark down to the next part's, lit in the world's hue once the part is done. */
+.pl-part::before {
+  content: '';
+  position: absolute;
+  left: 19px;
+  top: 44px;
+  bottom: 0;
+  width: 2px;
+  background: var(--line);
+}
+.pl-part:last-child::before {
+  display: none;
+}
+.pl-part--done::before {
+  background: var(--level-accent, var(--tally));
+}
+
+.pl-part__mark {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-1);
+  padding-top: 4px;
+}
+.pl-part__dot {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--bg-0);
+  border: 2px solid var(--line);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--text-mid);
+}
+.pl-part--done .pl-part__dot {
+  border-color: var(--level-accent, var(--tally));
+  color: var(--text-hi);
+}
+/* Where the singer is: the amber tally ring, and the word "Now" under it (never the colour alone). */
+.pl-part--now .pl-part__dot {
+  border-color: var(--tally);
+  color: var(--tally-text);
+}
+.pl-part__now {
+  padding: 2px 0;
+  background: var(--bg-0);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--tally-text);
+}
+
+.pl-part__body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.pl-part__heading {
+  display: flex;
+  align-items: center;
+  min-height: var(--target-min);
+  margin: 0;
+}
+.pl-part__title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 26px;
+  line-height: 1.1;
+  color: var(--text-hi);
+}
+.pl-part--next .pl-part__title {
+  color: var(--text-mid);
+}
+
+/* Learn folds away after the first try: its heading is the toggle. */
+.pl-part__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  min-height: var(--target-min);
+  text-align: left;
+  border-radius: var(--radius-control);
+}
+.pl-part__hint {
+  margin-left: auto;
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-mid);
+}
+.pl-part__chevron {
+  flex: none;
+  color: var(--text-mid);
+  transition: transform var(--dur-micro) var(--ease-standard);
+}
+.pl-part__toggle[aria-expanded='true'] .pl-part__chevron {
+  transform: rotate(180deg);
+}
+
+/* ---------------------------------------------------------------- Learn */
+
+.pl-learn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+.pl-learn__part {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.pl-learn__how {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.pl-learn__how li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+}
+.pl-learn__n {
+  flex: none;
+  min-width: 14px;
+  text-align: right;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--text-hi);
+}
+.pl-learn__screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.pl-learn__screen li {
+  position: relative;
+  padding-left: var(--sp-4);
+}
+.pl-learn__screen li::before {
+  content: '';
+  position: absolute;
+  left: 1px;
+  top: 0.62em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-mid);
+}
+.pl-learn__words {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+}
+.pl-learn__word {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-3);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+}
+.pl-learn__word dt {
+  font-weight: 600;
+  color: var(--text-hi);
+}
+.pl-learn__word dd {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--text-mid);
+}
+.pl-learn__example {
+  display: block;
+  margin-top: var(--sp-1);
+}
+.pl-learn__demo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+}
+
+/* ---------------------------------------------------------------- Practise */
+
+.pl-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.pl-step__row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  column-gap: var(--sp-3);
+  align-items: start;
+  width: 100%;
+  min-height: var(--target-min);
+  padding: var(--sp-3);
+  text-align: left;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+}
+button.pl-step__row {
+  transition:
+    background var(--dur-micro) var(--ease-standard),
+    transform var(--dur-micro) var(--ease-standard);
+}
+button.pl-step__row:active {
+  background: var(--bg-2);
+  transform: scale(0.99);
+}
+@media (hover: hover) {
+  button.pl-step__row:hover {
+    background: var(--bg-2);
+  }
+}
+.pl-step--now .pl-step__row {
+  border-color: color-mix(in srgb, var(--tally) 60%, var(--line));
+}
+
+.pl-step__mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--line);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text-mid);
+}
+.pl-step--done .pl-step__mark {
+  border-color: var(--on);
+  color: var(--on-text);
+}
+.pl-step--now .pl-step__mark {
+  border-color: var(--tally);
+  color: var(--tally-text);
+}
+
+.pl-step__body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.pl-step__top {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  min-height: 28px;
+}
+.pl-step__title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 17px;
+  line-height: 1.35;
+  color: var(--text-hi);
+  overflow-wrap: anywhere;
+}
+/* A step still ahead reads quieter (a passed lesson's steps are all open, so they keep full strength). */
+.pl-steps:not(.pl-steps--open) .pl-step--ahead .pl-step__title {
+  color: var(--text-mid);
+}
+.pl-step__ask {
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--text-mid);
+  max-width: 65ch;
+}
+.pl-step__now {
+  flex: none;
+  padding-top: 3px;
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--tally-text);
+}
+.pl-step__go {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding-top: 1px;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text-mid);
+}
+.pl-step__go svg {
+  flex: none;
+}
+
+/* Good tries: filled dots for good tries, rings for the ones to come, and the words beside them. */
+.pl-tries {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--text-mid);
+}
+.pl-tries__dots {
+  display: inline-flex;
+  gap: 6px;
+}
+.pl-tries__dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--text-lo);
+}
+.pl-tries__dot--good {
+  background: var(--on);
+  border-color: var(--on);
+}
+
+/* ---------------------------------------------------------------- Check */
+
+.pl-check__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  min-height: 32px;
+}
+.pl-check__status--passed svg {
+  flex: none;
+  color: var(--on-text);
+}
+.pl-check__lead {
+  font-weight: 600;
+  color: var(--text-hi);
+}
+.pl-check__ready {
+  font-weight: 600;
+  color: var(--text-hi);
+}
+.pl-check__skip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1);
+}
+.pl-check__skip .pl-btn--ghost {
+  padding-left: 0;
+  padding-right: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ---------------------------------------------------------------- the practice report */
+
+.pl-drill--good .pl-verdict__line {
+  color: var(--on-text);
+}
+.pl-drill__tries {
+  margin-top: var(--sp-1);
+}
+.pl-drill__next {
+  font-weight: 600;
+  color: var(--text-hi);
+}
+
+/* ---------------------------------------------------------------- Home: the Continue card of a lesson */
+
+.pl-lesson-marks {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.pl-lesson-marks__mark {
+  width: 14px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--text-lo);
+}
+.pl-lesson-marks__mark--done {
+  background: var(--wk, var(--tally));
+  border-color: var(--wk, var(--tally));
+}
+
+/* ---------------------------------------------------------------- narrow phones */
+
+@media (max-width: 359px) {
+  .pl-part {
+    grid-template-columns: 32px minmax(0, 1fr);
+    column-gap: var(--sp-2);
+  }
+  .pl-part::before {
+    left: 15px;
+    top: 40px;
+  }
+  .pl-part__dot {
+    width: 32px;
+    height: 32px;
+    font-size: 17px;
+  }
+  .pl-part__mark {
+    padding-top: 8px;
+  }
+  .pl-step__row {
+    column-gap: var(--sp-2);
+    padding: var(--sp-2);
+  }
+}

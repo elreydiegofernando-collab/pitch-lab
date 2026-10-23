@@ -73,7 +73,7 @@ export const LADDERS_VIBRATO: Readonly<Record<string, CoachLadder>> = {
       'Keep your jaw and tongue still; check in a mirror that only the sound sways.',
     ],
     easier: 'Sing the next take softer, at about speaking volume, and think of a small shimmer rather than a swing. If your voice feels tired, rest first, since a wide wobble can be a sign it needs a break. If anything hurts, scratches or goes hoarse, stop for today.',
-    practiseLevelId: 'foundations.03',
+    practiseLevelId: 'foundations.13',
   },
   'vib.narrow': {
     tip: 'Let the wobble swing a little wider by relaxing, so the tips of each swing reach into the shaded strips.',

@@ -32,6 +32,14 @@ export function typicalSkills(): SkillResult[] {
   ];
 }
 
+/**
+ * The levels a typical first check-up opened: match and hold, the two notes near and far and the connected line passed
+ * in order, the siren missed (Match one note to Five notes in a row); it starts the singer at Small slides.
+ */
+export const TYPICAL_OPENED: readonly string[] = [
+  'foundations.02', 'foundations.03', 'foundations.13', 'foundations.10', 'foundations.07', 'foundations.08', 'foundations.11', 'foundations.09',
+];
+
 /** A finished check-up; override anything. `finishedAt` defaults to `daysAgo` days before `now`. */
 export function summaryOf(
   checkupId: string,
@@ -47,8 +55,8 @@ export function summaryOf(
     tasks: CHECKUP_TASKS.map((t, i) => ({ exerciseId: t.exerciseId, title: t.title, attemptId: `${checkupId}-task-${i}`, passed: true, score: 0.8 })),
     skills: typicalSkills(),
     focus: ['slides'],
-    startLevelId: 'foundations.05',
-    opened: ['foundations.02', 'foundations.03', 'foundations.04'],
+    startLevelId: 'foundations.12',
+    opened: [...TYPICAL_OPENED],
     range: 'B2–A4',
     ...rest,
   };

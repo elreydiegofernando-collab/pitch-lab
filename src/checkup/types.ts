@@ -35,6 +35,11 @@ export type SkillRating = 'solid' | 'getting-there' | 'focus' | 'not-measured';
 export interface CheckupTask {
   /** The catalog exercise sung for this task. */
   exerciseId: string;
+  /**
+   * The exercises this task was sung as before its material was rebuilt (retired: catalog/foundations-retired.ts), so a
+   * check-up sung then still reads back task by task, each take against what it was sung against. Optional.
+   */
+  formerExerciseIds?: readonly string[];
   /** Plain title for the run ("Find your range", "Match and hold a note", ...). */
   title: string;
   /** One plain sentence: what to do. */
@@ -45,19 +50,25 @@ export interface CheckupTask {
   logAs: { kind: 'practice'; levelId: string } | { kind: 'audition' };
 }
 
-/** The battery, in the order it is sung. */
+/**
+ * The battery, in the order it is sung: the Range finder, then the Foundations audition's tests in the audition's own
+ * (level) order, so a test sung here is the audition's next one whenever the one before it passed. Every task plays what
+ * to sing before the singer sings it.
+ */
 export const CHECKUP_TASKS: readonly CheckupTask[] = [
   {
-    exerciseId: 'foundations.range-finder.1',
+    exerciseId: 'foundations.range.1',
+    formerExerciseIds: ['foundations.range-finder.1'],
     title: 'Find your range',
-    ask: 'Slide down and up on “oo” and hold your lowest and highest easy notes.',
+    ask: 'Hear the starting note, then slide down and up on “oo” and hold your lowest and highest easy notes.',
     skills: [{ skill: 'range', metrics: ['range.spanSemitones'] }],
     logAs: { kind: 'practice', levelId: 'foundations.01' },
   },
   {
-    exerciseId: 'foundations.audition.1',
+    exerciseId: 'foundations.audition.5',
+    formerExerciseIds: ['foundations.audition.1'],
     title: 'Match and hold a note',
-    ask: 'Listen to each note, then sing it back and hold it, steady and centred.',
+    ask: 'Hear each note, then sing it back and hold it, keeping your line level.',
     skills: [
       { skill: 'pitch', metrics: ['accuracy.inTolerancePct', 'accuracy.medianAbsCents'] },
       { skill: 'steadiness', metrics: ['accuracy.sdCents', 'accuracy.absDriftCentsPerSec'] },
@@ -65,24 +76,27 @@ export const CHECKUP_TASKS: readonly CheckupTask[] = [
     logAs: { kind: 'audition' },
   },
   {
-    exerciseId: 'foundations.audition.2',
-    title: 'Slide up and down',
-    ask: 'One smooth siren up and back down on “oo”, with no break.',
-    skills: [{ skill: 'slides', metrics: ['glide.smoothness', 'glide.cracks', 'glide.endAbsCents'] }],
-    logAs: { kind: 'audition' },
-  },
-  {
-    exerciseId: 'foundations.audition.3',
-    title: 'Short, clean notes',
-    ask: 'Short notes that jump around, each one starting right on the note.',
+    exerciseId: 'foundations.audition.6',
+    formerExerciseIds: ['foundations.audition.3'],
+    title: 'Two notes, near and far',
+    ask: 'Hear two notes, then sing them back, starting the second one right on its note.',
     skills: [{ skill: 'starts', metrics: ['onset.settleMs', 'onset.scoopCents', 'onset.overshootCents'] }],
     logAs: { kind: 'audition' },
   },
   {
-    exerciseId: 'foundations.audition.4',
+    exerciseId: 'foundations.audition.7',
+    formerExerciseIds: ['foundations.audition.4'],
     title: 'A connected line',
-    ask: 'One smooth line of notes up and back, each note arriving clean.',
+    ask: 'Hear a few notes in a row, then sing them back as one smooth line.',
     skills: [{ skill: 'connected', metrics: ['transition.cleanRate', 'accuracy.inTolerancePct'] }],
+    logAs: { kind: 'audition' },
+  },
+  {
+    exerciseId: 'foundations.audition.8',
+    formerExerciseIds: ['foundations.audition.2'],
+    title: 'Slide up and down',
+    ask: 'Hear where the slide goes, then one smooth siren up and back down on “oo”, with no break.',
+    skills: [{ skill: 'slides', metrics: ['glide.smoothness', 'glide.cracks', 'glide.endAbsCents'] }],
     logAs: { kind: 'audition' },
   },
 ];

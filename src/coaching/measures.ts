@@ -27,7 +27,7 @@ export const MEASURES: Readonly<Record<MetricKey, Measure>> = {
   'accuracy.sdCents': { label: 'How steady', words: P.steadiness, better: 'lower' },
   'accuracy.absBiasCents': cents('Off the middle by'),
   'accuracy.absDriftCentsPerSec': { label: 'Drift while holding', words: P.driftRate, better: 'lower' },
-  'onset.settleMs': { label: 'Time to settle', words: (v) => P.durationWords(v / 1000), better: 'lower' },
+  'onset.settleMs': { label: 'Time to find the note', words: (v) => P.durationWords(v / 1000), better: 'lower' },
   'onset.scoopCents': { label: 'Slide up into the note', words: (v) => (v < 10 ? 'hardly any' : `from ${P.pitchDistance(v)} below`), better: 'lower' },
   'onset.overshootCents': { label: 'Going past the note', words: (v) => (v < 10 ? 'hardly any' : P.pitchDistance(v)), better: 'lower' },
   'onset.crispRate': share('Clean note starts'),

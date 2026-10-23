@@ -127,6 +127,7 @@ Analyzers are **pure functions over a pitch track plus a target**, and **each on
 - **Crispness / staccato landing:** short notes on a beat. Scores settle time, scoop and overshoot **per note**, aiming for dead-centre landings.
 - **Interval jumps:** thirds, fifths and octaves, landing clean with no scoop.
 - **Legato lines:** connected scale passages with clean arrivals.
+- **Rebuilt as lessons (owner, 2026-10-23):** Foundations is now thirteen small lessons, each Learn, Practise and Check, one new thing at a time, the app playing each chunk before the singer sings it and nothing while they sing: Range finder, Match one note, Hold it, Hold it steady, Two notes one step apart, Two notes a jump apart, Bigger jumps, Three notes: do-re-mi, Five notes in a row, Small slides, Sirens, Clean starts, and the Boss Recital (a short tune). Rebuilt material has new exercise ids, and Hold it steady (it now judges wobble) a new level id, `foundations.13`; the old definitions stay in the catalog as retired exercises (`ExerciseDef.retired`), so old takes read back against what was sung and never pass the rebuilt lessons.
 
 ### 9.2 Vibrato
 - **Vibrato meter:** free singing with a live readout of rate, extent and centring, and **the target zone shaded on the trace**.
@@ -174,6 +175,7 @@ Model:
 - **Mastery tiers** per level (pass, solid, studio) are shown as three tally lights. Replaying for mastery is optional; passing is enough to advance.
 - **Placement auditions (decided 2026-10-21: yes).** Each world has one **audition**: a short sung test drawn from that world's levels at their pass thresholds. Passing it unlocks the world's levels up to the demonstrated tier, so an experienced singer can *sing* past early material. **An audition only skips levels inside a world that is already unlocked. It can never open a later world.** The Boss Recital is always required to leave a world. Auditions can be retaken, and failing never re-locks anything already earned.
 - **Voice check-up (decided 2026-10-22):** a four-minute check-up (the Range finder and the Foundations audition's tests, sung whatever the one before did) rates each skill in plain words, names one or two things to focus on, and compares with the last one. It grants only what the audition could: a test it passes counts only if it was the audition's next test when it was sung (the Range finder sung, every level before it passed), so a test passed out of order grants nothing, then or later (DESIGN §13.15, `src/progress/engine.ts`).
+- **A rebuilt world keeps its past (2026-10-23):** a pass of a test of the audition a world had before it was rebuilt (`AuditionDef.former`) keeps what it granted then, judged in the order it was sung under then (a check-up's test only when it was that audition's next test), and now grants only the levels the world still keeps. Practice never passes or opens a level; only the check does, and grants follow the audition rules.
 
 ### 11.1 The gating rule: everything is earned (owner directive 2026-10-21)
 
@@ -185,6 +187,7 @@ Model:
   - the Live view starts with note, cents, Hz and dB;
   - crack markers appear after *Sirens & glides*;
   - onset/settle readouts appear after *Crispness*;
+  - (since the 2026-10-23 rebuild: crack markers after *Sirens*, and how each note starts after *Clean starts*, both in plain words with the numbers only behind Live's Details);
   - vibrato rate, extent and centring, the vibrato zone and the **vibrato style setting** appear only once the **Vibrato** world is unlocked.
 - **Always available, because they're utilities rather than training:** Home, Setup & calibration, Diagnostics, About & voice care, and Settings limited to non-skill preferences (theme, reference sound, notation, motion). The **Live** monitor is available from the start with Foundations-level readouts only.
 - **Per profile:** unlocks belong to the singer, not the device. The beginner's profile never sees the tenor's unlocks.
@@ -203,6 +206,8 @@ Model:
 | **Dynamics** world | Runs & Riffs Boss Recital |
 | Each song (bundled or imported) | The world matching its **auto-rated difficulty**: range, tempo, interval size, melisma density, vibrato demands. An imported song stays locked until its world is passed. |
 | Personal-record attempts on an exercise | That exercise passed |
+
+Foundations order since the 2026-10-23 rebuild (§9.1): Range finder → Match one note → Hold it → Hold it steady → Two notes, one step apart → Two notes, a jump apart → Bigger jumps → Three notes: do-re-mi → Five notes in a row → Small slides → Sirens → Clean starts → **Boss Recital**, each passed by its lesson's check (or the Foundations audition).
 
 ## 12. Feedback, progress & coaching **[scoped]**
 

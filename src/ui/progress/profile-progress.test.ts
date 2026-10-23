@@ -8,7 +8,7 @@ describe('progressLine', () => {
   });
 
   it('follows the frontier through a world', () => {
-    expect(progressLine(snapshotOf(passWorld('foundations', 'foundations.04')))).toBe('Up next: Sirens & glides (Foundations)');
+    expect(progressLine(snapshotOf(passWorld('foundations', 'foundations.13')))).toBe('Up next: Two notes, one step apart (Foundations)');
   });
 
   it('moves on to the next world once a Boss Recital is passed', () => {
@@ -22,6 +22,6 @@ describe('loadProgressLine', () => {
     const listByProfile = vi.fn(async () => attempts);
     const line = await loadProgressLine({ attempts: { listByProfile } } as never, 'other');
     expect(listByProfile).toHaveBeenCalledWith('other');
-    expect(line).toBe('Up next: Sustain I (Foundations)');
+    expect(line).toBe('Up next: Hold it (Foundations)');
   });
 });

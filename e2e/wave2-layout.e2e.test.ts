@@ -111,9 +111,27 @@ describe('Wave 2 - every screen keeps to the layout rules in DESIGN.md', () => {
         await audit(page, 'sing, ready', problems);
         await page.getByRole('button', { name: 'Back' }).first().click();
         await page.getByRole('button', { name: 'Back' }).first().click();
+        // A lesson (Foundations is taught as lessons): its page, its Learn part open, a music word's sheet, and a practice
+        // step ready to sing.
+        await page.getByTestId('node-foundations.02').locator('button').click();
+        await page.getByTestId('level-screen').waitFor();
+        await audit(page, 'lesson', problems);
+        if (!(await page.getByTestId('learn-page').isVisible())) await page.getByTestId('learn-toggle').click();
+        await page.getByTestId('learn-page').waitFor();
+        await audit(page, 'lesson, Learn open', problems);
+        await page.locator('[data-testid="learn-words"] .pl-term').first().click();
+        await page.getByTestId('term-plain').waitFor();
+        await audit(page, 'a music word, explained', problems);
+        await page.keyboard.press('Escape');
+        await page.getByTestId('term-plain').waitFor({ state: 'hidden' });
+        await page.getByTestId('step-0-practise').click();
+        await page.getByTestId('sing-screen').waitFor();
+        await audit(page, 'sing, a practice step, ready', problems);
+        await page.getByRole('button', { name: 'Back' }).first().click();
+        await page.getByRole('button', { name: 'Back' }).first().click();
         await page.getByTestId('node-foundations.boss').locator('button').click();
         await page.getByTestId('level-screen').waitFor();
-        await audit(page, 'boss recital level', problems);
+        await audit(page, 'boss recital lesson', problems);
         await page.getByRole('button', { name: 'Back' }).first().click();
         await page.getByTestId('audition-row-vibrato').click();
         await page.getByTestId('audition-screen').waitFor();
@@ -180,6 +198,9 @@ describe('Wave 2 - every screen keeps to the layout rules in DESIGN.md', () => {
       expect(await overflow(), 'Live scrolls sideways').toBe(0);
       await openDeepLink(page, '#/level/foundations.01');
       await page.getByTestId('level-screen').waitFor({ timeout: 15_000 });
+      await page.getByTestId('learn-page').waitFor({ timeout: 15_000 }); // a first visit: the Learn part opens by itself
+      await page.waitForTimeout(300);
+      expect(await overflow(), 'the lesson (Learn open) scrolls sideways').toBe(0);
       await page.getByTestId('sing-button').click();
       await page.getByTestId('sing-screen').waitFor({ timeout: 15_000 });
       await page.waitForTimeout(300);

@@ -18,7 +18,7 @@
  *
  * Plain words for a singer relearning music (src/coaching/types.ts CoachLadder): no units or jargon, no exclamation
  * marks, never "push" or "force", and rest when anything hurts, scratches or goes hoarse. practiseLevelId names the
- * level that trains the skill (Pitch match: hear a note and centre it; Sustain I: hold one steady and level).
+ * level that trains the skill (Match one note: hear a note and centre it; Hold it steady: hold one steady and level).
  */
 import type { CoachLadder } from '../types';
 
@@ -208,7 +208,7 @@ export const LADDERS_ACCURACY: Readonly<Record<string, CoachLadder>> = {
     easier:
       'Before the next take, hum each note through a drinking straw, or on a lip trill (lips buzzing like a motorboat), for a few seconds: both even out the air for you. ' +
       'Then sing the take with the same steady flow.',
-    practiseLevelId: 'foundations.03',
+    practiseLevelId: 'foundations.13',
   },
   'acc.stability-any': {
     tip: 'Keep the air flowing evenly and your jaw relaxed, so your line stays flat from start to finish.',
@@ -223,7 +223,7 @@ export const LADDERS_ACCURACY: Readonly<Record<string, CoachLadder>> = {
       'Spend the air slowly, so there’s some left at the end.',
     ],
     easier: 'If the ends of long notes shake, breathe a moment earlier and sing a touch softer; a relaxed, medium-soft tone is the easiest to hold still.',
-    practiseLevelId: 'foundations.03',
+    practiseLevelId: 'foundations.13',
   },
 
   // ---------------------------------------------------------------- drift over a hold (holds of a second or more)
@@ -243,7 +243,7 @@ export const LADDERS_ACCURACY: Readonly<Record<string, CoachLadder>> = {
     easier:
       'Before the next take, do two or three long lip trills (lips buzzing like a motorboat) on an easy note, keeping the buzz even to the very end. ' +
       'Then sing the take a little softer, with the same steady air; a clear, gentle tone uses less breath.',
-    practiseLevelId: 'foundations.03',
+    practiseLevelId: 'foundations.13',
   },
   'acc.drift-sharp': {
     tip: 'Keep the effort level as you hold: ease off the breath pressure and let each note float instead of tightening as it goes.',
@@ -261,7 +261,7 @@ export const LADDERS_ACCURACY: Readonly<Record<string, CoachLadder>> = {
     easier:
       'Sing the next take a little softer than feels natural; a gentle tone rarely creeps up. ' +
       'If the end of a note feels tight or scratchy, rest for a few minutes before the next take.',
-    practiseLevelId: 'foundations.03',
+    practiseLevelId: 'foundations.13',
   },
   // Also the drift tip when the notes drift both ways (no direction to name), so the words claim no size or direction.
   'acc.drift-any': {
@@ -279,7 +279,7 @@ export const LADDERS_ACCURACY: Readonly<Record<string, CoachLadder>> = {
     easier:
       'If the drift comes at the end of the longest notes, breathe a little deeper before them and sing them a touch softer. ' +
       'On long holds, steady matters more than loud.',
-    practiseLevelId: 'foundations.03',
+    practiseLevelId: 'foundations.13',
   },
 
   // ---------------------------------------------------------------- Range finder (the first level: nothing earlier to practise)
@@ -352,7 +352,7 @@ export const LADDERS_ACCURACY: Readonly<Record<string, CoachLadder>> = {
   // Almost nothing voiced in the whole take (analyze.ts noVoice). A blocked microphone stops the take before it starts,
   // so this is mostly a covered or distant microphone, the wrong input, or very quiet singing.
   'general.no-voice': {
-    tip: 'No singing came through. Check that the microphone is allowed and uncovered, then start singing as soon as the count-in ends.',
+    tip: 'No singing came through. Check that the microphone is allowed and uncovered, then sing each part when the screen says “sing now”.',
     why:
       'The app can only judge what the microphone hears. ' +
       'If it is covered, too far away or set to the wrong input, or the singing is very quiet, the take comes through empty.',
@@ -360,7 +360,7 @@ export const LADDERS_ACCURACY: Readonly<Record<string, CoachLadder>> = {
       'Hold or prop the phone about an arm’s length away, with nothing covering its bottom edge, where the microphone is.',
       'Open Setup & calibration from Home and check the Microphone step: the phone’s own mic or wired headphones work best.',
       'If the phone asks about the microphone, choose Allow.',
-      'Tap Sing, wait for the count-in, then sing at a clear, comfortable volume until the last bar has passed.',
+      'Tap Sing and listen: the app plays the note to start on, then the screen says “sing now”. Sing at a clear, comfortable volume until the last bar has passed.',
       'Watch the line on the screen: it moves while the app hears you.',
     ],
     easier: 'Open Live pitch from Home and sing one easy note. If the line moves there, the microphone works and you can come back to this level.',

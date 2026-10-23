@@ -91,8 +91,12 @@ export interface PreparedRun {
   workout: { item: WorkoutItem; itemIndex: number; itemCount: number; take: number } | null;
   /** Check-up only: the task being sung (0-based), how many there are, and the check-up's id. */
   checkup?: { taskIndex: number; taskCount: number; checkupId: string } | null;
-  /** Lesson practice only: the step (0-based), how many steps, and the good tries so far and needed on this step. */
-  drill?: { levelId: string; step: number; stepCount: number; good: number; needed: number } | null;
+  /**
+   * Lesson practice only: the step (0-based), how many steps, and the good tries needed and so far on this step: before
+   * the take on the Sing screen, and in the finished outcome counting this take (the runner reads them again once the
+   * take is written). `ready`: every step of the lesson is done (its check opens); `openStep`: the first step not done.
+   */
+  drill?: { levelId: string; step: number; stepCount: number; good: number; needed: number; ready?: boolean; openStep?: number } | null;
 }
 
 export type UnlockEvent =
@@ -240,4 +244,6 @@ export interface GuardContext {
   checkupTasks?: number | null;
   /** A finished check-up of the active profile with this id exists. Optional: absent reads as none. */
   hasCheckup?: (checkupId: string) => boolean;
+  /** A lesson's check is open (lessons/progress.ts isCheckOpen: its practice done, or the lesson passed). Absent: open. */
+  checkOpen?: (levelId: string) => boolean;
 }

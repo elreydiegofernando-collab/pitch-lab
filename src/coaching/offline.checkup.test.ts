@@ -119,12 +119,15 @@ function checkup(id: string, day: number, specs: ReadonlyArray<TaskSpec | null>)
   return rows;
 }
 
-/** The first check-up: the voice breaks five times on the siren and the range is an octave. */
+/**
+ * The first check-up (its tasks in the battery's order: the Range finder, match and hold, the two notes near and far, the
+ * connected line, the siren): the voice breaks five times on the siren and the range is an octave.
+ */
 const FIRST = (): AttemptRecord[] =>
-  checkup('cu-first', 0, [{ x: 0.7, over: { 'range.spanSemitones': 12 } }, { x: 0.7 }, { x: 0.35, over: { 'glide.cracks': 5 } }, { x: 0.55 }, { x: 0.85 }]);
+  checkup('cu-first', 0, [{ x: 0.7, over: { 'range.spanSemitones': 12 } }, { x: 0.7 }, { x: 0.55 }, { x: 0.85 }, { x: 0.35, over: { 'glide.cracks': 5 } }]);
 /** Three weeks on: one break, and the range wider. */
 const SECOND = (): AttemptRecord[] =>
-  checkup('cu-second', 22, [{ x: 0.9, over: { 'range.spanSemitones': 17 } }, { x: 0.95 }, { x: 0.85, over: { 'glide.cracks': 1 } }, { x: 0.7 }, { x: 0.9 }]);
+  checkup('cu-second', 22, [{ x: 0.9, over: { 'range.spanSemitones': 17 } }, { x: 0.95 }, { x: 0.7 }, { x: 0.9 }, { x: 0.85, over: { 'glide.cracks': 1 } }]);
 /** A third one, left after two tasks. */
 const THIRD = (): AttemptRecord[] => checkup('cu-third', 30, [{ x: 0.9, over: { 'range.spanSemitones': 17 } }, { x: 0.9 }, null, null, null]);
 
@@ -202,7 +205,7 @@ describe('the check-ups of a backup', () => {
     expect(slides1?.numbers.find((m) => m.label === 'Breaks')).toMatchObject({ metric: 'glide.cracks', value: 5, shown: '5' });
     expect(slides2?.rating).toBe('solid');
     expect(slides2?.numbers.find((m) => m.label === 'Breaks')?.shown).toBe('1');
-    expect(first.skills.map((s) => s.skill)).toEqual(['range', 'pitch', 'steadiness', 'slides', 'starts', 'connected']);
+    expect(first.skills.map((s) => s.skill)).toEqual(['range', 'pitch', 'steadiness', 'starts', 'connected', 'slides']);
     expect(first.skills.find((s) => s.skill === 'range')?.numbers).toEqual([{ metric: 'range.spanSemitones', label: 'Low to high', value: 12, shown: '12 half steps' }]);
     // a measure the take could not read is said so, never a number
     expect(third.skills.find((s) => s.skill === 'slides')?.numbers.every((m) => m.shown === 'not measured')).toBe(true);
@@ -211,9 +214,9 @@ describe('the check-ups of a backup', () => {
   it('says what to focus on, where to start and what each check-up opened', () => {
     expect(first.focus[0]).toBe('slides');
     expect(first.focus.length).toBeLessThanOrEqual(2);
-    expect(first.startLevelId).toBe('foundations.05');
-    expect(first.startLevelTitle).toBe('Sirens & glides');
-    expect(first.opened).toEqual(['foundations.02', 'foundations.03', 'foundations.04']);
+    expect(first.startLevelId).toBe('foundations.10');
+    expect(first.startLevelTitle).toBe('Two notes, one step apart');
+    expect(first.opened).toEqual(['foundations.02', 'foundations.03', 'foundations.13']);
     expect(second.opened.length).toBeGreaterThan(0);
     // the second check-up's Range finder saved the range the profile has now, so it is named in notes; the first one's was replaced
     expect(second.range).toMatch(/^B2.A4$/);
@@ -250,17 +253,17 @@ describe('the check-ups of a backup', () => {
 
   it('says which skill could not be measured: a task skipped, or one where nothing came through the microphone', () => {
     const rows = checkup('cu-quiet', 0, [{ x: 0.8, over: { 'range.spanSemitones': 14 } }, { x: 0.8 }, null, { x: 0.8 }, { x: 0.8 }]);
-    // the siren was never sung; the short notes are a silent take (the runner writes one as 0 s)
+    // the two notes near and far were never sung; the connected line is a silent take (the runner writes one as 0 s)
     const silent = rows.map((a) => (a.exerciseId === CHECKUP_TASKS[3].exerciseId ? { ...a, durationSec: 0 } : a));
     const q = read(backupInput(backupOf(silent)));
     expect(q.checkups[0].finished).toBe(true);
     const ratings = Object.fromEntries(q.checkups[0].skills.map((s) => [s.skill, s.rating]));
-    expect(ratings.slides).toBe('not-measured');
     expect(ratings.starts).toBe('not-measured');
-    expect(q.checkups[0].skills.find((s) => s.skill === 'slides')?.what).toMatch(/Not sung in this check-up/);
-    expect(q.checkups[0].skills.find((s) => s.skill === 'starts')?.what).toMatch(/Nothing came through the microphone/);
-    expect(q.summary[0]).toMatch(/Not measured: Slides, Note starts/);
-    expect(formatCheckupDiagnosis(q)).toMatch(/Slides +not measured +Not sung in this check-up/);
+    expect(ratings.connected).toBe('not-measured');
+    expect(q.checkups[0].skills.find((s) => s.skill === 'starts')?.what).toMatch(/Not sung in this check-up/);
+    expect(q.checkups[0].skills.find((s) => s.skill === 'connected')?.what).toMatch(/Nothing came through the microphone/);
+    expect(q.summary[0]).toMatch(/Not measured: Note starts, Connected lines/);
+    expect(formatCheckupDiagnosis(q)).toMatch(/Note starts +not measured +Not sung in this check-up/);
   });
 
   it('reads the same check-ups whatever order the rows came in', () => {
@@ -286,9 +289,9 @@ describe('the check-ups as text', () => {
     expect(text).toContain('CHECK-UP 3 of 3: NOT FINISHED: ');
     expect(text).toContain("Skills (the app's rating and plain sentence, then the numbers it is read from):");
     expect(text).toMatch(/Slides +Focus here +Your voice broke 5 times on the slide/);
-    expect(text).toMatch(/numbers: Smoothness \d+(\.\d+)?%; Breaks 5; Arrival \d+(\.\d+)? cents/);
+    expect(text).toMatch(/numbers: Smoothness \d+(\.\d+)?%; Breaks 5; Slide ending off by \d+(\.\d+)? cents/);
     expect(text).toContain('Focus, most important first: Slides');
-    expect(text).toContain('Starting point: Sirens & glides (foundations.05); this check-up opened foundations.02, foundations.03, foundations.04');
+    expect(text).toContain('Starting point: Two notes, one step apart (foundations.10); this check-up opened foundations.02, foundations.03, foundations.13');
     expect(text).toContain('Range measured: B2-A4');
     expect(text).toMatch(/THEN AND NOW 1: \d{4}-\d\d-\d\d to \d{4}-\d\d-\d\d \(22 days apart; id cu-first -> cu-secon/);
     expect(text).toContain("The app's headline: Real progress since last time");

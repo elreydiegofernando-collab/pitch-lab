@@ -22,7 +22,7 @@ import { activeProfile, attemptLog } from '../../state/session';
 import { settings } from '../../state/settings';
 import { DEFAULT_SETTINGS } from '../../state/settings-types';
 import type { VocalRange } from '../../storage/schema';
-import { attemptAt, passWorld, snapshotOf } from '../progress/test-fixtures';
+import { attemptAt, levelsInOrder, passWorld, snapshotOf } from '../progress/test-fixtures';
 import {
   CARE_LINE,
   FOCUS_PRACTISE,
@@ -130,7 +130,7 @@ describe('what to focus on', () => {
     const through = (lastLevelId: string | null) => snapshotOf(lastLevelId === null ? [] : passWorld('foundations', lastLevelId));
 
     it('is a real Foundations level that trains the skill, for every skill and every place the singer can be', () => {
-      const places = [null, 'foundations.01', 'foundations.02', 'foundations.03', 'foundations.04', 'foundations.05', 'foundations.06', 'foundations.08', 'foundations.09'];
+      const places = [null, ...levelsInOrder('foundations').filter((l) => l.kind !== 'boss').map((l) => l.id)];
       for (const place of places) {
         const snap = through(place);
         for (const s of CHECKUP_SKILLS) {
@@ -144,15 +144,16 @@ describe('what to focus on', () => {
 
     it('is the level of the skill\'s family the singer is on now', () => {
       expect(focusLevelId('steadiness', through('foundations.02'))).toBe('foundations.03');
-      expect(focusLevelId('steadiness', through('foundations.03'))).toBe('foundations.04');
-      expect(focusLevelId('starts', through('foundations.05'))).toBe('foundations.06');
-      expect(focusLevelId('starts', through('foundations.06'))).toBe('foundations.07');
-      expect(focusLevelId('slides', through('foundations.04'))).toBe('foundations.05');
+      expect(focusLevelId('steadiness', through('foundations.03'))).toBe('foundations.13'); // Hold it steady
+      expect(focusLevelId('starts', through('foundations.13'))).toBe('foundations.10');
+      expect(focusLevelId('starts', through('foundations.10'))).toBe('foundations.07');
+      expect(focusLevelId('slides', through('foundations.09'))).toBe('foundations.12'); // Small slides
+      expect(focusLevelId('slides', through('foundations.12'))).toBe('foundations.05'); // Sirens
     });
 
     it('is the first of the family when the singer is not on one of its levels (a passed level can be sung again, a closed one shows as locked)', () => {
-      expect(focusLevelId('steadiness', through('foundations.05'))).toBe('foundations.03'); // both passed
-      expect(focusLevelId('starts', through('foundations.03'))).toBe('foundations.06'); // not open yet
+      expect(focusLevelId('steadiness', through('foundations.10'))).toBe('foundations.03'); // both passed
+      expect(focusLevelId('starts', through('foundations.03'))).toBe('foundations.10'); // not open yet
       expect(focusLevelId('pitch', through(null))).toBe('foundations.02'); // nothing sung yet
       expect(focusLevelId('range', through('foundations.03'))).toBe('foundations.01');
     });
@@ -182,7 +183,7 @@ describe('what to focus on', () => {
 
   it('puts the skills in the battery order, and an unknown one last', () => {
     const shuffled = [skill('connected', 'solid'), skill('slides', 'focus'), skill('range', 'solid'), { ...skill('range', 'solid'), skill: 'vibrato' as never }, skill('pitch', 'solid')];
-    expect(orderedSkills(shuffled).map((s) => s.skill)).toEqual(['range', 'pitch', 'slides', 'connected', 'vibrato']);
+    expect(orderedSkills(shuffled).map((s) => s.skill)).toEqual(['range', 'pitch', 'connected', 'slides', 'vibrato']);
   });
 });
 

@@ -1,16 +1,19 @@
 /**
  * The report's next steps and the unlock events, over the real catalog and progression. Pure apart from the song
- * index, which is mocked here (the song builder owns it).
+ * index, which is mocked here (the song builder owns it), and the lessons: one known lesson (Pitch match's) stands in
+ * for the Foundations content, so these cases do not move with it.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { WORLDS, getWorld } from '../exercises';
+import { WORLDS, getExercise, getWorld, realize } from '../exercises';
+import type { LessonDef } from '../lessons/types';
 import { computeSnapshot } from '../progress';
-import { BASE_MS, P1, pass, passAudition, passThrough } from '../progress/test-fixtures';
+import { BASE_MS, P1, attempt, pass, passAudition, passThrough } from '../progress/test-fixtures';
 import type { ProgressSnapshot } from '../progress/types';
 import { routeOf } from '../router';
 import type { AttemptRecord } from '../storage/schema';
 import { songIndex } from '../state/songs';
-import { afterTakeActions, auditionTests, unlockEvents } from './flow';
+import { jargonIn } from '../coaching/plain';
+import { FEATURE_TITLES, afterTakeActions, auditionTests, isGoodDrillTry, unlockEvents } from './flow';
 import { guardRoute } from './guard';
 import type { PreparedRun, RunTarget, TakeOutcome } from './types';
 import type { WorkoutItem } from '../progress';
@@ -19,6 +22,22 @@ vi.mock('../state/songs', async () => {
   const { signal } = await import('@preact/signals');
   return { songIndex: signal(new Map()), songsLoaded: signal(true), songLoadErrors: signal([]), loadSongs: async () => undefined, getSong: async () => undefined };
 });
+
+/** Pitch match's lesson: two echo-shaped steps (catalog exercises stand in for the drills). */
+const lessons = vi.hoisted(() => {
+  const lesson: LessonDef = {
+    levelId: 'foundations.02',
+    title: 'Match one note',
+    outcome: 'Hear a note, then sing it back on it.',
+    learn: { what: 'Singing back a note you just heard.', why: 'Songs are notes sung back.', how: ['Listen.', 'Think it.', 'Sing it.'], onScreen: ['The bar is the note.'], terms: ['note', 'echo'] },
+    practice: [
+      { exerciseId: 'foundations.audition.1', title: 'Echo one note', ask: 'Listen, then sing it back.', goodTries: 2, good: { conditions: [{ metric: 'accuracy.inTolerancePct', op: '>=', value: 50 }] } },
+      { exerciseId: 'foundations.audition.2', title: 'One slide', ask: 'Slide up and back down.', goodTries: 1, good: { conditions: [] } },
+    ],
+  };
+  return { lesson };
+});
+vi.mock('../lessons/foundations', () => ({ FOUNDATIONS_LESSONS: { 'foundations.02': lessons.lesson } }));
 
 afterEach(() => {
   songIndex.value = new Map();
@@ -32,7 +51,7 @@ function outcome(target: RunTarget, passed: boolean, after: ProgressSnapshot, wo
 }
 
 function item(takes: number): WorkoutItem {
-  return { stage: 'world-item', source: 'level', levelId: 'foundations.02', exerciseId: 'foundations.pitch-match.1', worldId: 'foundations', title: 'Pitch match', reason: 'current-level', takes, estSeconds: 60, estMinutes: 1 };
+  return { stage: 'world-item', source: 'level', levelId: 'foundations.02', exerciseId: 'foundations.match.1', worldId: 'foundations', title: 'Match one note', reason: 'current-level', takes, estSeconds: 60, estMinutes: 1 };
 }
 
 const kinds = (actions: ReturnType<typeof afterTakeActions>) => actions.map((a) => `${a.kind}${a.primary ? '*' : ''}`);
@@ -91,14 +110,14 @@ describe('afterTakeActions', () => {
 
   it('an audition: the next test after a pass, the placement after a miss or the last test', () => {
     const target: RunTarget = { kind: 'audition', worldId: 'foundations' };
-    const afterTest1 = snap([pass('foundations.01'), passAudition('foundations', 1)]);
+    const afterTest1 = snap([pass('foundations.01'), passAudition('foundations', 5)]);
     const next = afterTakeActions(outcome(target, true, afterTest1));
     expect(kinds(next)).toEqual(['next-test*', 'audition-results']);
     expect(next[0]).toMatchObject({ label: 'Next test', route: routeOf('sing', { target: 'audition', worldId: 'foundations' }) });
     expect(next[1]).toMatchObject({ label: 'See your placement', route: routeOf('audition', { worldId: 'foundations' }) });
 
     expect(kinds(afterTakeActions(outcome(target, false, afterTest1)))).toEqual(['audition-results*']);
-    const allTests = snap([pass('foundations.01'), ...[1, 2, 3, 4].map((n) => passAudition('foundations', n))]);
+    const allTests = snap([pass('foundations.01'), ...[5, 6, 7, 8].map((n) => passAudition('foundations', n))]);
     expect(kinds(afterTakeActions(outcome(target, true, allTests)))).toEqual(['audition-results*']);
   });
 
@@ -121,20 +140,134 @@ describe('afterTakeActions', () => {
     const after = snap(passThrough(WORLDS, 'foundations.03'));
     const targets: RunTarget[] = [
       { kind: 'level', levelId: 'foundations.03' },
+      { kind: 'level', levelId: 'foundations.02' }, // taught by a lesson
       { kind: 'record', levelId: 'foundations.03' },
       { kind: 'audition', worldId: 'foundations' },
     ];
     for (const t of targets) for (const passed of [true, false]) expect(afterTakeActions(outcome(t, passed, after)).filter((a) => a.primary)).toHaveLength(1);
+  });
+
+  it('a missed check of a level taught by a lesson goes back to practice first: "Back to practice" leads, the check is second (review R4)', () => {
+    const after = snap(passThrough(WORLDS, 'foundations.01'));
+    const missed = afterTakeActions(outcome({ kind: 'level', levelId: 'foundations.02' }, false, after));
+    expect(kinds(missed)).toEqual(['lesson*', 'retry']);
+    expect(missed[0]).toEqual({ kind: 'lesson', label: 'Back to practice', primary: true, route: routeOf('level', { levelId: 'foundations.02' }) });
+    expect(missed[1]).toEqual({ kind: 'retry', label: 'Take the check again', primary: false, route: routeOf('sing', { target: 'level', levelId: 'foundations.02' }) });
+    const ctx = { snapshot: after, worlds: WORLDS, songRequiredWorld: () => undefined, songsLoaded: true, hasOutcome: true, workoutItems: null };
+    for (const a of missed) expect(guardRoute(a.route, ctx), a.kind).toEqual({ ok: true });
+    // A pass moves on as before; a level with no lesson keeps "Back to level".
+    expect(kinds(afterTakeActions(outcome({ kind: 'level', levelId: 'foundations.02' }, true, snap(passThrough(WORLDS, 'foundations.02')))))).toEqual(['next-level*', 'retry']);
+    expect(kinds(afterTakeActions(outcome({ kind: 'level', levelId: 'foundations.03' }, false, after)))).toEqual(['retry*', 'level']);
+  });
+});
+
+describe('afterTakeActions: a lesson’s practice try', () => {
+  const LEVEL = 'foundations.02';
+  const [ECHO, SLIDE] = lessons.lesson.practice;
+  /** Level 02 is open: everything the report offers must get past the guard. */
+  const open = snap(passThrough(WORLDS, 'foundations.01'));
+
+  /** Count-in plus material at the exercise's own tempo: a try sung to its end, as the runner writes it. */
+  function whole(exerciseId: string): number {
+    const r = realize(getExercise(exerciseId)!, null, 'unknown');
+    return r.countInSec + r.totalSec;
+  }
+
+  type How = 'good' | 'off' | 'stopped' | 'silent';
+  /** The row of a try of `step` sung `how`, and the step's good tries counting it (the runner's PreparedRun.drill). */
+  function tryOf(step: number, how: How, counted: { good: number; needed: number }, passed = false): TakeOutcome {
+    const exerciseId = lessons.lesson.practice[step].exerciseId;
+    const full = whole(exerciseId);
+    const row = attempt({
+      exerciseId,
+      levelId: null,
+      kind: 'practice',
+      passed,
+      tempoBpm: getExercise(exerciseId)!.tempoBpm,
+      durationSec: how === 'silent' ? 0 : how === 'stopped' ? full / 2 : full,
+      metrics: { 'accuracy.inTolerancePct': how === 'off' ? 12 : 88 },
+    });
+    const drill = { levelId: LEVEL, step, stepCount: lessons.lesson.practice.length, ...counted };
+    return { prepared: { target: { kind: 'drill', levelId: LEVEL, step }, workout: null, drill }, attempt: row, after: open } as unknown as TakeOutcome;
+  }
+
+  const sing = (step: number) => routeOf('sing', { target: 'drill', levelId: LEVEL, itemIndex: String(step) });
+  const ctx = { snapshot: open, worlds: WORLDS, songRequiredWorld: () => undefined, songsLoaded: true, hasOutcome: true, workoutItems: null };
+
+  it('a good try short of its step: "Again" (primary) and back to the lesson', () => {
+    const actions = afterTakeActions(tryOf(0, 'good', { good: 1, needed: ECHO.goodTries }));
+    expect(actions).toEqual([
+      { kind: 'next-try', label: 'Again', primary: true, route: sing(0) },
+      { kind: 'lesson', label: 'Back to the lesson', primary: false, route: routeOf('level', { levelId: LEVEL }) },
+    ]);
+  });
+
+  it('a good try that finished its step: "Next step" (primary), with one more try of this one', () => {
+    const actions = afterTakeActions(tryOf(0, 'good', { good: 2, needed: 2 }));
+    expect(actions).toEqual([
+      { kind: 'next-step', label: 'Next step', primary: true, route: sing(1) },
+      { kind: 'next-try', label: 'One more try', primary: false, route: sing(0) },
+    ]);
+  });
+
+  it('a good try that finished the last step: "Take the check" (primary), which sings the level itself', () => {
+    const actions = afterTakeActions(tryOf(1, 'good', { good: 1, needed: SLIDE.goodTries }));
+    expect(actions).toEqual([
+      { kind: 'take-check', label: 'Take the check', primary: true, route: routeOf('sing', { target: 'level', levelId: LEVEL }) },
+      { kind: 'next-try', label: 'One more try', primary: false, route: sing(1) },
+    ]);
+  });
+
+  it('a try that was not good (off, stopped early or silent): "Try again" (primary) and back to the lesson, even on a step already done', () => {
+    for (const how of ['off', 'stopped', 'silent'] as const) {
+      for (const counted of [{ good: 0, needed: 2 }, { good: 2, needed: 2 }]) {
+        const take = tryOf(0, how, counted);
+        expect(isGoodDrillTry(LEVEL, 0, take.attempt), how).toBe(false);
+        expect(afterTakeActions(take), `${how} ${counted.good}`).toEqual([
+          { kind: 'next-try', label: 'Try again', primary: true, route: sing(0) },
+          { kind: 'lesson', label: 'Back to the lesson', primary: false, route: routeOf('level', { levelId: LEVEL }) },
+        ]);
+      }
+    }
+  });
+
+  it('practice has no pass or fail: the attempt’s own verdict never changes what comes next', () => {
+    expect(kinds(afterTakeActions(tryOf(0, 'off', { good: 1, needed: 2 }, true)))).toEqual(['next-try*', 'lesson']);
+    expect(kinds(afterTakeActions(tryOf(0, 'good', { good: 2, needed: 2 }, false)))).toEqual(['next-step*', 'next-try']);
+  });
+
+  it('a step or lesson that does not exist is never a good try: sing it again, or go back', () => {
+    const take = tryOf(0, 'good', { good: 2, needed: 2 });
+    expect(isGoodDrillTry(LEVEL, 0, take.attempt)).toBe(true);
+    expect(isGoodDrillTry(LEVEL, 7, take.attempt)).toBe(false);
+    expect(isGoodDrillTry('foundations.03', 0, take.attempt)).toBe(false);
+    const stale = { ...take, prepared: { ...take.prepared, target: { kind: 'drill', levelId: LEVEL, step: 7 }, drill: null } } as unknown as TakeOutcome;
+    expect(kinds(afterTakeActions(stale))).toEqual(['next-try*', 'lesson']);
+  });
+
+  it('always exactly one primary, and nothing the guard would refuse', () => {
+    const cases: TakeOutcome[] = [];
+    for (const how of ['good', 'off', 'stopped', 'silent'] as const) {
+      for (const step of [0, 1]) {
+        const needed = lessons.lesson.practice[step].goodTries;
+        for (let good = 0; good <= needed; good++) cases.push(tryOf(step, how, { good, needed }));
+      }
+    }
+    for (const take of cases) {
+      const actions = afterTakeActions(take);
+      expect(actions.filter((a) => a.primary)).toHaveLength(1);
+      for (const a of actions) expect(guardRoute(a.route, ctx), `${a.kind} ${JSON.stringify(a.route)}`).toEqual({ ok: true });
+    }
   });
 });
 
 describe('auditionTests', () => {
   it('captions each test with the levels it unlocks, never the Range finder (always sung)', () => {
     expect(auditionTests(getWorld('foundations')!)).toEqual([
-      { exerciseId: 'foundations.audition.1', index: 0, unlocksFirst: 'Pitch match', unlocksLast: 'Sustain II' },
-      { exerciseId: 'foundations.audition.2', index: 1, unlocksFirst: 'Sirens & glides', unlocksLast: 'Sirens & glides' },
-      { exerciseId: 'foundations.audition.3', index: 2, unlocksFirst: 'Crispness', unlocksLast: 'Interval jumps II' },
-      { exerciseId: 'foundations.audition.4', index: 3, unlocksFirst: 'Legato lines', unlocksLast: 'Legato lines' },
+      { exerciseId: 'foundations.audition.5', index: 0, unlocksFirst: 'Match one note', unlocksLast: 'Hold it steady' },
+      { exerciseId: 'foundations.audition.6', index: 1, unlocksFirst: 'Two notes, one step apart', unlocksLast: 'Bigger jumps' },
+      { exerciseId: 'foundations.audition.7', index: 2, unlocksFirst: 'Three notes: do-re-mi', unlocksLast: 'Five notes in a row' },
+      { exerciseId: 'foundations.audition.8', index: 3, unlocksFirst: 'Small slides', unlocksLast: 'Sirens' },
     ]);
     expect(auditionTests(getWorld('song-stage')!)).toEqual([]);
   });
@@ -146,7 +279,7 @@ describe('unlockEvents', () => {
     const after = snap([pass('foundations.01', { mastery: 3 })]);
     expect(unlockEvents(before, after, WORLDS)).toEqual([
       { kind: 'level-passed', levelId: 'foundations.01', title: 'Range finder', mastery: 3 },
-      { kind: 'level-opened', levelId: 'foundations.02', title: 'Pitch match' },
+      { kind: 'level-opened', levelId: 'foundations.02', title: 'Match one note' },
       { kind: 'feature', featureId: 'dashboard', title: 'Progress dashboard' },
       { kind: 'feature', featureId: 'daily-workout', title: 'Daily workout' },
       { kind: 'feature', featureId: 'records', title: 'Personal records' },
@@ -163,12 +296,12 @@ describe('unlockEvents', () => {
 
   it('an audition test opens its span (granted, not "passed") and the level after it', () => {
     const base = [pass('foundations.01')];
-    const events = unlockEvents(snap(base), snap([...base, passAudition('foundations', 1)]), WORLDS);
+    const events = unlockEvents(snap(base), snap([...base, passAudition('foundations', 5)]), WORLDS);
     expect(events).toEqual([
-      { kind: 'level-opened', levelId: 'foundations.02', title: 'Pitch match' },
-      { kind: 'level-opened', levelId: 'foundations.03', title: 'Sustain I' },
-      { kind: 'level-opened', levelId: 'foundations.04', title: 'Sustain II' },
-      { kind: 'level-opened', levelId: 'foundations.05', title: 'Sirens & glides' },
+      { kind: 'level-opened', levelId: 'foundations.02', title: 'Match one note' },
+      { kind: 'level-opened', levelId: 'foundations.03', title: 'Hold it' },
+      { kind: 'level-opened', levelId: 'foundations.13', title: 'Hold it steady' },
+      { kind: 'level-opened', levelId: 'foundations.10', title: 'Two notes, one step apart' },
     ]);
   });
 
@@ -182,7 +315,7 @@ describe('unlockEvents', () => {
         ] as const
       ).map(([id, requiredWorld]) => [id, { id, difficulty: { requiredWorld } }] as never),
     );
-    const before = snap(passThrough(WORLDS, 'foundations.09'));
+    const before = snap(passThrough(WORLDS, 'foundations.06')); // every level but the boss: Clean starts is last
     const after = snap(passThrough(WORLDS, 'foundations.boss'));
     const events = unlockEvents(before, after, WORLDS);
     expect(events[0]).toEqual({ kind: 'level-passed', levelId: 'foundations.boss', title: 'Foundations Boss Recital', mastery: 1 });
@@ -202,5 +335,16 @@ describe('unlockEvents', () => {
   it('no song event when the index has none for that world', () => {
     const events = unlockEvents(snap(passThrough(WORLDS, 'foundations.09')), snap(passThrough(WORLDS, 'foundations.boss')), WORLDS);
     expect(events.some((e) => e.kind === 'songs')).toBe(false);
+  });
+});
+
+describe('FEATURE_TITLES', () => {
+  it('names every feature in plain words: no settle, scoop, readouts, units or old level names (review R6)', () => {
+    for (const [id, title] of Object.entries(FEATURE_TITLES)) {
+      expect(jargonIn(title), id).toEqual([]);
+      expect(title, id).not.toMatch(/settl|scoop|readout|trace|onset|latency|crispness/i);
+    }
+    expect(FEATURE_TITLES['live.onset']).toBe('How each note starts, on Live');
+    expect(FEATURE_TITLES['live.cracks']).toBe('Cracks marked on your Live line');
   });
 });

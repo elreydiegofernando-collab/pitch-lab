@@ -28,6 +28,12 @@
  *    remove evidence, and it is the singer's own act).
  *  - A tempo-ladder level (Runs) passes only at its pass tempo: with the catalog lookup, a take
  *    recorded below it never counts, whatever `passed` says.
+ *  - A world rebuilt since (Foundations as lessons, 2026-10-23) keeps what was earned before: a level
+ *    keeps its id while it still teaches what it did, so its passes stand, and a pass of a former
+ *    audition test (AuditionDef.former) keeps what it granted then. That test is judged by the audition
+ *    it was sung under, in that order and against the levels then (so a check-up's test that was out of
+ *    order then still grants nothing), and it grants now only the levels that still teach what it judged
+ *    (`keeps`): a level that is new, or that now judges something the test never did, is earned again.
  *
  * Known trade-off: insert a level BEFORE levels singers have already passed and those later
  * levels (and, for a boss, its world) wait until the new level is passed; then everything returns
@@ -192,11 +198,73 @@ function progressBefore(
 }
 
 /**
+ * A world's audition as it was before the world was rebuilt (AuditionDef.former), ready to judge the takes of its tests
+ * against it: each test's levels then (its span over the levels then), and the levels a pass of it still grants now.
+ */
+interface FormerAudition {
+  worldId: WorldId;
+  /** The world's levels then, in order. */
+  levelIds: readonly string[];
+  /** The tests then, in sung order, each with the levels it covered then. */
+  tests: ReadonlyArray<{ exerciseId: string; levelIds: readonly string[] }>;
+  keeps: ReadonlySet<string>;
+  /** The first row that passed each level then by a sung take (its place in the replayed log). */
+  direct: ReadonlyMap<string, number>;
+  /** The levels then that a former test has granted so far, and the row that granted each: filled in log order. */
+  granted: Map<string, number>;
+}
+
+function formerAuditions(log: readonly LoggedAttempt[], worlds: readonly WorldDef[]): Map<string, FormerAudition> {
+  const byTest = new Map<string, FormerAudition>();
+  for (const world of worlds) {
+    const f = world.audition?.former;
+    if (!f) continue;
+    // The levels then, as auditionSpans reads a world's levels (its Boss Recital by its id: the catalog names it so).
+    const levels: LevelDef[] = f.levelIds.map((id, i) => ({ id, worldId: world.id, index: i + 1, title: id, exerciseId: '', kind: id === `${world.id}.boss` ? 'boss' : 'level' }));
+    const spans = auditionSpans({ id: `${world.id}.former`, worldId: world.id, exerciseIds: [...f.exerciseIds], unlockThrough: [...f.unlockThrough] }, levels);
+    const then = new Set(f.levelIds);
+    const direct = new Map<string, number>();
+    log.forEach(({ a }, index) => {
+      if (a.levelId == null || !then.has(a.levelId) || a.passed !== true || !LEVEL_PASSING_KINDS.has(a.kind)) return;
+      if (!direct.has(a.levelId)) direct.set(a.levelId, index);
+    });
+    const former: FormerAudition = {
+      worldId: world.id,
+      levelIds: f.levelIds,
+      tests: spans.map((s) => ({ exerciseId: s.exerciseId, levelIds: levels.slice(s.first, s.last + 1).map((l) => l.id) })),
+      keeps: new Set(f.keeps),
+      direct,
+      granted: new Map(),
+    };
+    for (const t of former.tests) if (!byTest.has(t.exerciseId)) byTest.set(t.exerciseId, former);
+  }
+  return byTest;
+}
+
+/**
+ * The former test that was the audition's NEXT one just before log row `index`, as the registry then saw it (unlocks.ts
+ * nextAuditionExercise, over the levels then): none before the Range finder was sung, else the first test with a level
+ * that was not passed then (passed = a sung pass or an earlier former grant, strictly in order).
+ */
+function nextFormerTest(f: FormerAudition, index: number): string | null {
+  const before = (at: number | undefined): boolean => at !== undefined && at < index;
+  if (f.levelIds.includes(LEVEL_REFS.rangeFinder) && !before(f.direct.get(LEVEL_REFS.rangeFinder))) return null;
+  const passed = new Set<string>();
+  for (const id of f.levelIds) {
+    if (!before(f.direct.get(id)) && !before(f.granted.get(id))) break;
+    passed.add(id);
+  }
+  for (const t of f.tests) if (t.levelIds.some((id) => !passed.has(id))) return t.exerciseId;
+  return null;
+}
+
+/**
  * Levels each world's passed auditions grant. A test grants only its own span (auditions.ts: past what the
  * earlier tests reach, short of any Boss Recital) and never the Range finder, which only a real take passes.
  * Whether a grant COUNTS is resolveWorld's call: it waits until every earlier level is passed. A check-up's test
  * grants nothing unless it was the audition's next test when it was sung (the module doc), so a check-up never grants
- * more than the audition could, and never later.
+ * more than the audition could, and never later. A test of a world's former audition grants what it covered then,
+ * judged against that audition (nextFormerTest), and now only the levels its world still `keeps`.
  */
 function collectGrants(
   log: readonly LoggedAttempt[],
@@ -212,29 +280,40 @@ function collectGrants(
       if (!spanOf.has(exerciseId)) spanOf.set(exerciseId, { worldId: world.id, first, last });
     }
   }
+  const former = formerAuditions(log, worlds);
   const grants = new Map<WorldId, Map<string, Grant>>();
+  const grant = (worldId: WorldId, levelId: string, a: AttemptRecord): void => {
+    if (levelId === LEVEL_REFS.rangeFinder) return; // it measures the range every exercise transposes to: sung, never granted
+    let granted = grants.get(worldId);
+    if (!granted) {
+      granted = new Map();
+      grants.set(worldId, granted);
+    }
+    const score = cleanScore(a.score);
+    const prev = granted.get(levelId);
+    if (!prev) granted.set(levelId, { at: a.createdAt, score });
+    else if (score > prev.score) prev.score = score;
+  };
   for (let index = 0; index < log.length; index++) {
     const { a } = log[index];
     if (a.kind !== 'audition' || a.passed !== true) continue;
+    const then = former.get(a.exerciseId);
+    if (then) {
+      if (isCheckupTake(a) && nextFormerTest(then, index) !== a.exerciseId) continue; // out of order as it was sung: no grant
+      const test = then.tests.find((t) => t.exerciseId === a.exerciseId);
+      for (const levelId of test?.levelIds ?? []) {
+        if (levelId !== LEVEL_REFS.rangeFinder && !then.granted.has(levelId)) then.granted.set(levelId, index);
+        if (then.keeps.has(levelId) && levelOwner.get(levelId)?.world.id === then.worldId) grant(then.worldId, levelId, a);
+      }
+      continue;
+    }
     const span = spanOf.get(a.exerciseId);
     if (!span) continue; // not a test of any audition, or one that reaches nothing new
     if (isCheckupTake(a) && nextAuditionExercise(span.worldId, progressBefore(index, worlds, ordered, levelOwner, stats, grants), worlds) !== a.exerciseId) {
       continue; // sung by a check-up out of the audition's order: it measured the skill, and grants nothing
     }
     const levels = ordered.get(span.worldId) ?? [];
-    let granted = grants.get(span.worldId);
-    if (!granted) {
-      granted = new Map();
-      grants.set(span.worldId, granted);
-    }
-    const score = cleanScore(a.score);
-    for (let i = span.first; i <= span.last; i++) {
-      const level = levels[i];
-      if (level.id === LEVEL_REFS.rangeFinder) continue; // it measures the range every exercise transposes to: sung, never granted
-      const prev = granted.get(level.id);
-      if (!prev) granted.set(level.id, { at: a.createdAt, score });
-      else if (score > prev.score) prev.score = score;
-    }
+    for (let i = span.first; i <= span.last; i++) grant(span.worldId, levels[i].id, a);
   }
   return grants;
 }

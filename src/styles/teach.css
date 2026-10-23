@@ -1,0 +1,146 @@
+/**
+ * Plain-words styles (docs/DESIGN.md §11): a music word you can tap (src/ui/teach/Term.tsx), the live readout's Details
+ * toggle and numbers row (src/ui/components/ReadoutCluster.tsx), and the take report's plain tiles
+ * (src/ui/practice/ReportParts.tsx). Imported by the components that use it, after the global sheets, so it only adds
+ * to them.
+ */
+
+/* ---------------------------------------------------------------- a tappable music word */
+
+/*
+ * A dotted underline marks a word you can tap. The button itself is the 48 px target (the layout audit measures a
+ * control's own box, so a pseudo-element would not count): padding and negative margins cancel out, which leaves the
+ * line exactly as tall, and the words exactly as far apart, as they are without a button.
+ */
+.pl-term {
+  display: inline-block;
+  min-width: 48px;
+  min-height: 48px;
+  /* Without the lh unit: a line of body text is about 24 px. */
+  padding: 12px 6px;
+  margin: -12px -6px;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: baseline;
+  text-decoration: underline dotted;
+  text-decoration-color: var(--text-mid);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+@supports (height: 1lh) {
+  .pl-term {
+    padding-block: max(0px, calc((48px - 1lh) / 2));
+    margin-block: calc((1lh - 48px) / 2);
+  }
+}
+.pl-term:active {
+  background: color-mix(in srgb, var(--text-hi) 12%, transparent);
+}
+
+/* A word that has no explanation (an id the glossary does not know) is just text. */
+.pl-term--plain {
+  text-decoration: none;
+}
+
+/* The sheet a word opens: the explanation, then the example set apart under a quiet rule. */
+.pl-term-sheet__example {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding-left: var(--sp-3);
+  border-left: 2px solid var(--line);
+}
+
+/* ---------------------------------------------------------------- the live readout: Details */
+
+.pl-readouts--has-details {
+  position: relative;
+}
+/* Open: the numbers get their own row under the note and the gauge, so the gauge keeps its room. */
+.pl-readouts--details {
+  flex-wrap: wrap;
+}
+.pl-readouts__details {
+  flex: 1 1 100%;
+  order: 4;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-4);
+}
+.pl-readouts__detail {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.pl-readouts__detail-name {
+  font-size: 13px;
+  color: var(--text-mid);
+}
+
+/*
+ * The toggle: a small pill with a 48 px button around it, set in the empty corner above the gauge (the note's column is
+ * taller than the gauge's), so it takes no room of its own and the canvas keeps its height.
+ */
+.pl-readouts__details-btn {
+  position: absolute;
+  top: 0;
+  right: var(--sp-4);
+  z-index: 1;
+  display: inline-flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  min-width: 48px;
+  min-height: 48px;
+  padding: 0;
+  color: var(--text-mid);
+}
+.pl-readouts__details-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--bg-1);
+  font-size: 13px;
+  font-weight: 600;
+}
+.pl-readouts__details-btn[aria-pressed='true'] {
+  color: var(--text-hi);
+}
+.pl-readouts__details-btn[aria-pressed='true'] .pl-readouts__details-pill {
+  border-color: var(--text-mid);
+}
+.pl-readouts__details-btn:active .pl-readouts__details-pill {
+  background: var(--bg-2);
+}
+/* On a narrow phone the readouts row has no side padding (the screen's gutter is already there). */
+@media (max-width: 379px) {
+  .pl-readouts__details-btn {
+    right: 0;
+  }
+}
+
+/* ---------------------------------------------------------------- the take report's plain tiles */
+
+/* Two classes, so the words stay smaller than a number's 22 px whichever sheet loads first. */
+.pl-tile .pl-tile__value--plain {
+  font-size: 18px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.pl-tile__target {
+  flex: 1;
+  min-width: 0;
+}

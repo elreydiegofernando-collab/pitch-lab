@@ -118,7 +118,7 @@ describe('buildCoachingFileFrom', () => {
 
   it('names the level, the singer, the settings and the device', async () => {
     const file = await buildCoachingFileFrom(take.def.id, { includeAudio: false }, sources(log()));
-    expect(file.level).toEqual({ id: 'foundations.05', title: 'Sirens & glides', worldId: 'foundations' });
+    expect(file.level).toEqual({ id: 'foundations.05', title: 'Sirens', worldId: 'foundations' });
     expect(file.exercise).toEqual(take.def);
     expect(file.profile).toEqual({ name: 'Daniel', voiceType: 'tenor', range: TEST_RANGE });
     expect(file.settings).toEqual({ vibratoStyle: 'pop', notation: 'flats', keepTakeAudio: true });
@@ -132,7 +132,7 @@ describe('buildCoachingFileFrom', () => {
   });
 
   it('names an audition test by its own title, with no level', async () => {
-    const audition = getExercise('foundations.audition.2')!;
+    const audition = getExercise('foundations.audition.8')!;
     const file = await buildCoachingFileFrom(audition.id, { includeAudio: false }, sources([attemptOf(null, { exerciseId: audition.id, kind: 'audition' })]));
     expect(file.level).toEqual({ id: null, title: audition.title, worldId: 'foundations' });
     expect(file.takes).toHaveLength(1);
@@ -149,7 +149,7 @@ describe('coaching file name and contents', () => {
     const at = new Date(file.exportedAt);
     const p = (n: number) => String(n).padStart(2, '0');
     expect(coachingFileName(file)).toBe(`pitch-lab-coach-foundations-05-${at.getFullYear()}-${p(at.getMonth() + 1)}-${p(at.getDate())}-${p(at.getHours())}${p(at.getMinutes())}.json`);
-    expect(coachingFileName({ ...file, level: { ...file.level, id: null } })).toMatch(/^pitch-lab-coach-foundations-siren-1-\d{4}-\d\d-\d\d-\d{4}\.json$/);
+    expect(coachingFileName({ ...file, level: { ...file.level, id: null } })).toMatch(/^pitch-lab-coach-foundations-sirens-1-\d{4}-\d\d-\d\d-\d{4}\.json$/);
   });
 
   it('is JSON the script can read back', async () => {

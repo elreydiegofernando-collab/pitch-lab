@@ -19,12 +19,22 @@ import {
   startLabel,
   testsLeft,
 } from './audition-model';
+import { orderedLevels } from './levels';
 import { attempt, fakeOutcome, passAudition, snapshotOf } from './test-support';
 
 const foundations = getWorld('foundations')!;
 const vibrato = getWorld('vibrato')!;
 /** The singer the runs in these tests belong to. */
 const ME = 'profile-1';
+/** Foundations in play order, and its audition's tests in sung order. */
+const ORDER = orderedLevels(foundations);
+const TESTS = foundations.audition!.exerciseIds;
+/** A passed take of the audition's test `n` (1-based), as the audition logs it. */
+const passTest = (n: number) => attempt({ kind: 'audition', exerciseId: TESTS[n - 1], levelId: null, passed: true });
+/** The last level the first, second and last tests cover: Hold it steady, Bigger jumps and Sirens. */
+const [MATCH_HOLD_END, JUMPS_END, , SIREN_END] = foundations.audition!.unlockThrough;
+/** The level before the Boss Recital: Clean starts, which no test covers. */
+const BEFORE_BOSS = ORDER[ORDER.length - 2].id;
 
 beforeEach(() => {
   resetAuditionStateForTests();
@@ -35,24 +45,24 @@ describe('buildTests', () => {
   it('lists the tests in sung order, the first one next, with what each can open and no Range finder', () => {
     const tests = buildTests(foundations, snapshotOf('foundations.01'), WORLDS);
     expect(tests.map((t) => [t.n, t.exerciseId, t.state, t.caption])).toEqual([
-      [1, 'foundations.audition.1', 'next', 'Pitch match – Sustain II'],
-      [2, 'foundations.audition.2', 'ahead', 'Sirens & glides'],
-      [3, 'foundations.audition.3', 'ahead', 'Crispness – Interval jumps II'],
-      [4, 'foundations.audition.4', 'ahead', 'Legato lines'],
+      [1, 'foundations.audition.5', 'next', 'Match one note – Hold it steady'],
+      [2, 'foundations.audition.6', 'ahead', 'Two notes, one step apart – Bigger jumps'],
+      [3, 'foundations.audition.7', 'ahead', 'Three notes: do-re-mi – Five notes in a row'],
+      [4, 'foundations.audition.8', 'ahead', 'Small slides – Sirens'],
     ]);
-    expect(tests.map((t) => t.title)).toEqual(['Match and hold', 'Siren', 'Crisp leaps', 'Legato line']);
+    expect(tests.map((t) => t.title)).toEqual(['Match and hold', 'Steps and jumps', 'A connected line', 'Siren']);
     expect(tests[0].unlocks?.first.id).toBe('foundations.02');
-    expect(tests[0].unlocks?.last.id).toBe('foundations.04');
+    expect(tests[0].unlocks?.last.id).toBe('foundations.13');
   });
 
   it('has no next test before the Range finder is sung, but still describes what the tests will open', () => {
     const tests = buildTests(foundations, snapshotOf(null), WORLDS);
     expect(tests.map((t) => t.state)).toEqual(['ahead', 'ahead', 'ahead', 'ahead']);
-    expect(tests[0].caption).toBe('Pitch match – Sustain II');
+    expect(tests[0].caption).toBe('Match one note – Hold it steady');
   });
 
   it('marks passed tests and moves next along as audition tests are passed', () => {
-    const snap = snapshotOf('foundations.01', [passAudition('foundations', 1), passAudition('foundations', 2)]);
+    const snap = snapshotOf('foundations.01', [passTest(1), passTest(2)]);
     const tests = buildTests(foundations, snap, WORLDS);
     expect(tests.map((t) => t.state)).toEqual(['passed', 'passed', 'next', 'ahead']);
     expect(tests[0].caption).toBeNull();
@@ -61,15 +71,22 @@ describe('buildTests', () => {
   });
 
   it('counts a test as passed once its levels are passed by playing, too', () => {
-    const tests = buildTests(foundations, snapshotOf('foundations.05'), WORLDS);
+    const tests = buildTests(foundations, snapshotOf(JUMPS_END), WORLDS);
     expect(tests.map((t) => t.state)).toEqual(['passed', 'passed', 'next', 'ahead']);
   });
 
   it('reports nothing left when every level the tests cover is passed', () => {
-    const tests = buildTests(foundations, snapshotOf('foundations.09'), WORLDS);
+    const tests = buildTests(foundations, snapshotOf(SIREN_END), WORLDS);
     expect(tests.every((t) => t.state === 'passed')).toBe(true);
     expect(testsLeft(tests)).toBe(0);
     expect(reachLabel(tests)).toBeNull();
+  });
+
+  it('never takes a pass of a test of the audition before the rebuild for a pass of today’s', () => {
+    // The old first test (match and hold, then) kept what it granted; today's first test is still the one to sing.
+    const tests = buildTests(foundations, snapshotOf('foundations.01', [passAudition('foundations', 1)]), WORLDS);
+    expect(tests[0].state).toBe('next');
+    expect(tests[0].unlocks?.first.id).toBe('foundations.13'); // the old pass kept Match one note and Hold it
   });
 
   it('is empty for a world without an audition', () => {
@@ -85,8 +102,8 @@ describe('buildTests', () => {
 
 describe('reachLabel', () => {
   it('spans from the first level the next test can open to the last level of the last test', () => {
-    expect(reachLabel(buildTests(foundations, snapshotOf('foundations.01'), WORLDS))).toBe('Pitch match – Legato lines');
-    expect(reachLabel(buildTests(foundations, snapshotOf('foundations.05'), WORLDS))).toBe('Crispness – Legato lines');
+    expect(reachLabel(buildTests(foundations, snapshotOf('foundations.01'), WORLDS))).toBe('Match one note – Sirens');
+    expect(reachLabel(buildTests(foundations, snapshotOf(JUMPS_END), WORLDS))).toBe('Three notes: do-re-mi – Sirens');
   });
 });
 
@@ -98,31 +115,32 @@ describe('startLabel', () => {
   });
 
   it('says Retake for a test that was sung and missed', () => {
-    const missed = attempt({ kind: 'audition', exerciseId: 'foundations.audition.1', levelId: null, passed: false });
+    const missed = attempt({ kind: 'audition', exerciseId: TESTS[0], levelId: null, passed: false });
     expect(startLabel(tests, [missed])).toBe('Retake test 1');
   });
 
-  it('ignores deleted attempts and other tests', () => {
-    const deleted = attempt({ kind: 'audition', exerciseId: 'foundations.audition.1', levelId: null, passed: false, deletedAt: '2026-10-22T00:00:00.000Z' });
-    const other = attempt({ kind: 'audition', exerciseId: 'foundations.audition.2', levelId: null, passed: false });
-    expect(startLabel(tests, [deleted, other])).toBe('Start test 1');
+  it('ignores deleted attempts, other tests, and the tests of the audition before the rebuild', () => {
+    const deleted = attempt({ kind: 'audition', exerciseId: TESTS[0], levelId: null, passed: false, deletedAt: '2026-10-22T00:00:00.000Z' });
+    const other = attempt({ kind: 'audition', exerciseId: TESTS[1], levelId: null, passed: false });
+    const before = attempt({ kind: 'audition', exerciseId: 'foundations.audition.1', levelId: null, passed: false });
+    expect(startLabel(tests, [deleted, other, before])).toBe('Start test 1');
   });
 
   it('is null when there is no test to sing', () => {
-    expect(startLabel(buildTests(foundations, snapshotOf('foundations.09'), WORLDS), [])).toBeNull();
+    expect(startLabel(buildTests(foundations, snapshotOf(SIREN_END), WORLDS), [])).toBeNull();
     expect(startLabel(buildTests(foundations, snapshotOf(null), WORLDS), [])).toBeNull();
   });
 });
 
 describe('placementOf', () => {
   it('is the level in progress, with its place in the world', () => {
-    const p = placementOf(foundations, snapshotOf('foundations.04'), WORLDS);
-    expect(p?.level.id).toBe('foundations.05');
-    expect([p?.number, p?.total]).toEqual([5, 10]);
+    const p = placementOf(foundations, snapshotOf(MATCH_HOLD_END), WORLDS);
+    expect(p?.level.id).toBe(ORDER[4].id);
+    expect([p?.number, p?.total]).toEqual([5, ORDER.length]);
   });
 
   it('can be the Boss Recital', () => {
-    expect(placementOf(foundations, snapshotOf('foundations.09'), WORLDS)?.level.kind).toBe('boss');
+    expect(placementOf(foundations, snapshotOf(BEFORE_BOSS), WORLDS)?.level.kind).toBe('boss');
   });
 
   it('is null once the whole world is passed', () => {
@@ -132,10 +150,10 @@ describe('placementOf', () => {
 
 describe('openedBetween', () => {
   const before = snapshotOf('foundations.01');
-  const after = snapshotOf('foundations.01', [passAudition('foundations', 1)]);
+  const after = snapshotOf('foundations.01', [passTest(1)]);
 
   it('lists the levels the run passed, in catalog order, from the snapshot before it', () => {
-    expect(openedBetween(before, after, foundations, WORLDS).levels.map((l) => l.id)).toEqual(['foundations.02', 'foundations.03', 'foundations.04']);
+    expect(openedBetween(before, after, foundations, WORLDS).levels.map((l) => l.id)).toEqual(['foundations.02', 'foundations.03', 'foundations.13']);
   });
 
   it('lists nothing when nothing changed', () => {
@@ -180,8 +198,8 @@ describe('beginAuditionRun', () => {
 
   it('keeps the baseline of a run that was left unfinished while only audition tests were sung', () => {
     beginAuditionRun({ worldId: 'foundations', profileId: ME,before, attempts: [], testIds, now: Date.parse('2026-10-22T12:00:00Z') });
-    const later = snapshotOf('foundations.01', [passAudition('foundations', 1)]);
-    const sung = [attempt({ kind: 'audition', exerciseId: 'foundations.audition.1', levelId: null, createdAt: '2026-10-22T12:05:00.000Z' })];
+    const later = snapshotOf('foundations.01', [passTest(1)]);
+    const sung = [attempt({ kind: 'audition', exerciseId: TESTS[0], levelId: null, createdAt: '2026-10-22T12:05:00.000Z' })];
     beginAuditionRun({ worldId: 'foundations', profileId: ME,before: later, attempts: sung, testIds, now: Date.parse('2026-10-22T12:10:00Z') });
     expect(auditionRun.value?.before).toBe(before);
     expect(auditionRun.value?.since).toBe(Date.parse('2026-10-22T12:00:00Z'));
@@ -214,8 +232,8 @@ describe('beginAuditionRun', () => {
     // Singer A starts the Foundations audition and leaves mid-run.
     const theirs = snapshotOf('foundations.01');
     beginAuditionRun({ worldId: 'foundations', profileId: 'singer-a', before: theirs, attempts: [], testIds, now: Date.parse('2026-10-22T12:00:00Z') });
-    // Singer B (who passed 01-04 long ago, nothing sung since A's start) taps Start on the same audition.
-    const mine = snapshotOf('foundations.04');
+    // Singer B (who passed the first four lessons long ago, nothing sung since A's start) taps Start on the same audition.
+    const mine = snapshotOf(MATCH_HOLD_END);
     beginAuditionRun({ worldId: 'foundations', profileId: ME, before: mine, attempts: [], testIds, now: Date.parse('2026-10-22T12:10:00Z') });
     expect(auditionRun.value).toEqual({ worldId: 'foundations', profileId: ME, before: mine, since: Date.parse('2026-10-22T12:10:00Z') });
   });
@@ -223,9 +241,9 @@ describe('beginAuditionRun', () => {
 
 describe('claimResults', () => {
   const miss = (id = 't1') =>
-    fakeOutcome({ id, target: { kind: 'audition', worldId: 'foundations' }, passed: false, exerciseId: 'foundations.audition.2' });
+    fakeOutcome({ id, target: { kind: 'audition', worldId: 'foundations' }, passed: false, exerciseId: TESTS[1] });
   const passedOne = (id = 'p1') =>
-    fakeOutcome({ id, target: { kind: 'audition', worldId: 'foundations' }, passed: true, exerciseId: 'foundations.audition.1' });
+    fakeOutcome({ id, target: { kind: 'audition', worldId: 'foundations' }, passed: true, exerciseId: TESTS[0] });
   /** A route entry: the intro's own, or a new one that `replace` put on the stack. */
   const entry = (): object => ({});
 

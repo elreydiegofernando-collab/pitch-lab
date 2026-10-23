@@ -30,7 +30,7 @@ export interface TestModel {
   state: TestState;
   /** What a pass can still open: the first and last level of its span that are not passed. Null once all are. */
   unlocks: { first: LevelDef; last: LevelDef } | null;
-  /** The span as a caption ("Pitch match – Sustain II"); null when nothing is left to open. */
+  /** The span as a caption ("Match one note – Hold it steady"); null when nothing is left to open. */
   caption: string | null;
 }
 

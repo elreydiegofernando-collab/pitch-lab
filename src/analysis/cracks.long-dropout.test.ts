@@ -122,7 +122,7 @@ describe('the real sirens: a long hole costs score, however long (contour and re
     return makeTrack({ duration: rz.totalSec + 0.5, midi: (t) => (t >= mid && t < mid + holeSec ? NaN : base(t)), jitterCents: 6, seed: 11 });
   }
 
-  for (const id of ['foundations.siren.1', 'foundations.audition.2']) {
+  for (const id of ['foundations.sirens.1', 'foundations.audition.8']) {
     const def = byId(id);
     const rz = real(def);
     const clean = analyzeTake(def, rz, holed(rz, 0), { vibratoStyle: 'pop' });

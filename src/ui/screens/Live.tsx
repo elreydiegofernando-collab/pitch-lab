@@ -1,9 +1,13 @@
 /**
  * Live: the free-sing pitch monitor. AppBar + readouts + the pitch trace + the thumb-zone action bar.
  *
- * Progressive (SPEC §11.1): a new singer sees note, cents, Hz and dB and nothing else. Crack markers on the trace appear
- * after Sirens & glides, the settle and scoop readout after Crispness, and vibrato rate, extent and the zone after the
- * Foundations Boss Recital. Each one is analysed a few times a second on a window of recent frames (practice/
+ * In plain words (owner, 2026-10-23): the readout is the note's name and "On it", "A little high" or "A little low".
+ * The numbers (pitch in Hz, loudness in dB, the distance in cents) sit behind a small Details toggle that is off
+ * every time the screen opens.
+ *
+ * Progressive (SPEC §11.1): a new singer sees the note and the words and nothing else. Crack markers on the trace appear
+ * after Sirens, the words for how a note starts after Clean starts, and the vibrato's speed and zone after the
+ * Foundations Boss Recital (each chip in words; its numbers with Details). Each one is analysed a few times a second on a window of recent frames (practice/
  * live-analysis.ts), never per frame, and costs nothing at all until it is earned. The More sheet lists the readouts
  * that are still locked with what unlocks them.
  */
@@ -18,6 +22,7 @@ import { activePitchView } from '../../state/pitch-view-registry';
 import { isUnlocked } from '../../state/session';
 import { settings } from '../../state/settings';
 import { CONFIG } from '../../config';
+import { pitchDistance } from '../../coaching/plain';
 import { noteName, octaveOf, parseNote, type Notation } from '../../core/music';
 import type { TargetNote } from '../../core/types';
 import type { FeatureId } from '../../progress/types';
@@ -31,6 +36,7 @@ import { ListRow } from '../components/ListRow';
 import { Locked } from '../components/Locked';
 import { ReadoutCluster } from '../components/ReadoutCluster';
 import { Sheet } from '../components/Sheet';
+import { Term } from '../teach/Term';
 import { EngineIssue } from '../practice/EngineIssue';
 import { LiveStatus } from '../practice/LiveStatus';
 import { viewReducedMotion } from '../practice/motion';
@@ -45,8 +51,8 @@ const A3_MIDI = parseNote('A3');
 /** The readouts that are earned one by one, with the name each is listed under in More. */
 const PROGRESSIVE_READOUTS: ReadonlyArray<{ id: FeatureId; title: string }> = [
   { id: 'live.cracks', title: 'Crack markers' },
-  { id: 'live.onset', title: 'Settle and scoop' },
-  { id: 'live.vibrato', title: 'Vibrato rate, extent and zone' },
+  { id: 'live.onset', title: 'How each note starts' },
+  { id: 'live.vibrato', title: 'Vibrato speed, width and zone' },
 ];
 
 interface NotePickerProps {
@@ -104,6 +110,8 @@ export function Live(): JSX.Element {
   const engine = getEngine();
   const [targetMidi, setTargetMidi] = useState<number | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
+  // The numbers are for the curious: off every time the screen opens.
+  const [details, setDetails] = useState(false);
   const [singBusy, setSingBusy] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
   const lastSungMidiRef = useRef<number>(A3_MIDI);
@@ -171,8 +179,14 @@ export function Live(): JSX.Element {
 
       <div class="pl-live-body">
         <div class="pl-live-body__readouts pl-safe-x">
-          <ReadoutCluster engine={engine} toleranceCents={CONFIG.tolerance.default} notation={notation} />
-          <LiveStatus readings={readings} features={features} />
+          <ReadoutCluster
+            engine={engine}
+            toleranceCents={CONFIG.tolerance.default}
+            notation={notation}
+            details={details}
+            onDetailsChange={setDetails}
+          />
+          <LiveStatus readings={readings} features={features} details={details} />
           <EngineIssue engine={engine} />
         </div>
 
@@ -218,8 +232,11 @@ export function Live(): JSX.Element {
           </div>
         </div>
 
-        <div class="pl-stack">
-          <span class="pl-label">Target note</span>
+        <div class="pl-stack" data-testid="live-target">
+          <span class="pl-label">Note to aim for</span>
+          <p class="pl-body-s pl-muted pl-prose">
+            Pick a note, tap Listen to hear it, then Sing to match it. Each group below is an <Term id="octave">octave</Term>: the notes from one C up to the next.
+          </p>
           <NotePicker
             value={targetMidi}
             defaultNear={lastSungMidiRef.current}
@@ -227,14 +244,19 @@ export function Live(): JSX.Element {
             onSelect={setTargetMidi}
           />
           <Button variant="ghost" disabled={targetMidi === null} onClick={() => setTargetMidi(null)}>
-            Clear target
+            Clear the note
           </Button>
         </div>
 
-        <div class="pl-list">
-          <ListRow title="Tolerance" value={`±${CONFIG.tolerance.default}¢ (default)`} />
+        <div class="pl-stack" data-testid="live-zone">
+          <span class="pl-label">
+            <Term id="in-tune-zone">In-tune zone</Term>
+          </span>
+          <p class="pl-body-s pl-muted pl-prose">
+            The shaded band around each note is {pitchDistance(CONFIG.tolerance.default)} either way
+            {details ? ` (±${CONFIG.tolerance.default}¢)` : ''}. The level you’ve reached sets it, so it isn’t a setting.
+          </p>
         </div>
-        <p class="pl-body-s pl-muted">Tolerance is set by the level you've reached, not a setting.</p>
 
         <Button variant="secondary" icon={RotateCcw} loading={resetBusy} onClick={handleResetAudio}>
           Reset audio

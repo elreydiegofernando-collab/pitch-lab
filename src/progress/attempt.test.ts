@@ -47,6 +47,20 @@ describe('buildAttempt: the kind and level id of each kind of take', () => {
     expect(buildAttempt(input({ def: audition, source: { type: 'audition' } }))).toMatchObject({ kind: 'audition', levelId: null, exerciseId: 'foundations.audition.2' });
   });
 
+  it('a practice try of a lesson is kind practice with NO level, its `passed` the step’s good-try verdict and never a tally (review R8)', () => {
+    // Good by the step's lenient rule, though the drill's own pass rule missed it: written as a good try.
+    const good = buildAttempt(input({ source: { type: 'drill', good: true }, evaluation: { score: 0.4, passed: false, mastery: 0 } }));
+    expect(good).toMatchObject({ kind: 'practice', levelId: null, exerciseId: DEF.id, passed: true, mastery: 0, score: 0.4 });
+    // Passed by the drill's own rule, but its step did not count it: not a good try, and still no tally.
+    const missed = buildAttempt(input({ source: { type: 'drill', good: false } }));
+    expect(missed).toMatchObject({ kind: 'practice', levelId: null, passed: false, mastery: 0, score: 0.93 });
+    // With no level it can never pass or open one, whatever it says.
+    const foundations = world('foundations', 'Foundations', [level('foundations', 1, 'Range finder'), level('foundations', 2, 'Match one note'), LEVEL], null);
+    const row = { ...good, id: 'a1', createdAt: '2026-03-01T12:00:00.000Z', updatedAt: '2026-03-01T12:00:00.000Z', deletedAt: null };
+    const snap = computeSnapshot(P1, [foundations], [row], new Date('2026-03-02T12:00:00.000Z'));
+    expect(Object.values(snap.levels).filter((l) => l.status === 'passed')).toEqual([]);
+  });
+
   it('refuses a take that contradicts its source (a wrong exercise for the level, a non-routine as a routine)', () => {
     expect(() => buildAttempt(input({ def: exerciseDef('foundations.04.ex') }))).toThrow(/foundations.03/);
     expect(() => buildAttempt(input({ source: { type: 'workout-routine' } }))).toThrow(/routine/);

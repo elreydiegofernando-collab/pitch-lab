@@ -8,18 +8,28 @@
  *
  * Analyzer -> metrics map: metrics.ts (ANALYZER_METRICS). Scoring semantics:
  * evaluate.ts. Analysis inputs: plan.ts.
+ *
+ * Lessons (src/lessons): a world taught as lessons (ECHO_WORLDS) obeys the echo rule (checkEcho), its practice drills
+ * are catalog exercises named `<world>.drill.<name>` (isDrillId) that no level or audition plays, and validateLessons
+ * checks the lessons against the catalog they are given.
+ *
+ * Retired exercises (ExerciseDef.retired: material a rebuild replaced, kept so old takes read back against it) are
+ * frozen history: they are not validated as material to sing, only checked to be sung by nothing (no level, audition or
+ * lesson), and a rebuilt audition's `former` tests must be retired tests of its world.
  */
 import { CONFIG } from '../config';
 import type { ToleranceLevel } from '../core/types';
 import type { MetricKey, Metrics } from '../analysis/types';
+import type { LessonDef } from '../lessons/types';
 import type { VocalRange } from '../storage/schema';
+import { TERMS } from '../teach/glossary';
 import { cueCollision, CUE, INFLECTION_CUES, VIBRATO_CUES } from './cues';
-import { evaluate } from './evaluate';
+import { evaluate, gateHolds } from './evaluate';
 import { METRIC_INFO, metricsProducedBy } from './metrics';
 import { PLAN, planAnalysis } from './plan';
 import { getTip } from './tips';
-import { effectiveRange, materialSpan, realize, usesExtendedRange, type VoiceType } from './transpose';
-import type { AnalyzerId, AuditionDef, ExerciseDef, ExerciseKind, LevelDef, WorldDef, WorldId } from './types';
+import { effectiveRange, materialSpan, realize, repeatCount, usesExtendedRange, type VoiceType } from './transpose';
+import type { AnalyzerId, AuditionDef, ExerciseDef, ExerciseKind, LevelDef, PatternStep, WorldDef, WorldId } from './types';
 
 export interface ValidationIssue {
   /** Where: an exercise, level, audition or world id (plus detail). */
@@ -45,7 +55,8 @@ const ANALYZERS: ReadonlySet<AnalyzerId> = new Set<AnalyzerId>([
 /** Limits for authored data (validator knobs, not singing thresholds). */
 const LIMITS = {
   minLevels: 6,
-  maxLevels: 10,
+  /** Foundations is thirteen small lessons, one new thing each. */
+  maxLevels: 14,
   tempo: [30, 240] as const,
   takeSec: [4, 60] as const,
   /** Silence before each judged attack, so the singer re-attacks from silence (and the onset look-back stays in the rest). */
@@ -54,7 +65,32 @@ const LIMITS = {
   switchWindowSec: 1.5,
   /** Shortest pulse train worth measuring. */
   pulseTrainSec: 2,
+  /** A practice drill is short: this many seconds of singing (src/lessons/types.ts PracticeStep). */
+  drillSingSec: [5, 12] as const,
+  /** Practice steps per lesson. */
+  lessonSteps: [2, 4] as const,
+  /** How-to lines on a Learn page. */
+  learnHow: [3, 5] as const,
 };
+
+/** Worlds taught as lessons (src/lessons): every sung chunk is heard first (checkEcho). */
+export const ECHO_WORLDS: ReadonlySet<WorldId> = new Set<WorldId>(['foundations']);
+
+/** Echo-rule knobs (validator knobs, not singing thresholds). */
+const ECHO = {
+  /**
+   * The singer's turn: the breath between a Listen and the chunk sung back. At least the runner's speaker clearance
+   * (runtime/runner.ts SPEAKER_CLEARANCE_SEC), or a phone speaker would cut the Listen tone short.
+   */
+  turnSec: 0.6,
+  /** The most notes one chunk asks for: the five-note line, sung after its halves. */
+  maxNotes: 5,
+};
+
+/** A lesson's practice drill: a catalog exercise named `<world>.drill.<name>`, sung as practice, never as a level or test. */
+export function isDrillId(id: string): boolean {
+  return /^[a-z-]+\.drill\.[a-z0-9-]+$/.test(id);
+}
 
 /** Analyzers each kind can't do without (its core skill). */
 const KIND_NEEDS: Readonly<Record<ExerciseKind, readonly AnalyzerId[]>> = {
@@ -129,7 +165,79 @@ export function validateExercise(def: ExerciseDef): ValidationIssue[] {
   checkDemoAndLadder(out, p, def);
   checkTips(out, p, def);
   checkPlan(out, p, def);
+  checkEcho(out, p, def);
+  if (isDrillId(def.id)) checkDrill(out, p, def);
   return out;
+}
+
+/** The pitches a chunk moves through, in order: a glide counts its two ends, and a repeated pitch counts once. */
+function pitchLine(steps: readonly PatternStep[]): number[] {
+  const out: number[] = [];
+  const push = (s: number): void => {
+    if (out[out.length - 1] !== s) out.push(s);
+  };
+  for (const s of steps) {
+    if (s.semis === undefined) continue;
+    push(s.semis);
+    if (s.glideToSemis !== undefined) push(s.glideToSemis);
+  }
+  return out;
+}
+
+/**
+ * The echo rule (owner, 2026-10-23: "I need to know the note before I sing it"), in a world taught as lessons: the pattern
+ * is a run of turns, each one the app playing a chunk (Listen steps), the singer's breath of at least ECHO.turnSec, then
+ * the chunk sung back. The Listen plays exactly the notes the chunk asks for, in order (a slide is compared by its two
+ * ends, and is heard as a slide: a Listen step may glide); a chunk asks for at most ECHO.maxNotes notes and ends with a
+ * breath before the next Listen. Nothing sounds while the singer sings, so there is no metronome. The Range finder sings
+ * past what it plays (the singer finds their own lowest and highest notes), so only the first note of each of its chunks
+ * is heard.
+ */
+function checkEcho(out: Issues, p: string, def: ExerciseDef): void {
+  if (!ECHO_WORLDS.has(def.worldId) || def.pattern.length === 0) return;
+  if (def.metronome) add(out, p, 'an echo exercise sounds nothing while the singer sings: no metronome (the count-in gives the start)');
+  const steps = def.pattern;
+  if (steps[0].cue !== CUE.listen) add(out, p, 'an echo exercise opens with the app playing the first chunk (a Listen step), never with the singer');
+  const spb = 60 / def.tempoBpm;
+  const exploring = def.kind === 'range-finder';
+  let i = 0;
+  while (i < steps.length) {
+    const heard: PatternStep[] = [];
+    while (i < steps.length && steps[i].cue === CUE.listen) heard.push(steps[i++]);
+    const start = i;
+    const chunk: PatternStep[] = [];
+    while (i < steps.length && steps[i].cue !== CUE.listen) chunk.push(steps[i++]);
+    if (heard.length === 0) continue; // material before the first Listen: reported above
+    const where = `${p} step ${start}`;
+    const sungIdx = chunk.findIndex((s) => s.semis !== undefined);
+    if (sungIdx < 0) {
+      add(out, where, 'a Listen is followed by nothing to sing back');
+      continue;
+    }
+    const turn = chunk.slice(0, sungIdx).reduce((sum, s) => sum + s.beats, 0) * spb;
+    if (turn < ECHO.turnSec - 1e-6) {
+      add(out, where, `the singer's turn after a Listen lasts ${turn.toFixed(2)} s; give at least ${ECHO.turnSec} s to breathe (and a phone speaker time to fall silent)`);
+    }
+    if (i < steps.length && chunk[chunk.length - 1].semis !== undefined) add(out, where, 'a sung chunk ends with a breath before the next Listen');
+    const heardLine = pitchLine(heard);
+    const sungLine = pitchLine(chunk);
+    if (exploring) {
+      if (heardLine.length !== 1 || heardLine[0] !== sungLine[0]) add(out, where, `the Range finder plays the one note each half starts on (heard ${heardLine.join(' ')}, starts on ${sungLine[0]})`);
+    } else if (heardLine.join() !== sungLine.join()) {
+      add(out, where, `the Listen plays ${heardLine.join(' ')} but the chunk asks for ${sungLine.join(' ')}: an echo plays exactly what is sung back`);
+    }
+    if (sungLine.length > ECHO.maxNotes) add(out, where, `a chunk of ${sungLine.length} notes is more than a beginner can hold in mind (at most ${ECHO.maxNotes})`);
+  }
+}
+
+/** A practice drill is short (LIMITS.drillSingSec of singing) and only ever a lesson step, in a world taught as lessons. */
+function checkDrill(out: Issues, p: string, def: ExerciseDef): void {
+  if (!ECHO_WORLDS.has(def.worldId)) add(out, p, `practice drills belong to a world taught as lessons, not ${def.worldId}`);
+  if (def.kind === 'boss-recital' || def.kind === 'audition' || def.kind === 'range-finder') add(out, p, `a practice drill cannot be a ${def.kind}`);
+  const beats = def.pattern.reduce((sum, s) => sum + (s.semis !== undefined && s.cue !== CUE.listen ? s.beats : 0), 0);
+  const sec = (beats * 60 * repeatCount(def)) / def.tempoBpm;
+  const [lo, hi] = LIMITS.drillSingSec;
+  if (sec < lo - 1e-6 || sec > hi + 1e-6) add(out, p, `a practice drill asks for ${sec.toFixed(1)} s of singing; keep it within ${lo}-${hi} s`);
 }
 
 function checkGoal(out: Issues, p: string, goal: string): void {
@@ -151,7 +259,9 @@ function checkPattern(out: Issues, p: string, def: ExerciseDef): void {
       if (s.semis === undefined) add(out, where, 'glideToSemis needs semis (a rest cannot glide)');
       if (!Number.isInteger(s.glideToSemis)) add(out, where, 'glideToSemis must be a whole number');
       if (s.glideToSemis === s.semis) add(out, where, 'a glide must change pitch');
-      if (s.cue === CUE.listen) add(out, where, 'a Listen step cannot glide');
+      // A world taught as lessons plays a slide as it is to be sung (the runner and the demo play a gliding Listen step
+      // as one sliding tone); elsewhere a Listen step is a plain note.
+      if (s.cue === CUE.listen && !ECHO_WORLDS.has(def.worldId)) add(out, where, 'a Listen step cannot glide');
     }
     if (s.cue !== undefined) {
       const clash = cueCollision(s.cue);
@@ -369,8 +479,11 @@ export function validateCatalog(catalog: CatalogLike, rangeCases: readonly Range
   for (const e of catalog.exercises) {
     if (exById.has(e.id)) add(out, e.id, 'duplicate exercise id');
     exById.set(e.id, e);
-    out.push(...validateExercise(e));
+    // A retired exercise is frozen history, read back but never sung: it is not judged as material to sing.
+    if (e.retired === undefined) out.push(...validateExercise(e));
+    else if (!e.id.startsWith(`${e.worldId}.`) || !e.retired.trim()) add(out, e.id, 'a retired exercise keeps its world prefix and says when it was retired');
   }
+  const live = catalog.exercises.filter((e) => e.retired === undefined);
 
   const ids = new Set<string>();
   const uniq = (id: string, what: string) => {
@@ -397,16 +510,20 @@ export function validateCatalog(catalog: CatalogLike, rangeCases: readonly Range
     else bossOf.set(w.id, bosses[0]);
     if (w.levels.length > 0 && w.levels[w.levels.length - 1].kind !== 'boss') add(out, w.id, 'the Boss Recital must be the last level');
     let prevTol = -1;
+    const isLevelNumber = (id: string): boolean => id.startsWith(`${w.id}.`) && /^\d{2}$/.test(id.slice(w.id.length + 1));
     w.levels.forEach((l, i) => {
       uniq(l.id, 'level');
       levelById.set(l.id, l);
       if (l.worldId !== w.id) add(out, l.id, `level belongs to ${l.worldId}, listed in ${w.id}`);
       if (l.index !== i + 1) add(out, l.id, `index ${l.index} should be ${i + 1} (levels are numbered in order from 1)`);
-      const expectId = l.kind === 'boss' ? `${w.id}.boss` : `${w.id}.${String(i + 1).padStart(2, '0')}`;
-      if (l.id !== expectId) add(out, l.id, `level id should be ${expectId}`);
+      // The id is persisted identity and the index the order (a level added later takes a new number wherever it goes).
+      if (l.kind === 'boss' ? l.id !== `${w.id}.boss` : !isLevelNumber(l.id)) {
+        add(out, l.id, l.kind === 'boss' ? `a Boss Recital's id is ${w.id}.boss` : `a level id is ${w.id}.NN, a two-digit number`);
+      }
       if (!l.title?.trim()) add(out, l.id, 'level title is empty');
       const ex = exById.get(l.exerciseId);
       if (!ex) return void add(out, l.id, `references missing exercise ${l.exerciseId}`);
+      if (ex.retired !== undefined) add(out, l.id, `plays ${ex.id}, which is retired (never sung again)`);
       const prevUse = usedByLevel.get(ex.id);
       if (prevUse) add(out, l.id, `exercise ${ex.id} is already used by ${prevUse}`);
       usedByLevel.set(ex.id, l.id);
@@ -415,9 +532,10 @@ export function validateCatalog(catalog: CatalogLike, rangeCases: readonly Range
       if (l.kind !== 'boss' && (ex.kind === 'boss-recital' || ex.kind === 'audition')) add(out, l.id, `a regular level cannot play a ${ex.kind}`);
       const tol = STRICTNESS[ex.tolerance];
       if (tol < prevTol) add(out, l.id, `tolerance ${ex.tolerance} is looser than an earlier level's (strictness must never decrease)`);
+      // The hardest take of its world, but not stricter than the world itself: Foundations, for beginners, never reaches studio.
+      if (l.kind === 'boss' && tol < prevTol) add(out, l.id, "the Boss Recital is sung at its world's strictest tolerance");
       prevTol = Math.max(prevTol, tol);
       if (i === 0 && ex.tolerance === 'studio') add(out, l.id, 'a world cannot open at studio tolerance');
-      if (l.kind === 'boss' && ex.tolerance !== 'studio') add(out, l.id, 'the Boss Recital is sung at studio tolerance');
     });
   }
 
@@ -442,16 +560,52 @@ export function validateCatalog(catalog: CatalogLike, rangeCases: readonly Range
       continue;
     }
     checkAudition(out, w, a, exById, levelById, usedByLevel, usedByAudition, uniq);
+    checkFormerAudition(out, w, a, exById, levelById);
   }
 
   for (const e of catalog.exercises) {
-    if (!usedByLevel.has(e.id) && !usedByAudition.has(e.id)) add(out, e.id, 'exercise is not used by any level or audition');
+    if (e.retired !== undefined) {
+      if (isDrillId(e.id)) add(out, e.id, 'a practice drill is never retired: a lesson that drops it drops the drill');
+      continue; // sung by nothing (the levels and auditions above refuse it); kept only to read old takes back
+    }
+    const drill = isDrillId(e.id);
+    // A drill is sung only as a lesson's practice step (validateLessons checks that some lesson uses it).
+    if (!drill && !usedByLevel.has(e.id) && !usedByAudition.has(e.id)) add(out, e.id, 'exercise is not used by any level or audition');
+    if (drill && (usedByLevel.has(e.id) || usedByAudition.has(e.id))) add(out, e.id, 'a practice drill is never a level or an audition test');
     if (e.kind === 'audition' && !usedByAudition.has(e.id)) add(out, e.id, 'audition exercise is not in its world\'s audition');
   }
 
-  checkSavedRangeFit(out, catalog.exercises);
-  for (const e of catalog.exercises) checkTransposition(out, e, rangeCases);
+  checkSavedRangeFit(out, live);
+  for (const e of live) checkTransposition(out, e, rangeCases);
   return out;
+}
+
+/**
+ * A rebuilt audition's former tests (AuditionDef.former): retired audition exercises of its world, paired with how far
+ * each reached among the world's levels then, granting only levels of the world now, never its Range finder (its first
+ * level: always sung) or its Boss Recital.
+ */
+function checkFormerAudition(out: Issues, w: WorldDef, a: AuditionDef, exById: Map<string, ExerciseDef>, levelById: Map<string, LevelDef>): void {
+  const f = a.former;
+  if (!f) return;
+  const where = `${a.id} former`;
+  if (f.exerciseIds.length === 0 || f.exerciseIds.length !== f.unlockThrough.length) add(out, where, 'former exerciseIds and unlockThrough must pair up');
+  if (new Set(f.levelIds).size !== f.levelIds.length) add(out, where, 'former levels are listed once each');
+  for (const id of f.exerciseIds) {
+    const ex = exById.get(id);
+    if (!ex) add(out, where, `references missing exercise ${id}`);
+    else if (ex.retired === undefined || ex.kind !== 'audition' || ex.worldId !== w.id) add(out, where, `${id} must be a retired audition test of ${w.id}`);
+    if (a.exerciseIds.includes(id)) add(out, where, `${id} is both a former and a current test`);
+  }
+  for (const id of f.unlockThrough) if (!f.levelIds.includes(id)) add(out, where, `reaches ${id}, which is not one of the former levels`);
+  for (const id of f.keeps) {
+    const level = levelById.get(id);
+    if (!level || level.worldId !== w.id) add(out, where, `keeps ${id}, which is not a level of ${w.id}`);
+    else if (level.kind === 'boss' || exById.get(level.exerciseId)?.kind === 'range-finder') {
+      add(out, where, `can never grant ${id} (a Range finder is always sung, a Boss Recital always passed)`);
+    }
+    if (!f.levelIds.includes(id)) add(out, where, `keeps ${id}, which no former test could have reached`);
+  }
 }
 
 const widthOf = (s: { lo: number; hi: number }): number => s.hi - s.lo;
@@ -488,6 +642,7 @@ function checkAudition(
     if (!ex) return void add(out, a.id, `references missing exercise ${id}`);
     if (usedByAudition.has(id)) add(out, a.id, `exercise ${id} is used twice`);
     usedByAudition.add(id);
+    if (ex.retired !== undefined) add(out, id, 'a retired exercise is never sung: an audition cannot test with it');
     if (ex.kind !== 'audition') add(out, id, 'audition tests have kind "audition"');
     if (ex.worldId !== w.id) add(out, id, `audition test belongs to ${ex.worldId}, not ${w.id}`);
     if (usedByLevel.has(id)) add(out, id, 'an audition test cannot also be a level');
@@ -519,4 +674,83 @@ function checkTransposition(out: Issues, def: ExerciseDef, cases: readonly Range
     if (!c.allowFold && r.fit === 'folded') add(out, where, 'material is wider than the extended range and had to be folded');
     if (!isSaved && !usesExtendedRange(def) && r.fit !== 'fits') add(out, where, `does not fit the default comfortable range ${comfortable.low}-${comfortable.high}`);
   }
+}
+
+/**
+ * Every issue with the lessons (src/lessons/types.ts), keyed by level id, against `catalog`: each teaches a level of a
+ * world taught as lessons; its Learn page has what, why, 3-5 how-to lines and what the screen shows, and the music words
+ * it introduces (each taught by one lesson only); its 2-4 practice steps are that world's drills (none shared, none a
+ * level's exercise or a test), sung at the check's tolerance so the in-tune zone on screen is the one the check uses, with
+ * a good-try rule on metrics the drill measures that a perfect take meets and that never asks more than the check's own
+ * gate on the same metric. And every drill in the catalog is some lesson's step.
+ */
+export function validateLessons(lessons: Readonly<Record<string, LessonDef>>, catalog: CatalogLike): ValidationIssue[] {
+  const out: Issues = [];
+  const exById = new Map(catalog.exercises.map((e) => [e.id, e] as const));
+  const levelById = new Map(catalog.worlds.flatMap((w) => w.levels.map((l) => [l.id, l] as const)));
+  const played = new Set(catalog.worlds.flatMap((w) => [...w.levels.map((l) => l.exerciseId), ...(w.audition?.exerciseIds ?? [])]));
+  const drillOwner = new Map<string, string>();
+  const termOwner = new Map<string, string>();
+  for (const [key, lesson] of Object.entries(lessons)) {
+    const p = `lesson ${key}`;
+    if (lesson.levelId !== key) add(out, p, `is keyed ${key} but teaches ${lesson.levelId}`);
+    const level = levelById.get(lesson.levelId);
+    if (!level) {
+      add(out, p, `teaches ${lesson.levelId}, which is not a level`);
+      continue;
+    }
+    if (!ECHO_WORLDS.has(level.worldId)) add(out, p, `${level.worldId} is not taught as lessons (ECHO_WORLDS): its exercises are not echo-shaped`);
+    const check = exById.get(level.exerciseId);
+    if (!lesson.title?.trim() || !lesson.outcome?.trim()) add(out, p, 'needs a title and an outcome');
+    const { learn } = lesson;
+    if (!learn.what?.trim() || !learn.why?.trim()) add(out, p, 'the Learn page says what the skill is and why it matters');
+    if (learn.how.length < LIMITS.learnHow[0] || learn.how.length > LIMITS.learnHow[1] || learn.how.some((h) => !h.trim())) {
+      add(out, p, `the Learn page has ${learn.how.length} how-to lines; expected ${LIMITS.learnHow.join('-')}`);
+    }
+    if (learn.onScreen.length === 0 || learn.onScreen.some((s) => !s.trim())) add(out, p, 'the Learn page says what the screen shows');
+    for (const t of learn.terms) {
+      if (!Object.prototype.hasOwnProperty.call(TERMS, t)) add(out, p, `unknown term "${t}"`);
+      const prev = termOwner.get(t);
+      if (prev) add(out, p, `term "${t}" is already taught by ${prev}`);
+      else termOwner.set(t, lesson.levelId);
+    }
+    if (lesson.practice.length < LIMITS.lessonSteps[0] || lesson.practice.length > LIMITS.lessonSteps[1]) {
+      add(out, p, `has ${lesson.practice.length} practice steps; expected ${LIMITS.lessonSteps.join('-')}`);
+    }
+    lesson.practice.forEach((step, i) => {
+      const where = `${p} practice ${i}`;
+      const drill = exById.get(step.exerciseId);
+      if (!drill) return void add(out, where, `references missing exercise ${step.exerciseId}`);
+      if (drill.retired !== undefined) add(out, where, `${drill.id} is retired: practice never sings it`);
+      if (!isDrillId(drill.id)) add(out, where, `${drill.id} is not a practice drill (${level.worldId}.drill.<name>)`);
+      if (played.has(drill.id)) add(out, where, `${drill.id} is a level's exercise or an audition test, never a drill`);
+      if (drill.worldId !== level.worldId) add(out, where, `${drill.id} belongs to ${drill.worldId}, not ${level.worldId}`);
+      const owner = drillOwner.get(drill.id);
+      if (owner) add(out, where, `${drill.id} is already a practice step of ${owner}`);
+      else drillOwner.set(drill.id, lesson.levelId);
+      if (check && drill.tolerance !== check.tolerance) add(out, where, `${drill.id} is sung at ${drill.tolerance}, its check at ${check.tolerance}: practise in the zone the check uses`);
+      if (!step.title?.trim() || !step.ask?.trim()) add(out, where, 'needs a title and an ask');
+      if (!Number.isInteger(step.goodTries) || step.goodTries < 1) add(out, where, 'goodTries must be a whole number >= 1');
+      const produced = metricsProducedBy(drill.analyzers);
+      const perfect = perfectMetrics(drill);
+      for (const c of step.good.conditions) {
+        const info = METRIC_INFO[c.metric];
+        if (!info) {
+          add(out, where, `unknown metric ${c.metric}`);
+          continue;
+        }
+        if (!produced.has(c.metric)) add(out, where, `the good-try rule reads ${c.metric}, which ${drill.id} does not measure`);
+        if (info.direction === 'higher' && c.op !== '>=') add(out, where, `${c.metric} is better higher: hold it to >=`);
+        if (info.direction === 'lower' && c.op !== '<=') add(out, where, `${c.metric} is better lower: hold it to <=`);
+        if (!Number.isFinite(c.value) || c.value < info.min || c.value > info.max) add(out, where, `${c.metric} ${c.value} is outside ${info.min}..${info.max}`);
+        else if (!gateHolds(c, perfect)) add(out, where, `a perfect take misses the good-try condition on ${c.metric}`);
+        const gate = check && check.tolerance === drill.tolerance ? (check.pass.gates ?? []).find((g) => g.metric === c.metric) : undefined;
+        if (gate && (c.op === '>=' ? c.value > gate.value : c.value < gate.value)) {
+          add(out, where, `a good try asks ${c.metric} ${c.op} ${c.value}, more than the check's own gate (${gate.value}): practice is the lenient part`);
+        }
+      }
+    });
+  }
+  for (const e of catalog.exercises) if (isDrillId(e.id) && !drillOwner.has(e.id)) add(out, e.id, 'a practice drill that no lesson uses');
+  return out;
 }

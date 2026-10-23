@@ -13,6 +13,7 @@ import type { JSX } from 'preact';
 import { LockOpen, Repeat } from 'lucide-preact';
 import type { CheckupComparison, CheckupSummary } from '../../checkup/types';
 import { WORLDS } from '../../exercises';
+import { lessonFor } from '../../lessons';
 import { isLevelOpenable, levelRequirementHint, type ProgressSnapshot } from '../../progress';
 import { Button } from '../components/Button';
 import { Locked } from '../components/Locked';
@@ -125,7 +126,8 @@ function Start(props: { levelId: string | null }): JSX.Element {
         <>
           <p class="ck-start__title">{found.level.kind === 'boss' ? `${found.world.title} Boss Recital` : found.level.title}</p>
           <p class="pl-body-s pl-muted pl-prose">
-            {`Level ${pad2(found.number)} of ${found.total} in ${found.world.title}.${found.number > 1 ? ' Everything before it is open.' : ''}`}
+            {/* A level taught as a lesson is named as the map names it ("Lesson 5"). */}
+            {`${lessonFor(found.level.id) ? `Lesson ${found.number}` : `Level ${pad2(found.number)}`} of ${found.total} in ${found.world.title}.${found.number > 1 ? ' Everything before it is open.' : ''}`}
           </p>
         </>
       ) : (

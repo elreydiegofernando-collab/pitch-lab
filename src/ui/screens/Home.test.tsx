@@ -178,10 +178,10 @@ describe('Home: everything is earned', () => {
 });
 
 describe('Home: the Continue card', () => {
-  it('names the first level on a fresh profile and opens it', async () => {
+  it('names the first lesson on a fresh profile and opens it', async () => {
     const c = await showHome();
     const card = byTestId(c, 'continue-card')!;
-    expect(textOf(card.querySelector('.pl-label'))).toBe(`Next up ${DOT} 01`);
+    expect(textOf(card.querySelector('.pl-label'))).toBe(`Next up ${DOT} Lesson 1`);
     expect(textOf(card.querySelector('.wl-continue__title'))).toBe('Range finder');
     expect(textOf(card.querySelector('.wl-continue__world'))).toBe('Foundations');
     expect(textOf(card)).toContain('Continue');
@@ -190,17 +190,18 @@ describe('Home: the Continue card', () => {
     expect(route.value).toEqual(routeOf('level', { levelId: 'foundations.01' }));
   });
 
-  it('follows the singer to the current level, with its number, goal and tally lights', async () => {
+  it('follows the singer to the current lesson, with its number, what it teaches and its practice steps', async () => {
     snapshot.value = snapshotOf('foundations.03');
     const c = await showHome();
     const card = byTestId(c, 'continue-card')!;
-    expect(textOf(card.querySelector('.pl-label'))).toBe(`Next up ${DOT} 04`);
-    expect(textOf(card.querySelector('.wl-continue__title'))).toBe('Sustain II');
+    expect(textOf(card.querySelector('.pl-label'))).toBe(`Next up ${DOT} Lesson 4`);
+    expect(textOf(card.querySelector('.wl-continue__title'))).toBe('Hold it steady');
     expect(card.querySelector('.pl-prose')?.textContent?.length).toBeGreaterThan(10);
-    expect(card.querySelector('.pl-tally-lights')).not.toBeNull();
+    expect(card.querySelector('.pl-lesson-marks')).not.toBeNull();
+    expect(textOf(byTestId(card, 'continue-practice'))).toBe('New lesson');
 
     byTestId<HTMLButtonElement>(c, 'continue-button')!.click();
-    expect(route.value).toEqual(routeOf('level', { levelId: 'foundations.04' }));
+    expect(route.value).toEqual(routeOf('level', { levelId: 'foundations.13' }));
   });
 
   it('wears the hue of the current world', async () => {
@@ -212,18 +213,21 @@ describe('Home: the Continue card', () => {
     expect(textOf(card.querySelector('.wl-continue__title'))).toBe('Oscillation I');
   });
 
-  it('titles a Boss Recital by its exercise and numbers it as the last entry', async () => {
-    snapshot.value = snapshotOf('foundations.09');
+  it('titles a Boss Recital in full and numbers it as the last entry', async () => {
+    snapshot.value = snapshotOf('foundations.06'); // Clean starts: the lesson before the Boss Recital
     const c = await showHome();
     const card = byTestId(c, 'continue-card')!;
-    expect(textOf(card.querySelector('.pl-label'))).toBe(`Next up ${DOT} 10`);
+    expect(textOf(card.querySelector('.pl-label'))).toBe(`Next up ${DOT} Lesson 13`);
     expect(textOf(card.querySelector('.wl-continue__title'))).toBe('Foundations Boss Recital');
   });
 
-  it('shows the best score of a level that was sung but not passed yet', async () => {
-    snapshot.value = snapshotOf('foundations.03', [attempt({ levelId: 'foundations.04', passed: false, score: 0.57 })]);
+  it('shows the best on the check of a lesson whose check was sung but not passed yet', async () => {
+    const take = attempt({ levelId: 'foundations.13', exerciseId: 'foundations.steady.1', passed: false, score: 0.57 });
+    snapshot.value = snapshotOf('foundations.03', [take]);
+    attemptLog.value = [take];
     const c = await showHome();
-    expect(textOf(byTestId(c, 'continue-card'))).toContain('Best so far 57%');
+    expect(textOf(byTestId(c, 'continue-card'))).toContain('Best on the check 57%');
+    attemptLog.value = [];
   });
 
   it('says every level is passed, and links to the dashboard', async () => {
@@ -644,7 +648,11 @@ describe('Home: first run', () => {
     byTestId<HTMLButtonElement>(c, 'voice-care-done')!.click();
     expect(settings.value.voiceCareSeen).toBe(true);
     await waitUntil(() => dialogLabel(c) === 'Before you start');
-    expect(textOf(c.querySelector('[role="dialog"]'))).toContain('Wired headphones are recommended');
+    const sheet = textOf(c.querySelector('[role="dialog"]'));
+    expect(sheet).toContain('Wired headphones are recommended');
+    // Plain words, and nothing that says the app plays while the singer sings (it plays the note first: review R6).
+    expect(jargonIn(sheet)).toEqual([]);
+    expect(sheet).not.toMatch(/while you sing|latency|\d+\s*-\s*\d+/i);
   });
 
   it('dismisses the headphone prompt with Later and never shows either sheet again', async () => {
@@ -700,8 +708,10 @@ describe('Home: Setup & calibration', () => {
     const c = await showHome();
     const row = byTestId(c, 'util-setup')!;
     expect(row.querySelector('.pl-dot')).not.toBeNull();
-    expect(textOf(row)).toContain('Calibrate latency so your takes line up');
+    expect(textOf(row)).toContain('Run the timing check so your takes line up');
     expect(textOf(row)).toContain('Needs attention');
+    expect(jargonIn(textOf(row))).toEqual([]);
+    expect(textOf(row)).not.toMatch(/latency/i);
   });
 
   it('is quiet once the route is calibrated and the headphone guide has been seen', async () => {
@@ -714,6 +724,6 @@ describe('Home: Setup & calibration', () => {
     const c = await showHome();
     const row = byTestId(c, 'util-setup')!;
     expect(row.querySelector('.pl-dot')).toBeNull();
-    expect(textOf(row)).toContain('Headphones, mic, latency');
+    expect(textOf(row)).toContain('Headphones, microphone, timing check');
   });
 });

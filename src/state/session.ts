@@ -15,6 +15,7 @@
  * session run one at a time, so a take can never be written into a log that is being swapped for another profile's.
  */
 import { batch, signal, untracked } from '@preact/signals';
+import { isCheckOpen } from '../lessons/progress';
 import { isCheckupFinished } from '../checkup/summary';
 import { CHECKUP_TASKS } from '../checkup/types';
 import { WORLDS, getExercise } from '../exercises';
@@ -79,6 +80,7 @@ function guardContext(): GuardContext {
     workoutItems: workout && workout.finishedAt === null ? workout.workout.items.length : null,
     checkupTasks: checkup && checkup.finishedAt === null ? CHECKUP_TASKS.length : null,
     hasCheckup: (checkupId) => isCheckupFinished(log, checkupId),
+    checkOpen: (levelId) => isCheckOpen(levelId, log, snapshot.value),
   };
 }
 

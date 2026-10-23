@@ -60,7 +60,7 @@ export interface PassRule {
 }
 
 export interface ExerciseDef {
-  id: string; //                         e.g. "foundations.sustain.2"
+  id: string; //                         e.g. "foundations.steady.1" (persisted in attempts: new content takes a new id)
   worldId: WorldId;
   kind: ExerciseKind;
   title: string;
@@ -98,6 +98,12 @@ export interface ExerciseDef {
   tempoLadder?: number[];
   /** Coaching-tip ids relevant to this exercise (see coaching tips table). */
   tipIds?: string[];
+  /**
+   * Set (to the day it happened) on an exercise that is no longer sung because its world was rebuilt: it stays in the
+   * catalog only so the takes sung against it read back against what they were sung against (titles, replays, check-ups,
+   * coaching files). No level, audition or lesson plays it, and the registry never opens it (catalog/foundations-retired.ts).
+   */
+  retired?: string;
 }
 
 export interface LevelDef {
@@ -122,6 +128,21 @@ export interface AuditionDef {
    * test only once every earlier level is passed (auditionSpans says which levels a test covers).
    */
   unlockThrough: string[];
+  /**
+   * The audition as it was before its world was rebuilt (Foundations as lessons, 2026-10-23), so a pass of one of its
+   * tests, sung then, keeps what it granted (progress/engine.ts): its tests are retired exercises, judged in the order and
+   * against the levels they were sung under, and they grant only the levels of the world now that still teach what they
+   * judged. Absent for an audition that was never rebuilt.
+   */
+  former?: {
+    /** The world's levels then, in their order then (the ids they had: a level since removed keeps its id here). */
+    levelIds: readonly string[];
+    /** The tests then, in the order they were sung, with the last level each reached then (as exerciseIds / unlockThrough). */
+    exerciseIds: readonly string[];
+    unlockThrough: readonly string[];
+    /** The levels of the world now that still teach what a former test judged: the only ones a former pass grants. */
+    keeps: readonly string[];
+  };
 }
 
 export interface WorldDef {

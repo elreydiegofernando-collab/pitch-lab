@@ -173,8 +173,8 @@ function measuredWhat(skill: CheckupSkill, def: ExerciseDef, v: Partial<Record<M
       const settle = v['onset.settleMs'];
       const scoop = v['onset.scoopCents'];
       const slide = !finite(scoop) ? '' : scoop < 10 ? ', with hardly any slide up into them' : `, sliding up into them by ${P.pitchDistance(scoop)}`;
-      if (finite(settle)) return `Your notes took ${P.durationWords(settle / 1000)} to settle${slide}.`;
-      if (finite(scoop)) return `Your notes rarely settled on the pitch${slide}.`;
+      if (finite(settle)) return `Your notes took ${P.durationWords(settle / 1000)} to find the pitch${slide}.`;
+      if (finite(scoop)) return `Your notes rarely landed on the pitch${slide}.`;
       return `Your notes went past the pitch by ${P.pitchDistance(v['onset.overshootCents'] as number)} as they started.`;
     }
     case 'connected': {
@@ -201,9 +201,13 @@ function unmeasuredWhat(skill: CheckupSkill, why: 'not-sung' | 'silent' | 'part'
   }
 }
 
-/** The skills one task's take measured (its row may be missing: the task was not sung). */
+/**
+ * The skills one task's take measured (its row may be missing: the task was not sung). The take is read against the
+ * exercise it was sung as: the task's own, or the retired one it was sung as before a rebuild (formerExerciseIds), whose
+ * length and pass rule are what that take was sung and judged by.
+ */
 function readTask(task: CheckupTask, take: AttemptRecord | null): SkillReading[] {
-  const def = getExercise(task.exerciseId);
+  const def = getExercise(take?.exerciseId ?? task.exerciseId);
   return task.skills.map(({ skill, metrics: keys }): SkillReading => {
     const none = (why: 'not-sung' | 'silent' | 'part' | 'unread'): SkillReading => ({ skill, rating: 'not-measured', what: unmeasuredWhat(skill, why), values: {} });
     if (!take) return none('not-sung');
@@ -256,9 +260,9 @@ function checkupIdOf(a: AttemptRecord): string | null {
   return typeof a.checkupId === 'string' && a.checkupId !== '' && a.deletedAt == null ? a.checkupId : null;
 }
 
-/** True when `a` is the take of `task` (its exercise, logged the way the task is). */
-function isTakeOf(task: CheckupTask, a: AttemptRecord): boolean {
-  if (a.exerciseId !== task.exerciseId) return false;
+/** True when `a` is the take of `task` (its exercise, or one it was sung as before a rebuild, logged the way the task is). */
+export function isTakeOf(task: CheckupTask, a: Pick<AttemptRecord, 'exerciseId' | 'kind' | 'levelId'>): boolean {
+  if (a.exerciseId !== task.exerciseId && !(task.formerExerciseIds ?? []).includes(a.exerciseId)) return false;
   return task.logAs.kind === 'practice' ? a.kind === 'practice' && a.levelId === task.logAs.levelId : a.kind === 'audition' && a.levelId == null;
 }
 
@@ -443,7 +447,7 @@ const LINE_MEASURE: Readonly<Record<CheckupSkill, { metric: MetricKey; words: (v
   pitch: { metric: 'accuracy.inTolerancePct', words: (v) => `${P.percentText(v)} in tune`, better: 'higher' },
   steadiness: { metric: 'accuracy.sdCents', words: P.steadiness, better: 'lower' },
   slides: { metric: 'glide.cracks', words: (v) => (Math.round(v) <= 0 ? 'no breaks' : P.count(Math.round(v), 'break')), better: 'lower' },
-  starts: { metric: 'onset.settleMs', words: (v) => `${P.durationWords(v / 1000)} to settle`, better: 'lower' },
+  starts: { metric: 'onset.settleMs', words: (v) => `${P.durationWords(v / 1000)} to find the pitch`, better: 'lower' },
   connected: { metric: 'transition.cleanRate', words: (v) => `${P.shareText(v)} clean changes`, better: 'higher' },
 };
 

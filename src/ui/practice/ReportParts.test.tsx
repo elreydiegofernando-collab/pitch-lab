@@ -89,29 +89,80 @@ describe('VerdictLine', () => {
 });
 
 describe('MetricTiles', () => {
-  it('shows a met tile with a check and the words "target met"', async () => {
+  it('shows a met tile in plain words, with a check and the words "goal met"', async () => {
     await show(<MetricTiles tiles={[tile()]} />);
     const el = container.querySelector('.pl-tile')!;
     expect(el.className).toContain('pl-tile--met');
     expect(el.textContent).toContain('In tune');
-    expect(el.textContent).toContain('82%');
-    expect(el.textContent).toContain('≥ 70%');
-    expect(el.textContent).toContain('target met');
+    expect(el.querySelector('[data-testid="tile-accuracy.inTolerancePct-value"]')!.textContent).toBe('82% of the time');
+    expect(el.querySelector('[data-testid="tile-accuracy.inTolerancePct-goal"]')!.textContent).toBe('Goal: 70% of the time or more');
+    expect(el.textContent).toContain('goal met');
     expect(el.querySelector('svg')).not.toBeNull();
   });
 
-  it('shows an unmet tile with a minus and "target not met", and a lower-is-better target with ≤', async () => {
-    await show(<MetricTiles tiles={[tile({ metric: 'onset.settleMs', label: 'Settle', display: '310 ms', targetDisplay: '250 ms', op: '<=', met: false })]} />);
+  it('shows an unmet tile with a minus and "goal not met", and a lower-is-better goal as "within" or "no more than"', async () => {
+    await show(
+      <MetricTiles
+        tiles={[tile({ metric: 'onset.settleMs', label: 'Time to find the note', value: 310, display: '310 ms', target: 250, targetDisplay: '250 ms', op: '<=', met: false })]}
+      />,
+    );
     const el = container.querySelector('.pl-tile')!;
     expect(el.className).not.toContain('pl-tile--met');
-    expect(el.textContent).toContain('≤ 250 ms');
-    expect(el.textContent).toContain('target not met');
+    expect(el.querySelector('[data-testid="tile-onset.settleMs-value"]')!.textContent).toBe('About a third of a second');
+    expect(el.querySelector('[data-testid="tile-onset.settleMs-goal"]')!.textContent).toBe('Goal: within about a quarter of a second');
+    expect(el.textContent).toContain('goal not met');
   });
 
-  it('says "not measured" for a metric the take could not measure', async () => {
+  it('says a miss in words, never "828¢": about 8 half steps, against a goal of how close', async () => {
+    await show(
+      <MetricTiles tiles={[tile({ metric: 'glide.endAbsCents', label: 'Slide ending off by', value: 828, display: '828¢', target: 48, targetDisplay: '48¢', op: '<=', met: false })]} />,
+    );
+    const el = container.querySelector('.pl-tile')!;
+    expect(el.textContent).toContain('Slide ending off by');
+    expect(el.textContent).toContain('About 8 half steps');
+    expect(el.textContent).toContain('Goal: within about half the way to the next note');
+    expect(el.textContent).not.toContain('828');
+    expect(el.textContent).not.toContain('¢');
+  });
+
+  it('says "Not measured" for a metric the take could not measure, still with its goal', async () => {
     await show(<MetricTiles tiles={[tile({ value: null, display: '–', met: null })]} />);
-    expect(container.textContent).toContain('–');
+    expect(container.querySelector('[data-testid="tile-accuracy.inTolerancePct-value"]')!.textContent).toBe('Not measured');
+    expect(container.textContent).toContain('Goal: 70% of the time or more');
     expect(container.textContent).toContain('not measured');
+    expect(container.querySelector('.pl-tile--met')).toBeNull();
+  });
+
+  it('shows no unit and no jargon on any tile, whatever the metric', async () => {
+    const tiles: ReportTile[] = [
+      tile(),
+      tile({ metric: 'accuracy.medianAbsCents', label: 'Typical miss', value: 18, target: 25, op: '<=', met: true }),
+      tile({ metric: 'accuracy.absDriftCentsPerSec', label: 'Drift', value: 2, target: 6.25, op: '<=', met: true }),
+      tile({ metric: 'glide.cracks', label: 'Breaks', value: 3, target: 3.8, op: '<=', met: true }),
+      tile({ metric: 'range.spanSemitones', label: 'Low to high', value: 15, target: 12, op: '>=', met: true }),
+    ];
+    await show(<MetricTiles tiles={tiles} />);
+    const text = container.textContent ?? '';
+    expect(jargonIn(text)).toEqual([]);
+    expect(text).not.toMatch(/\d\s*(?:¢|ms|Hz|dB)\b/);
+    expect(text).not.toMatch(/[≥≤]/);
+    expect(container.querySelector('[data-testid="tile-glide.cracks-value"]')!.textContent).toBe('3 breaks');
+    expect(container.querySelector('[data-testid="tile-glide.cracks-goal"]')!.textContent).toBe('Goal: up to 3 breaks');
+  });
+
+  it('lets a label that is a music word be tapped to learn it', async () => {
+    await show(<MetricTiles tiles={[tile(), tile({ metric: 'glide.smoothness', label: 'Smoothness', value: 0.5, target: 0.25, op: '>=', met: true })]} />);
+    const inTune = container.querySelector('[data-testid="tile-accuracy.inTolerancePct"] button[data-term="in-tune"]')!;
+    expect(inTune.textContent).toBe('In tune');
+    expect(container.querySelector('[data-testid="tile-glide.smoothness"] button')).toBeNull();
+    await act(() => {
+      (inTune as HTMLButtonElement).click();
+    });
+    expect(document.querySelector('[role="dialog"]')?.getAttribute('aria-label')).toBe('In tune');
+    await act(() => {
+      document.querySelector<HTMLButtonElement>('button[aria-label="Close"]')!.click();
+    });
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
   it('is absent without tiles', async () => {

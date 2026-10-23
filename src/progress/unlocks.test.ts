@@ -67,7 +67,7 @@ describe('FEATURES registry', () => {
     expect(FEATURES['live.basic'].kind).toBe('start');
     expect(FEATURES['export'].kind).toBe('start');
     expect(FEATURES['live.cracks']).toMatchObject({ kind: 'levelPassed', ref: LEVEL_REFS.sirens });
-    expect(FEATURES['live.onset']).toMatchObject({ kind: 'levelPassed', ref: LEVEL_REFS.crispness });
+    expect(FEATURES['live.onset']).toMatchObject({ kind: 'levelPassed', ref: LEVEL_REFS.cleanStarts });
     for (const id of ['live.vibrato', 'tool.vibrato-meter', 'setting.vibratoStyle'] as const) expect(FEATURES[id]).toMatchObject({ kind: 'worldUnlocked', ref: 'vibrato' });
     for (const id of ['dashboard', 'daily-workout', 'records'] as const) {
       expect(FEATURES[id].kind).toBe('levelPassed');
@@ -76,9 +76,10 @@ describe('FEATURES registry', () => {
     for (const id of ['song-stage', 'song.import'] as const) expect(FEATURES[id]).toMatchObject({ kind: 'levelPassed', ref: LEVEL_REFS.foundationsBoss });
   });
 
-  it('names the thing to pass in each hint', () => {
-    expect(FEATURES['live.cracks'].hint).toContain('Sirens & glides');
-    expect(FEATURES['live.onset'].hint).toContain('Crispness');
+  it('names the thing to pass in each hint, in plain words (the Live screen reads them to a singer relearning music)', () => {
+    expect(FEATURES['live.cracks'].hint).toBe('Pass Sirens to see cracks marked on your line.');
+    expect(FEATURES['live.onset'].hint).toBe('Pass Clean starts to see how cleanly each note starts.');
+    for (const id of FEATURE_IDS) expect(FEATURES[id].hint, id).not.toMatch(/settle|scoop|readout|trace|onset|¢|\bHz\b/i);
     for (const id of ['live.vibrato', 'tool.vibrato-meter', 'setting.vibratoStyle', 'song-stage', 'song.import'] as const) expect(FEATURES[id].hint).toContain('Foundations Boss Recital');
     expect(FEATURES['dashboard'].hint).toContain('first level');
   });

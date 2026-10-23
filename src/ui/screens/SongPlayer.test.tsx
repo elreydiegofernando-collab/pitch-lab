@@ -167,7 +167,7 @@ describe('Song player', () => {
     const pills = [...c.querySelectorAll('[data-testid="phrase-scrubber"] button')];
     expect(pills.map((p) => p.textContent)).toEqual(['Whole song', expect.stringContaining('1'), expect.stringContaining('2')]);
     expect(pills[1].getAttribute('aria-pressed')).toBe('true');
-    expect(c.textContent).toContain('Calibrate latency first so your takes line up.');
+    expect(c.textContent).toContain('Run the timing check in Setup first, so your takes line up.');
     expect(c.querySelector('[data-testid="song-primary"]')?.textContent).toBe('Calibrate');
   });
 
@@ -177,7 +177,7 @@ describe('Song player', () => {
     await until(() => c.querySelector('[data-testid="song-player"]'));
     expect(c.querySelector('[data-testid="song-primary"]')?.textContent).toBe('Sing');
     expect(c.querySelector('[data-testid="song-primary"]')?.getAttribute('aria-label')).toBe('Sing phrase 1');
-    expect(c.textContent).not.toContain('Calibrate latency first');
+    expect(c.textContent).not.toContain('Run the timing check in Setup first');
   });
 
   it('remembers a singer\'s choices for the song, and never hands them to another singer', async () => {
@@ -278,7 +278,7 @@ describe('Learning the song', () => {
     await until(() => q(c, 'learn-panel'));
     expect(q(c, 'learn-step')?.textContent).toBe('Phrase 1, slowly: “Twinkle, twinkle, little star”');
     expect((q(c, 'learn-start') as HTMLButtonElement).disabled).toBe(true);
-    expect(c.textContent).toContain('Calibrate latency first so your takes line up.');
+    expect(c.textContent).toContain('Run the timing check in Setup first, so your takes line up.');
   });
 
   it('shows each phrase’s best and a learned glyph from the log, and links to the song’s progress', async () => {

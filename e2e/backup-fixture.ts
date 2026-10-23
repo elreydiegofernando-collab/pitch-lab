@@ -11,8 +11,33 @@ export interface PassedLevel {
   kind: 'practice' | 'boss';
 }
 
-/** Foundations in the order it is sung, ending on its Boss Recital. */
+/**
+ * Foundations as it is sung now, thirteen lessons in the order they are taught (the level ids no longer follow the
+ * numbers: Hold it steady is .13 and comes fourth), ending on its Boss Recital. Each level's check carries the exercise id
+ * the catalog gives it today.
+ */
 export const FOUNDATIONS_RUN: readonly PassedLevel[] = [
+  { levelId: 'foundations.01', exerciseId: 'foundations.range.1', kind: 'practice' },
+  { levelId: 'foundations.02', exerciseId: 'foundations.match.1', kind: 'practice' },
+  { levelId: 'foundations.03', exerciseId: 'foundations.hold.1', kind: 'practice' },
+  { levelId: 'foundations.13', exerciseId: 'foundations.steady.1', kind: 'practice' },
+  { levelId: 'foundations.10', exerciseId: 'foundations.steps.1', kind: 'practice' },
+  { levelId: 'foundations.07', exerciseId: 'foundations.jumps.1', kind: 'practice' },
+  { levelId: 'foundations.08', exerciseId: 'foundations.jumps.2', kind: 'practice' },
+  { levelId: 'foundations.11', exerciseId: 'foundations.do-re-mi.1', kind: 'practice' },
+  { levelId: 'foundations.09', exerciseId: 'foundations.five-notes.1', kind: 'practice' },
+  { levelId: 'foundations.12', exerciseId: 'foundations.slides.1', kind: 'practice' },
+  { levelId: 'foundations.05', exerciseId: 'foundations.sirens.1', kind: 'practice' },
+  { levelId: 'foundations.06', exerciseId: 'foundations.clean-starts.1', kind: 'practice' },
+  { levelId: 'foundations.boss', exerciseId: 'foundations.boss-tune', kind: 'boss' },
+];
+
+/**
+ * Foundations as a backup made BEFORE it became lessons wrote it: nine levels and the Boss Recital, in the numbers' order,
+ * under the exercise ids those levels had then (the catalog keeps those exercises, retired, so such takes still read back).
+ * Restoring it must keep what it earned that still counts, and no more: the owner's own backup is of this shape.
+ */
+export const FOUNDATIONS_RUN_BEFORE_LESSONS: readonly PassedLevel[] = [
   { levelId: 'foundations.01', exerciseId: 'foundations.range-finder.1', kind: 'practice' },
   { levelId: 'foundations.02', exerciseId: 'foundations.pitch-match.1', kind: 'practice' },
   { levelId: 'foundations.03', exerciseId: 'foundations.sustain.1', kind: 'practice' },

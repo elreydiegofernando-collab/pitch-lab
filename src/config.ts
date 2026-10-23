@@ -74,6 +74,9 @@ export const CONFIG = {
     },
     /** Below this measured frame rate (Low Power Mode caps rAF at 30), skip interpolation niceties. */
     lowFpsThreshold: 40,
+    /** From this far off the note being asked for (a whole step), the live words say "a lot": the Sing screen's hint ("a
+     *  lot higher") and its gauge ("Too low") agree. PROVISIONAL. */
+    farOffCents: 200,
   },
 
   /** In-tune tolerance tiers, +/- cents. Set by the LEVEL, not by the user.
@@ -93,8 +96,8 @@ export const CONFIG = {
     /** A singer may come in this late after a note's start (a reaction to the cue) and still be measured on the part
      *  they sang; a later start counts against coverage, so singing only the last seconds of a long hold cannot pass.
      *  0.6 s is generous for a trained singer and fair to a beginner (reaction to the cue ~0.25 s, plus the breath and
-     *  finding the pitch); a beginner who needs 0.9 s still passes Pitch match at a reduced score, and one 1.2 s late
-     *  does not. PROVISIONAL: check against real beginners. */
+     *  finding the pitch); a beginner 0.75 s late still passes Match one note (two-second notes) at a reduced score, and
+     *  one 1.2 s late does not. PROVISIONAL: check against real beginners. */
     lateStartAllowanceSec: 0.6,
   },
 

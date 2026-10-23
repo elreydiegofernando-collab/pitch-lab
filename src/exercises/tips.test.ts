@@ -44,7 +44,7 @@ describe('the rule table', () => {
   it('only offers figure tips for figures the exercise contains', () => {
     expect(tipIdsFor(ex('inflections.boss-recital'))).toEqual(expect.arrayContaining(['turn.shape', 'slide.shape', 'flip.shape']));
     expect(tipIdsFor(ex('inflections.boss-recital'))).not.toContain('scoop.shape');
-    expect(tipIdsFor(ex('foundations.sustain.1'))).not.toContain('turn.shape');
+    expect(tipIdsFor(ex('foundations.hold.1'))).not.toContain('turn.shape');
   });
 
   it('only talks about the tempo stepping up on levels that have a tempo ladder', () => {
@@ -75,7 +75,7 @@ describe('the rule table', () => {
   });
 
   it('asks the Range finder for the span its pass gate needs', () => {
-    const def = ex('foundations.range-finder.1');
+    const def = ex('foundations.range.1');
     const gate = def.pass.gates!.find((g) => g.metric === 'range.spanSemitones')!.value;
     const narrow = pickTip({ 'range.spanSemitones': gate - 1 }, def);
     expect(narrow.id).toBe('range.narrow');
@@ -86,7 +86,7 @@ describe('the rule table', () => {
 
 describe('pickTip', () => {
   it('coaches the SPEC example when a scoop is over 40 cents', () => {
-    const def = ex('foundations.staccato.1');
+    const def = ex('foundations.clean-starts.1');
     const tip = pickTip({ ...clean(def), 'onset.scoopCents': 60 }, def);
     expect(tip.id).toBe('onset.scoop-big');
     expect(tip.text).toContain('You scooped up from 60¢ below.');
@@ -94,7 +94,7 @@ describe('pickTip', () => {
 
   it('draws the SPEC line at 40 cents: just above it gets "start the note on the pitch", just below the milder tip', () => {
     // Exactly 40 is left open: the code says >= while SPEC §12 says "above".
-    const def = ex('foundations.staccato.1');
+    const def = ex('foundations.clean-starts.1');
     expect(pickTip({ ...clean(def), 'onset.scoopCents': 41 }, def).id).toBe('onset.scoop-big');
     expect(pickTip({ ...clean(def), 'onset.scoopCents': 39 }, def).id).toBe('onset.scoop');
   });
@@ -124,7 +124,7 @@ describe('pickTip', () => {
   });
 
   it('names the direction of a bias from the signed context', () => {
-    const def = ex('foundations.sustain.2');
+    const def = ex('foundations.steady.1');
     const m = { ...clean(def), 'accuracy.absBiasCents': 18, 'accuracy.inTolerancePct': 60 };
     expect(pickTip(m, def, { biasCents: 18 }).id).toBe('acc.sharp');
     expect(pickTip(m, def, { biasCents: -18 }).id).toBe('acc.flat');
@@ -132,24 +132,24 @@ describe('pickTip', () => {
   });
 
   it('names no direction when the notes missed both ways: the lean must explain half the typical offset (review R1)', () => {
-    const def = ex('foundations.intervals.1');
+    const def = ex('foundations.jumps.1');
     // Notes about 30 off each way: the typical offset is 30, the signed average near zero.
     const m = { ...clean(def), 'accuracy.absBiasCents': 30, 'accuracy.inTolerancePct': 20 };
     for (const biasCents of [1.8, -4, 14.9]) expect(pickTip(m, def, { biasCents }).id, String(biasCents)).not.toMatch(/acc\.(sharp|flat)/);
     expect(pickTip(m, def, { biasCents: 15 }).id).toBe('acc.sharp');
-    // The same for drift and vibrato centring: no direction tip for a lean that explains little.
-    const sustain = ex('foundations.sustain.1');
+    // The same for drift and vibrato centring: no direction tip for a lean that explains little (Hold it steady judges the drift).
+    const sustain = ex('foundations.steady.1');
     const drift = { ...clean(sustain), 'accuracy.absDriftCentsPerSec': 8 };
     expect(pickTip(drift, sustain, { driftCentsPerSec: -1 }).id).not.toMatch(/acc\.drift-(flat|sharp)/);
     expect(pickTip(drift, sustain, { driftCentsPerSec: -6 }).id).toBe('acc.drift-flat');
   });
 
   it('says how many notes a take needs: every one on a short exercise, a count on a long one (review R7)', () => {
-    const sirens = ex('foundations.siren.1');
+    const sirens = ex('foundations.sirens.1');
     expect(pickTip(clean(sirens), sirens, { reach: { reached: 8, total: 9 } }).text).toBe(
       'You sang 8 of the 9 notes. Keep singing to the end of the exercise: a take passes only when every note is sung.',
     );
-    const legato = ex('foundations.legato.1');
+    const legato = ex('foundations.five-notes.1');
     expect(pickTip(clean(legato), legato, { reach: { reached: 12, total: 20 } }).text).toMatch(/a take passes only when at least 18 of them are sung\.$/);
   });
 
@@ -160,7 +160,7 @@ describe('pickTip', () => {
   });
 
   it('says so when notes never settled instead of quoting a number it does not have', () => {
-    const def = ex('foundations.staccato.1');
+    const def = ex('foundations.clean-starts.1');
     const m = clean(def);
     delete m['onset.settleMs'];
     expect(pickTip(m, def).id).toBe('onset.settle-missing');
@@ -201,20 +201,20 @@ describe('pickTip', () => {
   });
 
   it('notices when nobody sang', () => {
-    const def = ex('foundations.sustain.1');
+    const def = ex('foundations.hold.1');
     expect(pickTip({}, def).id).toBe(NO_VOICE_TIP.id);
     expect(pickTip({ 'accuracy.inTolerancePct': 0 }, def, { noVoice: true }).id).toBe(NO_VOICE_TIP.id);
   });
 
   it('does not blame the mic when someone sang but nothing could be measured', () => {
     // The analyzer context says a voice was there: a Range finder take that never held a note for a second.
-    const finder = ex('foundations.range-finder.1');
+    const finder = ex('foundations.range.1');
     expect(pickTip({}, finder, { noVoice: false }).id).toBe('range.missing');
     expect(pickTip({}, finder).id).toBe(NO_VOICE_TIP.id); // without a context, nothing measured still means nobody sang
   });
 
   it('puts a failed gate ahead of a small loss elsewhere', () => {
-    const def = ex('foundations.legato.1');
+    const def = ex('foundations.five-notes.1');
     const m = { ...clean(def), 'transition.cleanRate': 0.2, 'accuracy.sdCents': 12 };
     expect(pickTip(m, def).id).toBe('transition.smeared');
   });

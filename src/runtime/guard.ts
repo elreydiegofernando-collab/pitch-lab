@@ -26,6 +26,7 @@ import { RANGE_FINDER_NO_RECORDS } from './messages';
 import type { GuardContext } from './types';
 import { targetFromParams } from './targets';
 import { lessonFor } from '../lessons';
+import { CHECK_CLOSED_HINT } from '../lessons/progress';
 
 const OK: GuardVerdict = { ok: true };
 
@@ -70,8 +71,13 @@ function singVerdict(route: Extract<Route, { name: 'sing' }>, ctx: GuardContext)
   const target = targetFromParams(route.params);
   if (!target) return refuse(routeOf('map'), 'Not available.');
   switch (target.kind) {
-    case 'level':
-      return levelVerdict(target.levelId, ctx);
+    case 'level': {
+      const open = levelVerdict(target.levelId, ctx);
+      if (!open.ok) return open;
+      // A lesson's check opens once its practice is done: practice first, then the check (lessons/progress.ts).
+      if (ctx.checkOpen && !ctx.checkOpen(target.levelId)) return refuse(routeOf('level', { levelId: target.levelId }), CHECK_CLOSED_HINT);
+      return OK;
+    }
     case 'record': {
       const found = findLevel(ctx.worlds, target.levelId);
       if (!found) return refuse(routeOf('map'), 'Not available.');

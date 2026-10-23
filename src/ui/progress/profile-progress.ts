@@ -7,7 +7,7 @@ import { WORLDS, getExercise } from '../../exercises';
 import { computeSnapshot, continueLevel, withRoutines, type ProgressSnapshot } from '../../progress';
 import type { AppStorage } from '../../storage';
 
-/** "Up next: Sustain II (Foundations)", or "Every level passed". */
+/** "Up next: Hold it steady (Foundations)", or "Every level passed". */
 export function progressLine(snapshot: ProgressSnapshot): string {
   const level = continueLevel(snapshot, WORLDS);
   if (!level) return 'Every level passed';

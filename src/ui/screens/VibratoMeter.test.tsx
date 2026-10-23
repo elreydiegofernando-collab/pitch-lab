@@ -11,6 +11,7 @@ vi.mock('../../state/audio', async () => (await import('../practice/test-fakes')
 vi.mock('../pitch-view/PitchViewHost', async () => ({ PitchViewHost: (await import('../practice/test-fakes')).PitchViewHostStub }));
 
 import { makeTrack, withVibrato } from '../../analysis/fixtures';
+import { jargonIn } from '../../coaching/plain';
 import { installRouteGuard, resetRouterForTests, route, routeOf } from '../../router';
 import { engineState } from '../../state/engine-store';
 import {
@@ -184,6 +185,22 @@ describe('Vibrato meter: the style', () => {
     expect(updateSettingsMock).toHaveBeenCalledWith({ vibratoStyle: 'classical' });
     expect(q('[data-testid="meter-extent"]')!.textContent).toContain('Classical ±40–100¢');
     expect(hostProbe.props!.vibratoZone).toEqual({ minExtentCents: 40, maxExtentCents: 100 });
+  });
+
+  it('says the styles in plain words in More, with vibrato a word to tap, and no unit', async () => {
+    await mount();
+    q<HTMLButtonElement>('[data-testid="more-button"]')!.click();
+    await act(() => {});
+    const words = (): string => document.querySelector('[data-testid="meter-style-words"]')?.textContent ?? '';
+    expect(words()).toContain('A light, narrow vibrato');
+    expect(words()).toContain('five to seven wobbles a second');
+    expect(jargonIn(words())).toEqual([]);
+    expect(document.querySelector('[role="dialog"] button[data-term="vibrato"]')?.textContent).toBe('Vibrato');
+    const classical = [...document.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find((b) => b.textContent === 'Classical')!;
+    classical.click();
+    await act(() => {});
+    expect(words()).toContain('A fuller, wider vibrato');
+    expect(words()).not.toMatch(/Hz|¢/);
   });
 
   it('judges the same vibrato against the style: a 30-cent vibrato fits pop but not classical', async () => {

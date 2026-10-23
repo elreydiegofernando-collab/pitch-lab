@@ -3,6 +3,7 @@
  * malformed ids (fail closed), songs before the library loaded, and the guard installed in the router.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
+import { CHECK_CLOSED_HINT } from '../lessons/progress';
 import { WORLDS, getExercise } from '../exercises';
 import { computeSnapshot, withRoutines } from '../progress';
 import { BASE_MS, P1, pass, passAudition, passThrough } from '../progress/test-fixtures';
@@ -51,11 +52,11 @@ describe('guardRoute: levels', () => {
       redirect: routeOf('map', { worldId: 'foundations' }),
       hint: 'Pass Range finder to unlock.',
     });
-    expect(refused(guardRoute(routeOf('level', { levelId: 'foundations.03' }), ctx())).hint).toBe('Pass Pitch match to unlock.');
+    expect(refused(guardRoute(routeOf('level', { levelId: 'foundations.03' }), ctx())).hint).toBe('Pass Match one note to unlock.');
     const after = ctx(firstPass());
     expect(guardRoute(routeOf('level', { levelId: 'foundations.01' }), after)).toEqual({ ok: true });
     expect(guardRoute(routeOf('level', { levelId: 'foundations.02' }), after)).toEqual({ ok: true });
-    expect(refused(guardRoute(routeOf('level', { levelId: 'foundations.03' }), after)).hint).toBe('Pass Pitch match to unlock.');
+    expect(refused(guardRoute(routeOf('level', { levelId: 'foundations.03' }), after)).hint).toBe('Pass Match one note to unlock.');
   });
 
   it('refuses a level of a locked world with the world requirement', () => {
@@ -78,7 +79,7 @@ describe('guardRoute: sing', () => {
     expect(guardRoute(routeOf('sing', { target: 'level', levelId: 'foundations.01' }), ctx())).toEqual({ ok: true });
     expect(refused(guardRoute(routeOf('sing', { target: 'level', levelId: 'foundations.boss' }), ctx()))).toEqual({
       redirect: routeOf('map', { worldId: 'foundations' }),
-      hint: 'Pass Legato lines to unlock.',
+      hint: 'Pass Clean starts to unlock.',
     });
   });
 
@@ -99,7 +100,7 @@ describe('guardRoute: sing', () => {
 
   it('records: only on a passed level, once personal records are open', () => {
     const before = refused(guardRoute(routeOf('sing', { target: 'record', levelId: 'foundations.02' }), ctx(firstPass())));
-    expect(before).toEqual({ redirect: routeOf('level', { levelId: 'foundations.02' }), hint: 'Pass Pitch match to chase personal records on it.' });
+    expect(before).toEqual({ redirect: routeOf('level', { levelId: 'foundations.02' }), hint: 'Pass Match one note to chase personal records on it.' });
     expect(guardRoute(routeOf('sing', { target: 'record', levelId: 'foundations.02' }), ctx(passThrough(WORLDS, 'foundations.02')))).toEqual({ ok: true });
     // Not openable at all: back to the map at its world. A boss is named with its world.
     expect(refused(guardRoute(routeOf('sing', { target: 'record', levelId: 'foundations.boss' }), ctx(firstPass())))).toEqual({
@@ -135,8 +136,8 @@ describe('guardRoute: sing', () => {
       hint: 'Pass the Foundations Boss Recital to unlock Vibrato.',
     });
     expect(guardRoute(audition('vibrato'), ctx(foundationsDone()))).toEqual({ ok: true });
-    // Every level the tests reach is passed: nothing left to sing.
-    expect(refused(guardRoute(audition('foundations'), ctx(passThrough(WORLDS, 'foundations.09'))))).toEqual({
+    // Every level the tests reach (through Sirens) is passed: nothing left to sing.
+    expect(refused(guardRoute(audition('foundations'), ctx(passThrough(WORLDS, 'foundations.05'))))).toEqual({
       redirect: routeOf('map', { worldId: 'foundations' }),
       hint: 'This audition has nothing left to unlock.',
     });
@@ -177,9 +178,9 @@ describe('guardRoute: report and audition screens', () => {
   });
 
   it('passing an audition test keeps the next one open', () => {
-    const afterTest1 = ctx([pass('foundations.01'), passAudition('foundations', 1)]);
+    const afterTest1 = ctx([pass('foundations.01'), passAudition('foundations', 5)]);
     expect(guardRoute(routeOf('sing', { target: 'audition', worldId: 'foundations' }), afterTest1)).toEqual({ ok: true });
-    expect(guardRoute(routeOf('level', { levelId: 'foundations.05' }), afterTest1)).toEqual({ ok: true });
+    expect(guardRoute(routeOf('level', { levelId: 'foundations.10' }), afterTest1)).toEqual({ ok: true });
   });
 });
 
@@ -227,9 +228,9 @@ describe('the guard in the router', () => {
     installRouteGuard((r) => guardRoute(r, c));
     expect(navigate('level', { levelId: 'foundations.02' })).toBe(true);
     expect(route.value).toEqual(routeOf('level', { levelId: 'foundations.02' }));
-    expect(navigate('level', { levelId: 'foundations.04' })).toBe(false);
+    expect(navigate('level', { levelId: 'foundations.13' })).toBe(false);
     expect(route.value).toEqual(routeOf('map', { worldId: 'foundations' }));
-    expect(refusal.value?.hint).toBe('Pass Sustain I to unlock.');
+    expect(refusal.value?.hint).toBe('Pass Hold it to unlock.');
   });
 
   it('judges a waiting deep link once the guard arrives', () => {
@@ -238,5 +239,25 @@ describe('the guard in the router', () => {
     installRouteGuard((r) => guardRoute(r, c));
     expect(route.value).toEqual(routeOf('songs'));
     expect(refusal.value?.hint).toBe('Pass the Runs & Riffs Boss Recital to unlock this song.');
+  });
+});
+
+describe('guardRoute: a lesson’s check opens after its practice', () => {
+  it('refuses the check of a lesson whose practice is not done, back to its lesson page, with the line to show', () => {
+    const closed = ctx([], { checkOpen: () => false });
+    expect(guardRoute(routeOf('sing', { target: 'level', levelId: 'foundations.01' }), closed)).toEqual({
+      ok: false,
+      redirect: routeOf('level', { levelId: 'foundations.01' }),
+      hint: CHECK_CLOSED_HINT,
+    });
+    // The lesson page itself, and its practice, stay open.
+    expect(guardRoute(routeOf('level', { levelId: 'foundations.01' }), closed)).toEqual({ ok: true });
+  });
+
+  it('opens it once the practice is done, and leaves a locked level refused for being locked', () => {
+    expect(guardRoute(routeOf('sing', { target: 'level', levelId: 'foundations.01' }), ctx([], { checkOpen: () => true }))).toEqual({ ok: true });
+    const locked = guardRoute(routeOf('sing', { target: 'level', levelId: 'foundations.boss' }), ctx([], { checkOpen: () => true }));
+    expect(locked.ok).toBe(false);
+    expect(locked.ok ? null : locked.hint).not.toBe(CHECK_CLOSED_HINT);
   });
 });

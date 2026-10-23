@@ -10,6 +10,8 @@ import { isTaskMeasured } from '../checkup/summary';
 import { CHECKUP_TASKS } from '../checkup/types';
 import { WORLDS, getLevel, nextLevel, worldsUnlockedBy } from '../exercises';
 import type { LevelDef, WorldDef } from '../exercises/types';
+import { lessonFor } from '../lessons';
+import { isGoodTry, type TryRow } from '../lessons/progress';
 import { LEVEL_REFS, auditionSpans, isLevelOpenable, isSongUnlocked, nextAuditionExercise } from '../progress';
 import type { FeatureId, LevelProgress, ProgressSnapshot } from '../progress/types';
 import { routeOf, type Route } from '../router';
@@ -19,9 +21,9 @@ import type { AfterTakeAction, RunTarget, TakeOutcome, UnlockEvent } from './typ
 
 export const FEATURE_TITLES: Readonly<Record<FeatureId, string>> = {
   'live.basic': 'Live pitch monitor',
-  'live.cracks': 'Crack markers on the Live trace',
-  'live.onset': 'Settle and scoop readouts',
-  'live.vibrato': 'Vibrato readouts on the Live trace',
+  'live.cracks': 'Cracks marked on your Live line',
+  'live.onset': 'How each note starts, on Live',
+  'live.vibrato': 'Your vibrato, on Live',
   'tool.vibrato-meter': 'Vibrato meter',
   'setting.vibratoStyle': 'Vibrato style setting',
   dashboard: 'Progress dashboard',
@@ -88,8 +90,42 @@ function singRoute(target: RunTarget): Route {
 }
 
 /**
+ * True when `attempt` is a good try of the lesson's practice step it sang (src/lessons/progress.ts isGoodTry: sung to its
+ * end, and its step's rule holds); false for a lesson or step that does not exist.
+ */
+export function isGoodDrillTry(levelId: string, step: number, attempt: TryRow): boolean {
+  const rule = lessonFor(levelId)?.practice[step]?.good;
+  return rule !== undefined && isGoodTry(rule, attempt);
+}
+
+/**
+ * A practice try's next steps (src/lessons): a good try that leaves its step with every good try it asks for moves on,
+ * to the next step, or after the last step to the check (the level's own take); any other try is sung again, with the
+ * lesson page beside it.
+ */
+function drillActions(target: Extract<RunTarget, { kind: 'drill' }>, outcome: TakeOutcome): AfterTakeAction[] {
+  const { levelId, step } = target;
+  const d = outcome.prepared.drill;
+  const good = isGoodDrillTry(levelId, step, outcome.attempt);
+  const tryAgain = (label: string, primary: boolean) => action('next-try', label, primary, singRoute(target));
+  if (good && d && d.good >= d.needed) {
+    // The check opens once every step is done (lessons/progress.ts isCheckOpen); until then, on to the first step not done.
+    const ready = d.ready ?? step + 1 >= d.stepCount;
+    const open = d.openStep !== undefined && d.openStep < d.stepCount ? d.openStep : step + 1;
+    const next = ready
+      ? action('take-check', 'Take the check', true, singRoute({ kind: 'level', levelId }))
+      : action('next-step', 'Next step', true, singRoute({ kind: 'drill', levelId, step: Math.min(open, d.stepCount - 1) }));
+    return [next, tryAgain('One more try', false)];
+  }
+  return [tryAgain(good ? 'Again' : 'Try again', true), action('lesson', 'Back to the lesson', false, routeOf('level', { levelId }))];
+}
+
+/**
  * The report's actions for this outcome, exactly one primary. Level: pass -> "Next level" (primary; "World map"
- * when there is no next level) + "Retry"; miss -> "Retry" (primary) + "Back to level". A tempo-ladder take below the
+ * when there is no next level) + "Retry"; miss -> "Retry" (primary) + "Back to level", except that a missed check of a
+ * level taught by a lesson (src/lessons) leads back to practice (owner's plan, 2026-10-23: "miss it and you go back to
+ * practice, with coaching"): "Back to practice" (primary: the lesson page, which then puts the step that trains what was
+ * missed first) + "Take the check again". A tempo-ladder take below the
  * pass tempo is a miss of the LEVEL even when it climbed a rung: then the retry sings the next take at the new rung,
  * and says so ("Sing at 68 bpm").
  * Audition: pass with a next test -> "Next test" (+ "See your placement" to stop there); miss or last test ->
@@ -99,6 +135,9 @@ function singRoute(target: RunTarget): Route {
  * early, gone quiet before its end), or when the Range finder saved no range and none was saved before (every later task
  * would be sung in a default range). After the last task, "See your results", which opens the check-up screen (its
  * results once it is finished); led by "Sing it again" when that take measured nothing (it then did not end the check-up).
+ * Lesson practice (drillActions): a good try that finished its step -> "Next step", or "Take the check" after the last
+ * step (primary) + "One more try"; a good try short of its step -> "Again" (primary) + "Back to the lesson"; a try that was
+ * not good -> "Try again" (primary) + "Back to the lesson". Pass or fail never enters into it: practice has neither.
  */
 export function afterTakeActions(outcome: TakeOutcome): AfterTakeAction[] {
   const target = outcome.prepared.target;
@@ -107,8 +146,14 @@ export function afterTakeActions(outcome: TakeOutcome): AfterTakeAction[] {
     case 'level': {
       const { nextBpm } = outcome;
       const climbed = nextBpm !== null && nextBpm !== undefined && nextBpm > outcome.prepared.bpm;
-      const retry = action('retry', climbed ? `Sing at ${nextBpm} bpm` : 'Retry', !passed, singRoute(target));
-      if (!passed) return [retry, action('level', 'Back to level', false, routeOf('level', { levelId: target.levelId }))];
+      if (!passed) {
+        const levelRoute = routeOf('level', { levelId: target.levelId });
+        // A missed check sends the singer back to practice first (the lesson page opens on the step that trains what
+        // was missed: lessons/progress.ts stepAfterMiss); the check stays one tap away.
+        if (lessonFor(target.levelId)) return [action('lesson', 'Back to practice', true, levelRoute), action('retry', 'Take the check again', false, singRoute(target))];
+        return [action('retry', climbed ? `Sing at ${nextBpm} bpm` : 'Retry', true, singRoute(target)), action('level', 'Back to level', false, levelRoute)];
+      }
+      const retry = action('retry', climbed ? `Sing at ${nextBpm} bpm` : 'Retry', false, singRoute(target));
       const next = nextOpenLevel(target.levelId, outcome.after);
       if (next) return [action('next-level', 'Next level', true, routeOf('level', { levelId: next.id })), retry];
       const worldId = getLevel(target.levelId)?.worldId;
@@ -150,6 +195,8 @@ export function afterTakeActions(outcome: TakeOutcome): AfterTakeAction[] {
       const noRange = prepared.def.kind === 'range-finder' && !outcome.rangeSaved && prepared.usingDefaultRange;
       return !measured || noRange ? [again(true), nextTask(false)] : [nextTask(true), again(false)];
     }
+    case 'drill':
+      return drillActions(target, outcome);
   }
 }
 

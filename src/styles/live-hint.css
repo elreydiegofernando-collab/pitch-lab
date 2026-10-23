@@ -1,0 +1,106 @@
+/**
+ * The live hint (src/ui/practice/LiveHint.tsx, which imports this file): one plain line at the bottom of the Sing canvas
+ * while the singer sings. Tokens only, no new hues and no new fonts (docs/DESIGN.md). The words are always there, with a
+ * glyph: the hue only repeats them (never colour alone). The component writes data-kind, data-tone, data-glyph and
+ * data-motion a few times a second, never per frame; the only thing that moves is opacity (a short fade), and not at all
+ * under reduced motion (the component's data-motion, the global rule in base.css, or both).
+ */
+
+.pl-live-hint {
+  --hint-hue: var(--text-mid);
+  position: absolute;
+  /* The trace is the hero: the line sits over the HISTORY, never over the note being sung. It stays clear of the now
+     line, 72% of the way across (CONFIG.display.nowLineFraction), so it covers neither the tip of the trace, nor the bar
+     being sung, nor the bars still to come. It may cover a lane name or two down the left edge while it is up, which
+     the long wobble line does on the narrowest phone. */
+  left: var(--sp-3);
+  right: calc(28% + var(--sp-2));
+  bottom: var(--sp-3);
+  z-index: 3;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity var(--dur-micro) var(--ease-standard);
+}
+/* Nothing to say: fade out, then leave the accessibility tree (the last words stay put while it fades). */
+.pl-live-hint[data-kind='none'] {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity var(--dur-micro) var(--ease-standard),
+    visibility 0s linear var(--dur-micro);
+}
+.pl-live-hint[data-motion='reduce'],
+.pl-live-hint[data-motion='reduce'][data-kind='none'] {
+  transition: none;
+}
+
+.pl-live-hint[data-tone='quiet'] {
+  --hint-hue: var(--text-mid);
+}
+.pl-live-hint[data-tone='go'] {
+  --hint-hue: var(--tally-text);
+}
+.pl-live-hint[data-tone='adjust'] {
+  --hint-hue: var(--off-text);
+}
+.pl-live-hint[data-tone='good'] {
+  --hint-hue: var(--on-text);
+}
+
+/* 16 px on a narrow phone, where the history is only about 180 px wide (the long wobble line takes three lines); larger
+   where there is room. */
+.pl-live-hint__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  max-width: 100%;
+  min-height: 44px;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-card);
+  border: 1.5px solid color-mix(in srgb, var(--hint-hue) 60%, var(--line));
+  background: color-mix(in srgb, var(--bg-1) 92%, transparent);
+  color: var(--text-hi);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 16px;
+  line-height: 1.25;
+}
+@media (min-width: 380px) {
+  .pl-live-hint__pill {
+    font-size: 18px;
+    gap: var(--sp-3);
+  }
+}
+@media (min-width: 900px) {
+  .pl-live-hint__pill {
+    font-size: 20px;
+  }
+}
+.pl-live-hint__text {
+  min-width: 0;
+  text-wrap: balance;
+}
+
+/* Every glyph is in the page; the one for the words shown is displayed. */
+.pl-live-hint__glyph {
+  display: none;
+  flex: none;
+  color: var(--hint-hue);
+}
+.pl-live-hint__glyph svg {
+  width: 1.25em;
+  height: 1.25em;
+}
+.pl-live-hint[data-glyph='ear'] .pl-live-hint__glyph[data-glyph='ear'],
+.pl-live-hint[data-glyph='wind'] .pl-live-hint__glyph[data-glyph='wind'],
+.pl-live-hint[data-glyph='mic'] .pl-live-hint__glyph[data-glyph='mic'],
+.pl-live-hint[data-glyph='up'] .pl-live-hint__glyph[data-glyph='up'],
+.pl-live-hint[data-glyph='down'] .pl-live-hint__glyph[data-glyph='down'],
+.pl-live-hint[data-glyph='target'] .pl-live-hint__glyph[data-glyph='target'],
+.pl-live-hint[data-glyph='check'] .pl-live-hint__glyph[data-glyph='check'],
+.pl-live-hint[data-glyph='waves'] .pl-live-hint__glyph[data-glyph='waves'] {
+  display: inline-flex;
+}

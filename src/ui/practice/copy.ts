@@ -58,13 +58,15 @@ function checkupChip(taskIndex: number, taskCount: number): string {
 }
 
 /**
- * The one context chip over the canvas (top right): a check-up task, a workout item, an audition test, a tempo-ladder
- * rung, or a record attempt, in that order of precedence (a check-up task is an audition test underneath, but the
- * singer is on the check-up). `index`, `itemIndex`, `taskIndex` and the ladder index are 0-based, as in RunTarget.
+ * The one context chip over the canvas (top right): a check-up task, a lesson's practice step, a workout item, an
+ * audition test, a tempo-ladder rung, or a record attempt, in that order of precedence (a check-up task is an audition
+ * test underneath, but the singer is on the check-up). `index`, `itemIndex`, `taskIndex`, `step` and the ladder index are
+ * 0-based, as in RunTarget.
  */
 export function contextChip(prepared: PreparedRun, target: RunTarget): string | null {
   if (prepared.checkup) return checkupChip(prepared.checkup.taskIndex, prepared.checkup.taskCount);
   if (target.kind === 'checkup') return checkupChip(target.taskIndex, CHECKUP_TASKS.length);
+  if (prepared.drill) return `Practice · step ${prepared.drill.step + 1} of ${prepared.drill.stepCount}`;
   if (prepared.workout) {
     const w = prepared.workout;
     return `Workout · ${w.itemIndex + 1} of ${w.itemCount}${w.take > 1 ? ` · take ${w.take}` : ''}`;

@@ -22,20 +22,23 @@ export const LEVEL_REFS = {
    * to. So it is always SUNG: an audition never passes it, and none is offered before it is passed.
    */
   rangeFinder: 'foundations.01',
-  /** Foundations "Sirens & glides": opens crack markers on the trace. */
+  /** Foundations "Sirens": opens crack markers on the Live line. */
   sirens: 'foundations.05',
-  /** Foundations "Crispness": opens the settle/scoop readouts. */
-  crispness: 'foundations.06',
+  /** Foundations "Clean starts": opens the Live readout of how each note starts. */
+  cleanStarts: 'foundations.06',
   /** Foundations Boss Recital: opens Vibrato, Song Stage and song import. */
   foundationsBoss: 'foundations.boss',
 } as const;
 
-/** Every FeatureId -> its requirement (the compiler rejects a missing id). Hints are one line, naming the thing to pass. */
+/**
+ * Every FeatureId -> its requirement (the compiler rejects a missing id). Hints are one line in plain words (they are read
+ * on the Live screen by singers relearning music), naming the lesson to pass by its title.
+ */
 export const FEATURES: Readonly<Record<FeatureId, Requirement>> = {
   'live.basic': { kind: 'start', hint: 'Available from the start.' },
-  'live.cracks': { kind: 'levelPassed', ref: LEVEL_REFS.sirens, hint: 'Pass Sirens & glides to see crack markers on the trace.' },
-  'live.onset': { kind: 'levelPassed', ref: LEVEL_REFS.crispness, hint: 'Pass Crispness to see settle and scoop readouts.' },
-  'live.vibrato': { kind: 'worldUnlocked', ref: 'vibrato', hint: 'Pass the Foundations Boss Recital to see vibrato readouts.' },
+  'live.cracks': { kind: 'levelPassed', ref: LEVEL_REFS.sirens, hint: 'Pass Sirens to see cracks marked on your line.' },
+  'live.onset': { kind: 'levelPassed', ref: LEVEL_REFS.cleanStarts, hint: 'Pass Clean starts to see how cleanly each note starts.' },
+  'live.vibrato': { kind: 'worldUnlocked', ref: 'vibrato', hint: 'Pass the Foundations Boss Recital to see your vibrato on the Live screen.' },
   'tool.vibrato-meter': { kind: 'worldUnlocked', ref: 'vibrato', hint: 'Pass the Foundations Boss Recital to use the vibrato meter.' },
   'setting.vibratoStyle': { kind: 'worldUnlocked', ref: 'vibrato', hint: 'Pass the Foundations Boss Recital to choose a vibrato style.' },
   'dashboard': { kind: 'levelPassed', hint: 'Pass your first level to see the progress dashboard.' },
@@ -234,7 +237,7 @@ export function isRecordAttemptAllowed(exerciseId: string, snapshot: ProgressSna
 
 // ---------------------------------------------------------------- requirement lines for locked tiles
 
-/** "Sustain II", or "the Foundations Boss Recital" for a boss. */
+/** "Hold it steady", or "the Foundations Boss Recital" for a boss. */
 function describeLevel(world: WorldDef, level: LevelDef): string {
   return level.kind === 'boss' ? `the ${world.title} Boss Recital` : level.title;
 }
@@ -248,7 +251,7 @@ export function worldRequirementHint(worldId: WorldId, snapshot: ProgressSnapsho
 }
 
 /**
- * One line saying how to open a level: the level right before it ("Pass Sustain II to unlock."), because passing level
+ * One line saying how to open a level: the level right before it ("Pass Hold it steady to unlock."), because passing level
  * N is what opens level N+1 (SPEC §11). Every locked node of the map says what opens IT, not the same line nine times.
  * Null when the level is openable or unknown.
  */

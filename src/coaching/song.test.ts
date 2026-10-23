@@ -17,7 +17,7 @@ import { ladderFor } from './content/index';
 import { jargonIn } from './plain';
 import { SONG_FALLBACK_TIPS, coachSongTake, nextStepLine, phraseMove, phraseOfMove, songMissesInARow, type SongTake } from './song';
 import { SONG_TIP_IDS, type SongTipId } from './song-tips';
-import { attemptOf, checkupWithFocus } from './test-takes';
+import { attemptOf, CHECKUP_MATCH_HOLD, CHECKUP_SIREN, checkupWithFocus } from './test-takes';
 
 /** Two phrases at 60 bpm (a beat is a quarter second): "O holy night" with its top note on "night", then "The stars shine". */
 const HOLY = `#TITLE:Holy Test
@@ -288,15 +288,15 @@ describe('help that deepens with misses in a row on the same phrases', () => {
     const first = flat();
     const second = flat();
     expect(words(second, [first.attempt, second.attempt]).problem.tipId).toBe('song.flat');
-    expect(ladderFor('song.flat')?.practiseLevelId).toBe('foundations.02'); // a flat lean builds on Pitch match
-    const pitchMatch = attemptOf(null, { exerciseId: 'foundations.pitch-match.1', levelId: 'foundations.02', passed: true });
+    expect(ladderFor('song.flat')?.practiseLevelId).toBe('foundations.02'); // a flat lean builds on Match one note
+    const pitchMatch = attemptOf(null, { exerciseId: 'foundations.match.1', levelId: 'foundations.02', passed: true });
     const levels = (log: AttemptRecord[]) => words(second, [...log, first.attempt, second.attempt]).moves.filter((m) => m.kind === 'practise-level');
 
-    // The latest check-up found pitch to focus on: Pitch match is offered at the second miss on the phrase.
-    expect(levels([pitchMatch, ...checkupWithFocus(1, 'c-pitch')])).toEqual([{ kind: 'practise-level', levelId: 'foundations.02', title: 'Pitch match' }]);
+    // The latest check-up found pitch to focus on: Match one note is offered at the second miss on the phrase.
+    expect(levels([pitchMatch, ...checkupWithFocus(CHECKUP_MATCH_HOLD, 'c-pitch')])).toEqual([{ kind: 'practise-level', levelId: 'foundations.02', title: 'Match one note' }]);
     // Without that check-up (or with another focus), it waits for the fourth miss as before.
     expect(levels([pitchMatch])).toEqual([]);
-    expect(levels([pitchMatch, ...checkupWithFocus(2, 'c-slides')])).toEqual([]);
+    expect(levels([pitchMatch, ...checkupWithFocus(CHECKUP_SIREN, 'c-slides')])).toEqual([]);
   });
 
   it('offers the phrase alone from a take of the whole song, and rest after many misses', () => {

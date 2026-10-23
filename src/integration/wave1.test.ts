@@ -11,7 +11,7 @@
  * opening with the world their difficulty needs. Storage is closed, reopened, exported and
  * restored on a "new device", and the progress must come back identical.
  *
- * The take renditions are built with analysis/fixtures.ts (makeTrack, notesMidi, sequence), either by
+ * The take renditions are built with analysis/fixtures.ts (makeTrack, notesMidi), either by
  * hand for the four representative exercises (Foundations sustain, Vibrato straight-to-bloom, Runs
  * pentatonic at 6 notes/s, Dynamics swell) or, to climb the whole game, with the synthetic singer of
  * the exercises module (exercises/test-singer.ts, which follows every cue). Nothing here touches a
@@ -21,7 +21,7 @@ import 'fake-indexeddb/auto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { analyzeAccuracy } from '../analysis/accuracy';
 import { trackFromAudio } from '../analysis/core-test-helpers';
-import { FRAME_RATE, makeTrack, notesMidi, sequence } from '../analysis/fixtures';
+import { FRAME_RATE, makeTrack, notesMidi } from '../analysis/fixtures';
 import { scoreSongTake } from '../analysis/phrases';
 import { metricsFromResults, scoreExercise } from '../analysis/score';
 import { TakeRecorder, encodeTake, type TakeEngine, type TakeResult } from '../audio/take-recorder';
@@ -342,21 +342,26 @@ const singer =
 /** A clean singer who does everything the cues ask. */
 const good: Rendition = singer();
 
-/** The range finder as a tenor sings it: down to `low`, a breath, back to the middle, up to `high`; each end held. */
+/**
+ * The range finder as a tenor sings it, on its own sung steps (the app plays the starting note first): the starting
+ * note, a slide down to `low` and a hold there; a breath while the starting note plays again; then up to `high`.
+ */
 const rangeSweep =
   (low: number, high: number): Rendition =>
   (realized) => {
     const mid = realized.tonicMidi;
-    const sweep = sequence([
-      [2, () => mid],
-      [4, (u) => mid + (low - mid) * (u / 4)],
-      [3, () => low],
-      [2, () => NaN],
-      [2, () => mid],
-      [4, (u) => mid + (high - mid) * (u / 4)],
-      [3, () => high],
-    ]);
-    return takeOf(realized, (t) => (t < 0 ? NaN : sweep(t)), { seed: 3 });
+    const sung = realized.steps.filter((s) => s.role === 'sing');
+    // The starting note, the slide down, the low hold; the starting note again, the slide up, the high hold.
+    const ends = [mid, low, low, mid, high, high];
+    if (sung.length !== ends.length) throw new Error(`rangeSweep: the Range finder sings ${sung.length} steps, not ${ends.length}`);
+    const sweep = (t: number): number => {
+      const k = sung.findIndex((s) => t >= s.start && t < s.end);
+      if (k < 0) return NaN;
+      const s = sung[k];
+      if (s.toMidi === undefined) return ends[k];
+      return ends[k - 1] + (ends[k] - ends[k - 1]) * ((t - s.start) / (s.end - s.start));
+    };
+    return takeOf(realized, sweep, { seed: 3 });
   };
 
 /** Sustained notes with a fault. */
@@ -500,7 +505,7 @@ describe('a tenor from first launch to the last Boss Recital', () => {
     const s = studio.snapshot;
     expect(s.worldsUnlocked).toEqual(['foundations']);
     expect(s.features).toEqual(['live.basic', 'export']);
-    expect(statusesOf(s, 'foundations')).toEqual(['current', ...Array(9).fill('locked')]);
+    expect(statusesOf(s, 'foundations')).toEqual(['current', ...Array(12).fill('locked')]);
     expect(s.momentum).toBe(0);
     expect(s.lastPracticeDay).toBeNull();
 
@@ -582,29 +587,32 @@ describe('a tenor from first launch to the last Boss Recital', () => {
     expect(swell.notes[0].midi).toBeLessThanOrEqual(67);
   });
 
-  it('Pitch match is the next level and passes with clean singing', async () => {
+  it('Match one note is the next level and passes with clean singing', async () => {
     const o = await studio.singLevel('foundations.02');
     expect(o.evaluation.passed).toBe(true);
     expect(o.snapshot.levels['foundations.02']).toMatchObject({ status: 'passed', attempts: 1 });
     expect(o.snapshot.levels['foundations.03'].status).toBe('current');
+    // The app played each note before the singer sang it, and nothing while they sang.
+    expect(o.realized.reference.map((r) => r.midi)).toEqual(o.realized.notes.map((n) => n.midi));
+    o.realized.reference.forEach((r, i) => expect(r.end).toBeLessThan(o.realized.notes[i].start));
   });
 
-  it('Sustain I: a take 60 cents sharp fails with a coaching tip, and the next level stays shut', async () => {
+  it('Hold it: a take 60 cents sharp fails with a coaching tip, and the next level stays shut', async () => {
     const poor = await studio.singLevel('foundations.03', held({ bias: 60 }), { keepTake: {} });
     kept.sustainPoor = poor;
     expect(poor.evaluation.passed).toBe(false);
     expect(poor.attempt).toMatchObject({ kind: 'practice', levelId: 'foundations.03', passed: false, mastery: 0 });
     expect(poor.snapshot.levels['foundations.03']).toMatchObject({ status: 'current', attempts: 1, mastery: 0, passedAt: null });
     expect(poor.snapshot.levels['foundations.03'].bestScore).toBeCloseTo(poor.evaluation.score, 6);
-    expect(poor.snapshot.levels['foundations.04'].status).toBe('locked');
+    expect(poor.snapshot.levels['foundations.13'].status).toBe('locked');
     expect(poor.tip.id).toBe('acc.sharp');
     expect(poor.tip.text).toMatch(/sharp/);
     expect(poor.attempt.takeId).not.toBeNull();
   });
 
-  it('Sustain I: metricsFromResults and scoreExercise agree with what the runner path recorded', async () => {
+  it('Hold it: metricsFromResults and scoreExercise agree with what the runner path recorded', async () => {
     // The same take, analyzed the long way round: one analyzer, then the generic aggregation and scorer.
-    const def = exerciseOf('foundations.sustain.1');
+    const def = exerciseOf('foundations.hold.1');
     const realized = realize(def, studio.profile.range, 'tenor');
     const take = await recordTake(held({ bias: 35, wobble: 25 })(realized, def));
     const ctx = { toleranceCents: 50, vibratoStyle: 'pop' as const };
@@ -618,19 +626,19 @@ describe('a tenor from first launch to the last Boss Recital', () => {
     expect(outcome.terms.every((t) => t.value !== null)).toBe(true);
   });
 
-  it('Sustain I: a modest take passes with one tally light and opens Sustain II', async () => {
-    const modest = await studio.singLevel('foundations.03', held({ bias: 35, wobble: 25 }));
+  it('Hold it: a modest take passes with one tally light and opens Hold it steady', async () => {
+    const modest = await studio.singLevel('foundations.03', held({ bias: 32 }));
     expect(modest.evaluation.passed).toBe(true);
     expect(modest.evaluation.mastery).toBe(1);
     expect(modest.attempt).toMatchObject({ passed: true, mastery: 1 });
     expect(modest.snapshot.levels['foundations.03']).toMatchObject({ status: 'passed', mastery: 1, attempts: 2, viaAudition: false });
     expect(modest.snapshot.levels['foundations.03'].passedAt).toBe(modest.attempt.createdAt);
-    expect(modest.snapshot.levels['foundations.04'].status).toBe('current');
+    expect(modest.snapshot.levels['foundations.13'].status).toBe('current');
     expect(statusesOf(modest.snapshot, 'foundations').slice(0, 5)).toEqual(['passed', 'passed', 'passed', 'current', 'locked']);
   });
 
-  it('Sustain I: replaying for mastery lifts the tally to studio, and a worse replay takes nothing back', async () => {
-    const solid = await studio.singLevel('foundations.03', held({ bias: 40 }));
+  it('Hold it: replaying for mastery lifts the tally to studio, and a worse replay takes nothing back', async () => {
+    const solid = await studio.singLevel('foundations.03', held({ bias: 24 }));
     expect(solid.evaluation.mastery).toBe(2);
     expect(solid.snapshot.levels['foundations.03'].mastery).toBe(2);
 
@@ -643,30 +651,30 @@ describe('a tenor from first launch to the last Boss Recital', () => {
     const worse = await studio.singLevel('foundations.03', held({ bias: 60 }));
     expect(worse.evaluation.passed).toBe(false);
     expect(worse.snapshot.levels['foundations.03']).toMatchObject({ status: 'passed', mastery: 3, attempts: 5 }); // never re-locks, never lowers
-    expect(worse.snapshot.levels['foundations.04'].status).toBe('current');
+    expect(worse.snapshot.levels['foundations.13'].status).toBe('current');
   });
 
   it('personal records hold the best value of the passed takes only', async () => {
     const s = await studio.refresh();
-    const records = recordsForExercise(s, 'foundations.sustain.1');
+    const records = recordsForExercise(s, 'foundations.hold.1');
     expect(records.length).toBeGreaterThan(0);
-    const passedIds = new Set(studio.written.filter((a) => a.exerciseId === 'foundations.sustain.1' && a.passed).map((a) => a.id));
+    const passedIds = new Set(studio.written.filter((a) => a.exerciseId === 'foundations.hold.1' && a.passed).map((a) => a.id));
     for (const r of records) expect(passedIds.has(r.attemptId), `${r.metric} came from a passed attempt`).toBe(true);
-    // The steadiest and the most-in-tune PASSED takes hold those records (lower sd and higher in-tune % are better).
-    const passed = studio.written.filter((a) => a.exerciseId === 'foundations.sustain.1' && a.passed);
-    const best = (metric: 'accuracy.sdCents' | 'accuracy.inTolerancePct', pick: (...v: number[]) => number) => pick(...passed.map((a) => a.metrics[metric]!));
-    expect(records.find((r) => r.metric === 'accuracy.sdCents')!.value).toBeCloseTo(best('accuracy.sdCents', Math.min), 9);
+    // The closest and the most-in-tune PASSED takes hold those records (a smaller typical miss and a higher in-tune % are better).
+    const passed = studio.written.filter((a) => a.exerciseId === 'foundations.hold.1' && a.passed);
+    const best = (metric: 'accuracy.medianAbsCents' | 'accuracy.inTolerancePct', pick: (...v: number[]) => number) => pick(...passed.map((a) => a.metrics[metric]!));
+    expect(records.find((r) => r.metric === 'accuracy.medianAbsCents')!.value).toBeCloseTo(best('accuracy.medianAbsCents', Math.min), 9);
     expect(records.find((r) => r.metric === 'accuracy.inTolerancePct')!.value).toBeCloseTo(best('accuracy.inTolerancePct', Math.max), 9);
     expect(records.find((r) => r.metric === 'accuracy.inTolerancePct')!.value).toBeGreaterThan(95);
     // The failed takes (a sharp 60 cents) hold no record at all, however they scored on one metric.
-    const failedIds = new Set(studio.written.filter((a) => a.exerciseId === 'foundations.sustain.1' && !a.passed).map((a) => a.id));
+    const failedIds = new Set(studio.written.filter((a) => a.exerciseId === 'foundations.hold.1' && !a.passed).map((a) => a.id));
     expect(records.some((r) => failedIds.has(r.attemptId))).toBe(false);
   });
 
   it('a saved take replays: the stored pitch track analyzes to the same verdict', async () => {
     const saved = kept.sustainPolished;
     const record = await studio.storage.takes.get(saved.attempt.takeId!);
-    expect(record).toMatchObject({ exerciseId: 'foundations.sustain.1', profileId: studio.profile.id, latencyMs: ROUND_TRIP_MS });
+    expect(record).toMatchObject({ exerciseId: 'foundations.hold.1', profileId: studio.profile.id, latencyMs: ROUND_TRIP_MS });
     const replayed = decodeTrack(record!.track);
     expect(replayed).toHaveLength(saved.take.track.length);
     expect(replayed[0].t).toBeCloseTo(saved.take.track[0].t, 9);
@@ -677,12 +685,52 @@ describe('a tenor from first launch to the last Boss Recital', () => {
     expect(verdict.score).toBeCloseTo(saved.evaluation.score, 3);
   });
 
-  it('Sustain II and the Sirens: a siren that keeps breaking fails and every break is marked; one break still passes and opens the crack markers', async () => {
-    const sus2 = await studio.singLevel('foundations.04');
-    expect(sus2.snapshot.levels['foundations.04'].status).toBe('passed');
-    expect(sus2.snapshot.levels['foundations.05'].status).toBe('current');
-    expect(isFeatureUnlocked('live.cracks', sus2.snapshot)).toBe(false);
+  it('Hold it steady: a wobbly take fails on the wobble with the steadiness tip; a level one passes and opens the step lesson, numbered 10', async () => {
+    const wobbly = await studio.singLevel('foundations.13', held({ wobble: 45 }));
+    expect(wobbly.evaluation.passed).toBe(false);
+    expect(wobbly.evaluation.failedGates.map((i) => wobbly.def.pass.gates![i].metric)).toContain('accuracy.sdCents');
+    expect(wobbly.tip.id).toBe('acc.unstable');
+    expect(wobbly.snapshot.levels['foundations.10'].status).toBe('locked');
 
+    const level = await studio.singLevel('foundations.13');
+    expect(level.evaluation.passed).toBe(true);
+    expect(level.analysis.metrics['accuracy.sdCents']).toBeLessThan(15);
+    // The order is the lessons' (LevelDef.index), not the persisted numbers: 13 opens 10, and 05 is still far off.
+    expect(level.snapshot.levels['foundations.10'].status).toBe('current');
+    expect(level.snapshot.levels['foundations.05'].status).toBe('locked');
+  });
+
+  it('Two notes, a jump apart: sliding up into the landing fails on how slowly it lands; jumping straight to it passes', async () => {
+    const step = await studio.singLevel('foundations.10');
+    expect(step.evaluation.passed).toBe(true);
+    expect(step.snapshot.levels['foundations.07'].status).toBe('current');
+
+    const sliding = await studio.singLevel('foundations.07', singer({ scoopCents: 150, settleTauMs: 260 }));
+    expect(sliding.evaluation.passed).toBe(false);
+    expect(sliding.evaluation.failedGates.map((i) => sliding.def.pass.gates![i].metric)).toContain('onset.settleMs');
+    expect(sliding.snapshot.levels['foundations.08'].status).toBe('locked');
+
+    const straight = await studio.singLevel('foundations.07');
+    expect(straight.evaluation.passed).toBe(true);
+    expect(straight.snapshot.levels['foundations.08'].status).toBe('current');
+  });
+
+  it('bigger jumps, do-re-mi, five notes in a row and small slides pass in order, each opening the next', async () => {
+    const order: Array<[string, string]> = [
+      ['foundations.08', 'foundations.11'],
+      ['foundations.11', 'foundations.09'],
+      ['foundations.09', 'foundations.12'],
+      ['foundations.12', 'foundations.05'],
+    ];
+    for (const [id, next] of order) {
+      const o = await studio.singLevel(id);
+      expect(o.evaluation.passed, id).toBe(true);
+      expect(o.snapshot.levels[next].status, `${id} opens ${next}`).toBe('current');
+    }
+    expect(isFeatureUnlocked('live.cracks', studio.snapshot)).toBe(false);
+  });
+
+  it('Sirens: a siren that keeps cracking fails and every crack is marked; one crack still passes and opens the crack markers', async () => {
     // The voice cuts out for 60 ms in the middle of a glide: in every glide of the siren, then in just one.
     const glideMiddles = (realized: RealizedExercise): number[] => realized.notes.filter((n) => n.toMidi !== undefined).map((n) => (n.start + n.end) / 2);
     const breaking =
@@ -699,12 +747,12 @@ describe('a tenor from first launch to the last Boss Recital', () => {
     expect(isFeatureUnlocked('live.cracks', broken.snapshot)).toBe(false);
     expect(broken.snapshot.levels['foundations.06'].status).toBe('locked');
 
-    // One break is marked and costs score, but a developing voice still passes (the level is calibrated for it).
+    // One crack is marked and costs score, but a developing voice still passes (the level is calibrated for it).
     const once = await studio.singLevel('foundations.05', breaking((m) => [m[2]]));
     expect(once.analysis.details.cracks).toHaveLength(1);
     expect(once.analysis.metrics['glide.cracks']).toBe(1);
     expect(once.evaluation.passed).toBe(true);
-    expect(isFeatureUnlocked('live.cracks', once.snapshot)).toBe(true); // passing Sirens & glides opens the markers
+    expect(isFeatureUnlocked('live.cracks', once.snapshot)).toBe(true); // passing Sirens opens the markers
     expect(isFeatureUnlocked('live.onset', once.snapshot)).toBe(false);
     expect(once.snapshot.levels['foundations.06'].status).toBe('current');
 
@@ -716,7 +764,7 @@ describe('a tenor from first launch to the last Boss Recital', () => {
     expect(clean.snapshot.levels['foundations.05'].mastery).toBe(Math.max(once.evaluation.mastery, clean.evaluation.mastery));
   });
 
-  it('Crispness: a scooped take fails with the SPEC tip, the crisp one opens the settle and scoop readouts', async () => {
+  it('Clean starts: a scooped take fails with the SPEC tip, the clean one opens the start readouts', async () => {
     const scooped = await studio.singLevel('foundations.06', singer({ scoopCents: 120, settleTauMs: 120 }));
     expect(scooped.evaluation.passed).toBe(false);
     expect(scooped.tip.id).toBe('onset.scoop-big');
@@ -732,11 +780,8 @@ describe('a tenor from first launch to the last Boss Recital', () => {
   });
 
   it('the Foundations Boss Recital opens Vibrato, Song Stage and the starter songs, and only after the earlier levels', async () => {
-    for (const id of ['foundations.07', 'foundations.08', 'foundations.09']) {
-      const o = await studio.singLevel(id);
-      expect(o.evaluation.passed, id).toBe(true);
-    }
     expect(studio.snapshot.levels['foundations.boss'].status).toBe('current');
+    expect(statusesOf(studio.snapshot, 'foundations')).toEqual([...Array(12).fill('passed'), 'current']);
     expect(isWorldUnlocked('vibrato', studio.snapshot)).toBe(false);
     expect(openSongs(studio.snapshot)).toEqual([]);
 
@@ -1099,7 +1144,7 @@ describe('a tenor from first launch to the last Boss Recital', () => {
     expect(studio.profile.range).toMatchObject({ extended: { low: 45, high: 72 } });
     expect((await studio.storage.attempts.listByProfile(studio.profile.id)).length).toBe(studio.written.length);
     // The replayable take is still there too.
-    expect((await studio.storage.takes.get(kept.sustainPolished.attempt.takeId!))?.exerciseId).toBe('foundations.sustain.1');
+    expect((await studio.storage.takes.get(kept.sustainPolished.attempt.takeId!))?.exerciseId).toBe('foundations.hold.1');
   });
 
   it('a backup exported here restores the whole progress on a new device, and importing it again adds nothing', async () => {
@@ -1143,7 +1188,7 @@ describe('a tenor from first launch to the last Boss Recital', () => {
 // ================================================================ independent scenarios
 
 describe('the take recorder keeps the analyzers on the singer\'s clock', () => {
-  const def = exerciseOf('foundations.staccato.1');
+  const def = exerciseOf('foundations.clean-starts.1');
   const realized = realize(def, rangeFromMeasurement(TENOR_LOW, TENOR_HIGH, 'x'), 'tenor');
   const sung = singTake(realized, GOOD_SINGER);
 
@@ -1236,7 +1281,7 @@ describe('a daily workout built from real progress runs on the same engines', ()
   it('offers only unlocked material, fits its budget with real take lengths, and builds Momentum without moving a level it did not earn', async () => {
     const studio = await Studio.open('Workout');
     await studio.findRange();
-    for (const id of ['foundations.02', 'foundations.03', 'foundations.04']) expect((await studio.singLevel(id)).attempt.passed, id).toBe(true);
+    for (const id of ['foundations.02', 'foundations.03', 'foundations.13']) expect((await studio.singLevel(id)).attempt.passed, id).toBe(true);
     studio.nextDay();
 
     const attempts = await studio.storage.attempts.listByProfile(studio.profile.id);
@@ -1246,7 +1291,7 @@ describe('a daily workout built from real progress runs on the same engines', ()
     expect(workout.items[0]).toMatchObject({ stage: 'warm-up', source: 'routine', levelId: null });
     expect(workout.items[workout.items.length - 1]).toMatchObject({ stage: 'cool-down', source: 'routine', levelId: null });
     const worldItems = workout.items.filter((i) => i.stage === 'world-item');
-    expect(worldItems[0]).toMatchObject({ levelId: 'foundations.05', reason: 'current-level' }); // where the singer is
+    expect(worldItems[0]).toMatchObject({ levelId: 'foundations.10', reason: 'current-level' }); // where the singer is: the step lesson, fifth in order
 
     const lookup = withRoutines(getExercise);
     const momentumBefore = studio.snapshot.momentum;
@@ -1275,9 +1320,9 @@ describe('a daily workout built from real progress runs on the same engines', ()
     for (const [id, status] of Object.entries(statusBefore)) {
       if (status === 'passed') expect(s.levels[id].status, id).toBe('passed');
     }
-    expect(s.levels['foundations.05'].status).toBe('passed');
-    expect(s.levels['foundations.06'].status).toBe('current');
-    expect(s.levels['foundations.07'].status).toBe('locked');
+    expect(s.levels['foundations.10'].status).toBe('passed');
+    expect(s.levels['foundations.07'].status).toBe('current');
+    expect(s.levels['foundations.08'].status).toBe('locked');
   }, 120_000);
 });
 
@@ -1365,10 +1410,10 @@ describe('the same pipeline on a real detector\'s output (synthesized audio -> F
 
   /** Eleven short exercises that between them run every analyzer (the placement-audition tests are the briefest ones). */
   const PER_ANALYZER = [
-    'foundations.range-finder.1', // range
-    'foundations.audition.2', //     glide, cracks
-    'foundations.audition.3', //     accuracy, onset
-    'foundations.audition.4', //     accuracy, transitions
+    'foundations.range.1', //        range
+    'foundations.audition.8', //     glide, cracks
+    'foundations.audition.6', //     accuracy, onset
+    'foundations.audition.7', //     accuracy, transitions
     'vibrato.audition.1', //         pulse
     'vibrato.audition.2', //         vibrato
     'vibrato.audition.4', //         switch, vibrato
@@ -1389,7 +1434,7 @@ describe('the same pipeline on a real detector\'s output (synthesized audio -> F
   });
 
   it('the same faults still fail: wrong notes, a straight tone where vibrato is asked, a swell with no change in loudness, silence', async () => {
-    const wrong = await perform('foundations.audition.4', { offsetSemis: 2 });
+    const wrong = await perform('foundations.audition.7', { offsetSemis: 2 });
     expect(wrong.evaluation.passed).toBe(false);
     expect(wrong.analysis.metrics['accuracy.inTolerancePct']).toBeLessThan(10);
 
@@ -1401,7 +1446,7 @@ describe('the same pipeline on a real detector\'s output (synthesized audio -> F
     expect(flat.evaluation.passed).toBe(false);
     expect(flat.analysis.metrics['dynamics.rangeDb'] ?? 0).toBeLessThan(10);
 
-    const silent = await perform('foundations.audition.2', { silent: true });
+    const silent = await perform('foundations.audition.8', { silent: true });
     expect(silent.evaluation.passed).toBe(false);
     expect(silent.analysis.tipContext.noVoice).toBe(true);
   });

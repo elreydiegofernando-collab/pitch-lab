@@ -78,6 +78,7 @@ vi.mock('../../storage/kv', () => ({ openKV: async () => createFakeKV() }));
 // Static imports are fine: vi.mock() above is hoisted above all imports by
 // Vitest, so Settings.tsx and the real modules it pulls in (state/audio.ts,
 // state/engine-store.ts, state/settings.ts) resolve against the mocks.
+import { jargonIn } from '../../coaching/plain';
 import { resetRouterForTests, route, routeOf } from '../../router';
 import { activeProfile, snapshot } from '../../state/session';
 import { settings } from '../../state/settings';
@@ -122,12 +123,62 @@ describe('Settings screen (smoke)', () => {
     expect(container.querySelector('[data-testid="settings-screen"]')).not.toBeNull();
     expect(text()).toContain('Vibrato style');
     expect(text()).toContain('Pitch detector');
-    expect(text()).toContain('Reference sound');
-    expect(text()).toContain('Notation');
+    expect(text()).toContain('Listen sound');
+    expect(text()).toContain('Sharps or flats');
     expect(text()).toContain('Theme');
     expect(text()).toContain('Reduced motion');
     expect(text()).toContain('Note names');
     expect(text()).toContain('Keep take audio');
+  });
+});
+
+describe('Settings: in plain words', () => {
+  it('uses no unit, no algorithm name and no jargon, for a singer who has earned every setting', async () => {
+    snapshot.value = snapshotOf(passWorld('foundations'));
+    await mount();
+    const all = text();
+    expect(jargonIn(all)).toEqual([]);
+    expect(all).not.toMatch(/\bMPM\b|\bYIN\b|\bSine\b|timbre|Notation|tolerance/i);
+    expect(all).not.toMatch(/\d\s*(?:Hz|¢|dB|ms)\b/);
+  });
+
+  it('names the detector choices Standard and Alternative, and still saves the detector it always saved', async () => {
+    await mount();
+    const choice = (label: string): HTMLButtonElement =>
+      Array.from(container.querySelectorAll<HTMLButtonElement>('[role="radiogroup"][aria-label="Pitch detector"] [role="radio"]')).find((b) => b.textContent === label)!;
+    expect(choice('Standard').getAttribute('aria-checked')).toBe('true');
+    await act(() => {
+      choice('Alternative').click();
+    });
+    expect(settings.value.detector).toBe('yin');
+    await act(() => {
+      choice('Standard').click();
+    });
+    expect(settings.value.detector).toBe('mpm');
+    expect(text()).toContain('How the app works out which note you are singing');
+  });
+
+  it('calls the pure tone Pure, and says what the listen sound is for', async () => {
+    await mount();
+    const pure = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="radiogroup"][aria-label="Listen sound"] [role="radio"]')).find((b) => b.textContent === 'Pure')!;
+    await act(() => {
+      pure.click();
+    });
+    expect(settings.value.referenceTimbre).toBe('sine');
+    expect(text()).toContain('The sound the app plays when you tap Listen.');
+  });
+
+  it('explains sharps and flats in a line, and offers the words to tap: vibrato, pitch, sharp and flat', async () => {
+    await mount();
+    expect(text()).toContain('C♯ and D♭ are the same note');
+    for (const id of ['vibrato', 'pitch', 'sharp', 'flat']) expect(container.querySelector(`button[data-term="${id}"]`), id).not.toBeNull();
+    await act(() => {
+      container.querySelector<HTMLButtonElement>('button[data-term="sharp"]')!.click();
+    });
+    expect(document.querySelector('[role="dialog"]')?.getAttribute('aria-label')).toBe('Sharp');
+    await act(() => {
+      document.querySelector<HTMLButtonElement>('button[aria-label="Close"]')!.click();
+    });
   });
 });
 
@@ -147,12 +198,14 @@ describe('Settings: the vibrato style is earned', () => {
     await mount();
     expect(vibratoStyleControl()).not.toBeNull();
     expect(container.querySelector('.pl-locked')).toBeNull();
-    expect(text()).toContain('5-7 Hz');
+    expect(container.querySelector('[data-testid="vibrato-words"]')!.textContent).toContain('A light, narrow vibrato');
+    expect(text()).toContain('five to seven wobbles a second');
     const classical = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="radio"]')).find((b) => b.textContent === 'Classical')!;
     await act(() => {
       classical.click();
     });
     expect(settings.value.vibratoStyle).toBe('classical');
+    expect(container.querySelector('[data-testid="vibrato-words"]')!.textContent).toContain('A fuller, wider vibrato');
   });
 
   it('stays hidden after only part of Foundations', async () => {

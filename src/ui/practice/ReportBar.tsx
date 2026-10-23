@@ -4,7 +4,7 @@
  * primary, or with several, the first becomes the one and the others are demoted, so the screen can never show two.
  */
 import type { JSX } from 'preact';
-import { ArrowRight, Check, ChevronLeft, ClipboardCheck, Map as MapIcon, RotateCcw } from 'lucide-preact';
+import { ArrowRight, Check, ChevronLeft, ClipboardCheck, Map as MapIcon, RotateCcw, Target } from 'lucide-preact';
 import type { AfterTakeAction } from '../../runtime/types';
 import { Button } from '../components/Button';
 import type { Icon } from '../components/icon';
@@ -19,6 +19,11 @@ const ACTION_ICON: Record<AfterTakeAction['kind'], Icon> = {
   'finish-workout': Check,
   'next-task': ArrowRight,
   'checkup-results': ClipboardCheck,
+  // A lesson's practice: the same step again, the next step, the check (the level's pass lines: their Target glyph), back.
+  'next-try': RotateCcw,
+  'next-step': ArrowRight,
+  'take-check': Target,
+  lesson: ChevronLeft,
   level: ChevronLeft,
   map: MapIcon,
 };

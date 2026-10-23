@@ -36,6 +36,15 @@ function plain(text: string): void {
 
 const defOf = (taskIndex: number): ExerciseDef => getExercise(CHECKUP_TASKS[taskIndex].exerciseId)!;
 
+/**
+ * The tasks by what they measure, in the battery's order (the audition's, level by level): the Range finder, match and
+ * hold (pitch, steadiness), two notes near and far (note starts), the connected line, then the siren, sung last.
+ */
+const HOLD = 1;
+const STARTS = 2;
+const LINE = 3;
+const SIREN = 4;
+
 /** The value of `metric` that scores `x` (0..1) on `def`'s own band for it. */
 function valueAt(def: ExerciseDef, metric: MetricKey, x: number): number {
   const term = def.scoring.find((t) => t.metric === metric)!;
@@ -102,6 +111,11 @@ const ratings = (summary: CheckupSummary): Record<string, string> => Object.from
 // ---------------------------------------------------------------- the battery and the catalog
 
 describe('the battery against the catalog', () => {
+  it('sings its tasks in the audition’s order: range, match and hold, note starts, the connected line, the siren', () => {
+    expect(CHECKUP_TASKS.map((t) => t.skills.map((s) => s.skill))).toEqual([['range'], ['pitch', 'steadiness'], ['starts'], ['connected'], ['slides']]);
+    expect([HOLD, STARTS, LINE, SIREN].map((i) => CHECKUP_TASKS[i].skills[0].skill)).toEqual(['pitch', 'starts', 'connected', 'slides']);
+  });
+
   it('every skill metric is scored by its task’s exercise, so every skill can be rated', () => {
     for (const task of CHECKUP_TASKS) {
       const def = getExercise(task.exerciseId);
@@ -177,7 +191,7 @@ describe('rateSkill: against the pass rule and tiers', () => {
   });
 
   it('the siren: no break or one is solid when the rest is clean, two breaks or more need focus', () => {
-    const def = defOf(2);
+    const def = defOf(SIREN);
     const slides = (cracks: number) => rateSkill(def, metricsAt(def, 1, { 'glide.cracks': cracks }), ['glide.smoothness', 'glide.cracks', 'glide.endAbsCents']);
     expect([0, 1, 2, 5].map(slides)).toEqual(['solid', 'solid', 'focus', 'focus']);
   });
@@ -203,14 +217,14 @@ describe('checkupsOf: what counts', () => {
   });
 
   it('a task not sung, a silent take and a take that ended early are not measured, and say why', () => {
-    const silent = take(1, 'c1', metricsAt(defOf(1), 1), { durationSec: 0 });
-    const stopped = take(2, 'c1', metricsAt(defOf(2), 1), { durationSec: wholeSec(defOf(2)) - 2 });
-    const log = [take(0, 'c1', metricsAt(defOf(0), 1)), silent, stopped, take(4, 'c1', metricsAt(defOf(4), 1))];
+    const silent = take(HOLD, 'c1', metricsAt(defOf(HOLD), 1), { durationSec: 0 });
+    const stopped = take(LINE, 'c1', metricsAt(defOf(LINE), 1), { durationSec: wholeSec(defOf(LINE)) - 2 });
+    const log = [take(0, 'c1', metricsAt(defOf(0), 1)), silent, stopped, take(SIREN, 'c1', metricsAt(defOf(SIREN), 1))];
     const s = only(read(log));
-    expect(s.tasks[3]).toEqual({ exerciseId: CHECKUP_TASKS[3].exerciseId, title: CHECKUP_TASKS[3].title, attemptId: null, passed: null, score: null });
-    expect(ratings(s)).toEqual({ range: 'solid', pitch: 'not-measured', steadiness: 'not-measured', slides: 'not-measured', starts: 'not-measured', connected: 'solid' });
+    expect(s.tasks[STARTS]).toEqual({ exerciseId: CHECKUP_TASKS[STARTS].exerciseId, title: CHECKUP_TASKS[STARTS].title, attemptId: null, passed: null, score: null });
+    expect(ratings(s)).toEqual({ range: 'solid', pitch: 'not-measured', steadiness: 'not-measured', slides: 'solid', starts: 'not-measured', connected: 'not-measured' });
     expect(skillOf(s, 'pitch').what).toBe('Nothing came through the microphone on this task, so it was not measured.');
-    expect(skillOf(s, 'slides').what).toBe('Not all of this task was heard (it stopped early or went quiet), so it was not measured.');
+    expect(skillOf(s, 'connected').what).toBe('Not all of this task was heard (it stopped early or went quiet), so it was not measured.');
     expect(skillOf(s, 'starts').what).toBe('Not sung in this check-up, so not measured.');
     expect(s.focus).toEqual([]); // nothing measured needs it
   });
@@ -224,20 +238,19 @@ describe('checkupsOf: what counts', () => {
   });
 
   it('a task sung twice counts its latest take; other check-ups, other profiles and deleted rows stay out', () => {
-    const first = take(2, 'c1', metricsAt(defOf(2), 1, { 'glide.cracks': 4 }));
-    const again = take(2, 'c1', metricsAt(defOf(2), 1));
+    const first = take(SIREN, 'c1', metricsAt(defOf(SIREN), 1, { 'glide.cracks': 4 }));
+    const again = take(SIREN, 'c1', metricsAt(defOf(SIREN), 1));
     const log = [
-      ...checkup('c1', [1, 1, null, 1, null]),
+      ...checkup('c1', [1, 1, 1, 1, null]),
       first,
-      take(1, 'c2', metricsAt(defOf(1), 0)), // another check-up, never finished
+      take(HOLD, 'c2', metricsAt(defOf(HOLD), 0)), // another check-up, never finished
       again,
-      { ...take(3, 'c1', metricsAt(defOf(3), 0)), deletedAt: '2026-03-02T00:00:00.000Z' },
-      take(4, 'c1', metricsAt(defOf(4), 1)),
-      take(4, 'c3', metricsAt(defOf(4), 1), { profileId: 'someone-else' }),
+      { ...take(STARTS, 'c1', metricsAt(defOf(STARTS), 0)), deletedAt: '2026-03-02T00:00:00.000Z' },
+      take(SIREN, 'c3', metricsAt(defOf(SIREN), 1), { profileId: 'someone-else' }),
     ];
     const mine = read(log).filter((s) => s.profileId === P1);
     const s = only(mine);
-    expect(s.tasks[2].attemptId).toBe(again.id);
+    expect(s.tasks[SIREN].attemptId).toBe(again.id);
     expect(skillOf(s, 'slides').rating).toBe('solid');
     expect(skillOf(s, 'starts').rating).toBe('solid'); // the deleted take is not the latest
   });
@@ -253,11 +266,19 @@ describe('checkupsOf: what each skill says, in plain words', () => {
     const texts: string[] = [];
     for (const x of [1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.45, 0.3, 0.1, 0]) {
       for (const cracks of [0, 1, 3]) {
-        const log = checkup(`c-${x}-${cracks}`, [x, x, x, x, x], { 2: { 'glide.cracks': cracks } });
+        const log = checkup(`c-${x}-${cracks}`, [x, x, x, x, x], { [SIREN]: { 'glide.cracks': cracks } });
         for (const s of read(log)[0].skills) texts.push(s.what);
       }
     }
-    const partial = only(read([take(0, 'p', { 'range.spanSemitones': 9 }), take(1, 'p', { 'accuracy.inTolerancePct': 40 }), take(3, 'p', { 'onset.scoopCents': 60 }), take(4, 'p', { 'transition.cleanRate': 0.4 })]));
+    const partial = only(
+      read([
+        take(0, 'p', { 'range.spanSemitones': 9 }),
+        take(HOLD, 'p', { 'accuracy.inTolerancePct': 40 }),
+        take(STARTS, 'p', { 'onset.scoopCents': 60 }),
+        take(LINE, 'p', { 'transition.cleanRate': 0.4 }),
+        take(SIREN, 'p', { 'glide.cracks': 2 }),
+      ]),
+    );
     texts.push(...partial.skills.map((s) => s.what));
     expect(new Set(texts).size).toBeGreaterThan(20);
     for (const t of texts) {
@@ -271,10 +292,10 @@ describe('checkupsOf: what each skill says, in plain words', () => {
       read(
         checkup('c', ALL_SOLID, {
           0: { 'range.spanSemitones': 15 },
-          1: { 'accuracy.inTolerancePct': 72, 'accuracy.medianAbsCents': 12, 'accuracy.sdCents': 20, 'accuracy.absDriftCentsPerSec': 2 },
-          2: { 'glide.cracks': 3 },
-          3: { 'onset.settleMs': 240, 'onset.scoopCents': 25 },
-          4: { 'transition.cleanRate': 0.72, 'accuracy.inTolerancePct': 64 },
+          [HOLD]: { 'accuracy.inTolerancePct': 72, 'accuracy.medianAbsCents': 12, 'accuracy.sdCents': 20, 'accuracy.absDriftCentsPerSec': 2 },
+          [SIREN]: { 'glide.cracks': 3 },
+          [STARTS]: { 'onset.settleMs': 240, 'onset.scoopCents': 25 },
+          [LINE]: { 'transition.cleanRate': 0.72, 'accuracy.inTolerancePct': 64 },
         }),
       ),
     );
@@ -282,18 +303,18 @@ describe('checkupsOf: what each skill says, in plain words', () => {
     expect(skillOf(s, 'pitch').what).toBe('You sang in tune 72% of the time, usually off by a little.');
     expect(skillOf(s, 'steadiness').what).toBe('Your held notes were a little wavery and drifted a little.');
     expect(skillOf(s, 'slides').what).toBe('Your voice broke 3 times on the slide, which is common where a voice changes gears.');
-    expect(skillOf(s, 'starts').what).toBe('Your notes took about a quarter of a second to settle, sliding up into them by about a quarter of the way to the next note.');
+    expect(skillOf(s, 'starts').what).toBe('Your notes took about a quarter of a second to find the pitch, sliding up into them by about a quarter of the way to the next note.');
     expect(skillOf(s, 'connected').what).toBe('You changed notes cleanly 72% of the time and were in tune for 64% of the line.');
 
-    const short = only(read(checkup('d', ALL_SOLID, { 0: { 'range.spanSemitones': 10 }, 2: { 'glide.cracks': 0 } })));
+    const short = only(read(checkup('d', ALL_SOLID, { 0: { 'range.spanSemitones': 10 }, [SIREN]: { 'glide.cracks': 0 } })));
     expect(skillOf(short, 'range').what).toBe('Your easy notes span 10 half steps so far; the exercises use an octave.');
     expect(skillOf(short, 'slides').what).toBe('Your slide up and down was smooth, with no breaks.');
   });
 
   it('names where a slide landed when that is what held it back, never calling a slide that missed its note fine', () => {
-    const def = defOf(2);
+    const def = defOf(SIREN);
     expect(def.pass.gates?.find((g) => g.metric === 'glide.endAbsCents')).toMatchObject({ op: '<=', value: 48 });
-    const slides = (siren: Metrics) => skillOf(only(read(checkup(`s${JSON.stringify(siren)}`, ALL_SOLID, { 2: siren }))), 'slides');
+    const slides = (siren: Metrics) => skillOf(only(read(checkup(`s${JSON.stringify(siren)}`, ALL_SOLID, { [SIREN]: siren }))), 'slides');
 
     // Smooth, unbroken and landing inside its gate: solid, and the sentence says so.
     expect(slides({ 'glide.endAbsCents': 40 })).toMatchObject({ rating: 'solid', what: 'Your slide up and down was smooth, with no breaks.' });
@@ -314,7 +335,7 @@ describe('checkupsOf: what each skill says, in plain words', () => {
     expect(slides({ 'glide.cracks': Number.NaN, 'glide.smoothness': 0.2, 'glide.endAbsCents': 70 }).what).toBe('Your slide moved in steps and ended off the note it was heading for, by nearly a half step.');
 
     // A slide that is focus for its landing is the focus, and never with a sentence that says it was fine.
-    const s = only(read(checkup('f', ALL_SOLID, { 2: { 'glide.endAbsCents': 120 } })));
+    const s = only(read(checkup('f', ALL_SOLID, { [SIREN]: { 'glide.endAbsCents': 120 } })));
     expect(s.focus[0]).toBe('slides');
     expect(skillOf(s, 'slides').what).toMatch(/ended off the note/);
     for (const end of [30, 49, 60, 90, 120, 300]) plain(slides({ 'glide.endAbsCents': end }).what);
@@ -345,12 +366,12 @@ describe('isTaskMeasured', () => {
   it('true when the take measured a skill of its task: heard in full and read', () => {
     CHECKUP_TASKS.forEach((_, i) => expect(isTaskMeasured(i, take(i, 'c', metricsAt(defOf(i), 0.5))), `task ${i}`).toBe(true));
     // Sung off pitch to the end is still measured.
-    expect(isTaskMeasured(2, take(2, 'c', metricsAt(defOf(2), 0)))).toBe(true);
+    expect(isTaskMeasured(SIREN, take(SIREN, 'c', metricsAt(defOf(SIREN), 0)))).toBe(true);
   });
 
   it('false for a silent take, one stopped early, one with nothing read, and an index that is no task', () => {
     expect(isTaskMeasured(1, take(1, 'c', metricsAt(defOf(1), 1), { durationSec: 0 }))).toBe(false);
-    expect(isTaskMeasured(2, take(2, 'c', metricsAt(defOf(2), 1), { durationSec: wholeSec(defOf(2)) - 2 }))).toBe(false);
+    expect(isTaskMeasured(SIREN, take(SIREN, 'c', metricsAt(defOf(SIREN), 1), { durationSec: wholeSec(defOf(SIREN)) - 2 }))).toBe(false);
     expect(isTaskMeasured(0, take(0, 'c', {}))).toBe(false);
     for (const bad of [-1, 5, 1.5, Number.NaN]) expect(isTaskMeasured(bad, take(1, 'c', metricsAt(defOf(1), 1)))).toBe(false);
   });
@@ -386,7 +407,7 @@ describe('unfinishedCheckup: picking a check-up up again after Pitch Lab closed'
 });
 
 describe('checkupsOf: focus', () => {
-  const steadyButCracks = () => checkup('c', ALL_SOLID, { 2: { 'glide.cracks': 3 } });
+  const steadyButCracks = () => checkup('c', ALL_SOLID, { [SIREN]: { 'glide.cracks': 3 } });
 
   it('“you can hold a note, but your voice cracks”: focus on slides', () => {
     const s = only(read(steadyButCracks()));
@@ -396,25 +417,27 @@ describe('checkupsOf: focus', () => {
   });
 
   it('clearly short before getting there, then the skill whose level comes first; two at most', () => {
-    // Steadiness getting there (Sustain, level 03), slides and connected lines need focus (05, 09), starts too (06).
-    const s = only(read(checkup('c', [1, 1, 1, 0.3, 0.3], { 1: { 'accuracy.sdCents': valueAt(defOf(1), 'accuracy.sdCents', 0.6), 'accuracy.absDriftCentsPerSec': valueAt(defOf(1), 'accuracy.absDriftCentsPerSec', 0.6) }, 2: { 'glide.cracks': 3 } })));
+    // Steadiness getting there (Hold it, the third lesson); note starts, connected lines and slides need focus (their first
+    // lessons: the steps, do-re-mi, the small slides, in that order).
+    const steadier = { 'accuracy.sdCents': valueAt(defOf(HOLD), 'accuracy.sdCents', 0.6), 'accuracy.absDriftCentsPerSec': valueAt(defOf(HOLD), 'accuracy.absDriftCentsPerSec', 0.6) };
+    const s = only(read(checkup('c', [1, 1, 0.3, 0.3, 1], { [HOLD]: steadier, [SIREN]: { 'glide.cracks': 3 } })));
     expect(ratings(s)).toMatchObject({ steadiness: 'getting-there', slides: 'focus', starts: 'focus', connected: 'focus' });
-    expect(s.focus).toEqual(['slides', 'starts']);
+    expect(s.focus).toEqual(['starts', 'connected']);
     // Only "getting there" left: it is still the thing to work on.
     const t = only(read(checkup('d', ALL_SOLID, { 1: { 'accuracy.sdCents': valueAt(defOf(1), 'accuracy.sdCents', 0.6), 'accuracy.absDriftCentsPerSec': valueAt(defOf(1), 'accuracy.absDriftCentsPerSec', 0.6) } })));
     expect(t.focus).toEqual(['steadiness']);
   });
 
   it('the range is a focus only when it is short of what the exercises need, and then it comes first', () => {
-    const passed = only(read(checkup('c', ALL_SOLID, { 0: { 'range.spanSemitones': 13 }, 4: { 'transition.cleanRate': 0 } })));
+    const passed = only(read(checkup('c', ALL_SOLID, { 0: { 'range.spanSemitones': 13 }, [LINE]: { 'transition.cleanRate': 0 } })));
     expect(skillOf(passed, 'range').rating).toBe('solid'); // measured, not graded: an octave and up is room for every exercise
     expect(passed.focus).toEqual(['connected']);
-    const short = only(read(checkup('d', ALL_SOLID, { 0: { 'range.spanSemitones': 10 }, 4: { 'transition.cleanRate': 0 } })));
+    const short = only(read(checkup('d', ALL_SOLID, { 0: { 'range.spanSemitones': 10 }, [LINE]: { 'transition.cleanRate': 0 } })));
     expect(short.focus).toEqual(['range', 'connected']);
   });
 
   it('the latest finished check-up sets the focus; an unfinished one after it does not', () => {
-    const log = [...checkup('old', ALL_SOLID, { 2: { 'glide.cracks': 3 } }), ...checkup('new', [1, 1, 1, 1, 0])];
+    const log = [...checkup('old', ALL_SOLID, { [SIREN]: { 'glide.cracks': 3 } }), ...checkup('new', [1, 1, 1, 0, 1])];
     expect(latestCheckupFocus(log)).toEqual(['connected']);
     expect(latestCheckupFocus([...log, ...checkup('later', [1, 0, null, null, null])])).toEqual(['connected']);
     expect(latestCheckupFocus([])).toEqual([]);
@@ -428,10 +451,11 @@ describe('checkupsOf: where to start and what opened (the engine grants placemen
     const log = checkup('c', [1, 1, 1, 0.1, 1]);
     const s = only(read(log));
     expect(s.tasks.map((t) => t.passed)).toEqual([true, true, true, false, true]);
-    expect(s.opened).toEqual(['foundations.02', 'foundations.03', 'foundations.04', 'foundations.05']);
-    expect(s.startLevelId).toBe('foundations.06');
-    // The last test passed, but its level waits behind the ones the missed test covers.
-    expect(snap(log).levels['foundations.09'].status).toBe('locked');
+    // Match and hold opens Match one note to Hold it steady; the two notes near and far, the step and jump lessons.
+    expect(s.opened).toEqual(['foundations.02', 'foundations.03', 'foundations.13', 'foundations.10', 'foundations.07', 'foundations.08']);
+    expect(s.startLevelId).toBe('foundations.11');
+    // The last test passed, but its levels wait behind the ones the missed test covers.
+    expect(snap(log).levels['foundations.05'].status).toBe('locked');
   });
 
   it('a placement test passed out of order grants nothing', () => {
@@ -454,11 +478,12 @@ describe('checkupsOf: where to start and what opened (the engine grants placemen
   });
 
   it('a test it passed out of the audition’s order never grants later either, once the levels before it are passed', () => {
-    // The siren missed, the tests after it passed: passing Sirens & glides later opens Crispness, and nothing past it.
+    // The two notes near and far missed, the tests after it passed: passing the steps lesson later opens the jump lesson,
+    // and nothing past it.
     const cracked = checkup('c', [1, 1, 0.1, 1, 1]);
-    expect(only(read(cracked)).opened).toEqual(['foundations.02', 'foundations.03', 'foundations.04']);
-    const later = snap([...cracked, pass('foundations.05')]);
-    expect(['foundations.05', 'foundations.06', 'foundations.07', 'foundations.08', 'foundations.09'].map((id) => later.levels[id].status)).toEqual(['passed', 'current', 'locked', 'locked', 'locked']);
+    expect(only(read(cracked)).opened).toEqual(['foundations.02', 'foundations.03', 'foundations.13']);
+    const later = snap([...cracked, pass('foundations.10')]);
+    expect(['foundations.10', 'foundations.07', 'foundations.08', 'foundations.11', 'foundations.09'].map((id) => later.levels[id].status)).toEqual(['passed', 'current', 'locked', 'locked', 'locked']);
 
     // The Range finder missed, every test passed in the default range: passing the Range finder later opens Pitch match only.
     const noRange = checkup('d', [0.2, 1, 1, 1, 1]);
@@ -470,11 +495,11 @@ describe('checkupsOf: where to start and what opened (the engine grants placemen
   it('counts only what the check-up opened: levels passed before it are not "opened"', () => {
     const before = passThrough(WORLDS, 'foundations.03');
     const s = only(read([...before, ...checkup('c', [1, 1, 0.1, 0.1, 0.1])]));
-    expect(s.opened).toEqual(['foundations.04']);
-    expect(s.startLevelId).toBe('foundations.05');
+    expect(s.opened).toEqual(['foundations.13']);
+    expect(s.startLevelId).toBe('foundations.10');
     const done = only(read([...passThrough(WORLDS, 'foundations.boss'), ...checkup('d', ALL_SOLID)]));
     expect(done).toMatchObject({ opened: [], startLevelId: null });
-    expect(only(read([...passThrough(WORLDS, 'foundations.09'), ...checkup('e', ALL_SOLID)])).startLevelId).toBe('foundations.boss');
+    expect(only(read([...passThrough(WORLDS, 'foundations.06'), ...checkup('e', ALL_SOLID)])).startLevelId).toBe('foundations.boss');
   });
 
   it('uses the caller’s snapshot after the check-up when it has one', () => {
@@ -512,8 +537,8 @@ describe('checkupsOf: the range in note names', () => {
 describe('compareCheckups', () => {
   it('per skill, the same reading then and now in plain words: “Slides: 5 breaks then, 1 break now”', () => {
     const log = [
-      ...checkup('then', ALL_SOLID, { 0: { 'range.spanSemitones': 12 }, 2: { 'glide.cracks': 5 }, 3: { 'onset.settleMs': 450 } }),
-      ...checkup('now', ALL_SOLID, { 0: { 'range.spanSemitones': 14 }, 2: { 'glide.cracks': 1 }, 3: { 'onset.settleMs': 240 } }),
+      ...checkup('then', ALL_SOLID, { 0: { 'range.spanSemitones': 12 }, [SIREN]: { 'glide.cracks': 5 }, [STARTS]: { 'onset.settleMs': 450 } }),
+      ...checkup('now', ALL_SOLID, { 0: { 'range.spanSemitones': 14 }, [SIREN]: { 'glide.cracks': 1 }, [STARTS]: { 'onset.settleMs': 240 } }),
     ];
     const [before, after] = read(log);
     const c = compareCheckups(before, after);
@@ -523,9 +548,9 @@ describe('compareCheckups', () => {
     const line = (skill: CheckupSkill) => c.lines.find((l) => l.skill === skill)!;
     expect(line('slides')).toEqual({ skill: 'slides', label: 'Slides', before: '5 breaks', now: '1 break', better: true });
     expect(line('range')).toEqual({ skill: 'range', label: 'Range', before: 'an octave', now: 'an octave and 2 half steps', better: true });
-    expect(line('starts')).toMatchObject({ before: 'about half a second to settle', now: 'about a quarter of a second to settle', better: true });
+    expect(line('starts')).toMatchObject({ before: 'about half a second to find the pitch', now: 'about a quarter of a second to find the pitch', better: true });
     expect(line('pitch')).toMatchObject({ before: line('pitch').now, better: null }); // the same words: about the same
-    expect(c.headline).toBe('Real progress since last time: your range, slides and note starts got better.');
+    expect(c.headline).toBe('Real progress since last time: your range, note starts and slides got better.');
     for (const l of c.lines) [l.label, l.before, l.now].forEach(plain);
     plain(c.headline);
   });
@@ -533,29 +558,29 @@ describe('compareCheckups', () => {
   it('a skill measured on one side only reads “not measured” there and calls nothing better; on neither side it is left out', () => {
     const log = [...checkup('then', [1, null, 1, 1, 1]), ...checkup('now', [1, 1, null, 1, 1])];
     const c = compareCheckups(...(read(log) as [CheckupSummary, CheckupSummary]));
-    const inTune = Math.round(valueAt(defOf(1), 'accuracy.inTolerancePct', 1));
+    const inTune = Math.round(valueAt(defOf(HOLD), 'accuracy.inTolerancePct', 1));
     expect(c.lines.find((l) => l.skill === 'pitch')).toMatchObject({ before: 'not measured', now: `${inTune}% in tune`, better: null });
-    expect(c.lines.find((l) => l.skill === 'slides')).toMatchObject({ before: 'no breaks', now: 'not measured', better: null });
+    expect(c.lines.find((l) => l.skill === 'starts')).toMatchObject({ before: expect.stringMatching(/to find the pitch$/), now: 'not measured', better: null });
     const neither = [...checkup('a', [1, null, 1, 1, 1]), ...checkup('b', [1, null, 1, 1, 1])];
-    expect(compareCheckups(...(read(neither) as [CheckupSummary, CheckupSummary])).lines.map((l) => l.skill)).toEqual(['range', 'slides', 'starts', 'connected']);
+    expect(compareCheckups(...(read(neither) as [CheckupSummary, CheckupSummary])).lines.map((l) => l.skill)).toEqual(['range', 'starts', 'connected', 'slides']);
   });
 
   it('a warm headline for every mix: better, worse, both, or the same', () => {
     const pair = (thenOver: Record<number, Metrics>, nowOver: Record<number, Metrics>) =>
       compareCheckups(...(read([...checkup('a', ALL_SOLID, thenOver), ...checkup('b', ALL_SOLID, nowOver)]) as [CheckupSummary, CheckupSummary]));
-    const mixed = pair({ 2: { 'glide.cracks': 4 } }, { 1: { 'accuracy.inTolerancePct': 50 } });
+    const mixed = pair({ [SIREN]: { 'glide.cracks': 4 } }, { [HOLD]: { 'accuracy.inTolerancePct': 50 } });
     expect(mixed.lines.filter((l) => l.better !== null).map((l) => [l.skill, l.better])).toEqual([
       ['pitch', false],
       ['slides', true],
     ]);
     expect(mixed.headline).toBe('Your slides got better since last time; your pitch dipped, which happens from day to day.');
-    expect(pair({}, { 2: { 'glide.cracks': 2 } }).headline).toBe('Your slides dipped since last time, which happens from day to day: rest well and keep practising.');
+    expect(pair({}, { [SIREN]: { 'glide.cracks': 2 } }).headline).toBe('Your slides dipped since last time, which happens from day to day: rest well and keep practising.');
     expect(pair({}, {}).headline).toBe('Much the same as last time: steady practice is what moves it.');
-    for (const c of [mixed, pair({}, { 2: { 'glide.cracks': 2 } }), pair({}, {})]) plain(c.headline);
+    for (const c of [mixed, pair({}, { [SIREN]: { 'glide.cracks': 2 } }), pair({}, {})]) plain(c.headline);
   });
 
   it('says the ratings when the compared reading reads the same but the rating moved (where the slide landed)', () => {
-    const [before, after] = read([...checkup('a', ALL_SOLID, { 2: { 'glide.endAbsCents': 120 } }), ...checkup('b', ALL_SOLID, { 2: { 'glide.endAbsCents': 30 } })]);
+    const [before, after] = read([...checkup('a', ALL_SOLID, { [SIREN]: { 'glide.endAbsCents': 120 } }), ...checkup('b', ALL_SOLID, { [SIREN]: { 'glide.endAbsCents': 30 } })]);
     expect([before, after].map((s) => skillOf(s, 'slides').rating)).toEqual(['focus', 'solid']);
     const c = compareCheckups(before, after);
     expect(c.lines.find((l) => l.skill === 'slides')).toEqual({ skill: 'slides', label: 'Slides', before: 'focus here', now: 'solid', better: true });
@@ -581,6 +606,52 @@ describe('compareCheckups', () => {
     const c = compareCheckups(summary('focus'), summary('getting-there'));
     expect(c.lines).toEqual([{ skill: 'slides', label: 'Slides', before: 'focus here', now: 'getting there', better: true }]);
     expect(compareCheckups(summary('solid'), summary('solid')).lines[0].better).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------- a check-up sung before the Foundations rebuild
+
+describe('a check-up sung before the rebuild reads back against what it was sung against', () => {
+  /** The check-up as it was sung then: each task as the retired test it was sung as, in the old order, whole by its own length. */
+  function oldCheckup(id: string, x: number, over: Record<number, Metrics> = {}): AttemptRecord[] {
+    const order = [0, HOLD, SIREN, STARTS, LINE]; // then: the Range finder, match and hold, siren, crisp leaps, legato line
+    return order.map((i) => {
+      const task = CHECKUP_TASKS[i];
+      const def = getExercise(task.formerExerciseIds![0])!;
+      expect(def.retired, def.id).toBeDefined();
+      const metrics = metricsAt(def, x, over[i]);
+      const e = evaluate(def, metrics);
+      const row = attempt({
+        exerciseId: def.id,
+        kind: task.logAs.kind === 'practice' ? 'practice' : 'audition',
+        levelId: task.logAs.kind === 'practice' ? task.logAs.levelId : null,
+        passed: e.passed,
+        score: e.score,
+        mastery: e.mastery,
+        metrics,
+        durationSec: wholeSec(def),
+        tempoBpm: def.tempoBpm,
+      });
+      return { ...row, checkupId: id };
+    });
+  }
+
+  it('finds every task under the test it was sung as, measured whole by the length it was sung at, and rated by its rule then', () => {
+    const rows = oldCheckup('old', 1);
+    const s = only(read(rows));
+    expect(s.tasks.map((t) => t.attemptId)).toEqual([rows[0].id, rows[1].id, rows[3].id, rows[4].id, rows[2].id]);
+    expect(ratings(s)).toEqual({ range: 'solid', pitch: 'solid', steadiness: 'solid', starts: 'solid', connected: 'solid', slides: 'solid' });
+    // Today's material is another length (and other notes): read against it, these takes would be misjudged.
+    for (const i of [0, HOLD, STARTS, LINE, SIREN]) {
+      expect(Math.abs(wholeSec(defOf(i)) - wholeSec(getExercise(CHECKUP_TASKS[i].formerExerciseIds![0])!)), CHECKUP_TASKS[i].title).toBeGreaterThan(1);
+    }
+  });
+
+  it('sets the then of "then and now" against a check-up sung today', () => {
+    const log = [...oldCheckup('old', 1, { [SIREN]: { 'glide.cracks': 4 } }), ...checkup('new', ALL_SOLID, { [SIREN]: { 'glide.cracks': 1 } })];
+    const [before, after] = read(log);
+    expect([before.checkupId, after.checkupId]).toEqual(['old', 'new']);
+    expect(compareCheckups(before, after).lines.find((l) => l.skill === 'slides')).toEqual({ skill: 'slides', label: 'Slides', before: '4 breaks', now: '1 break', better: true });
   });
 });
 

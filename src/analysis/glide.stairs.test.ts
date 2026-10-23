@@ -235,8 +235,8 @@ describe('the real sirens through analyzeTake + evaluate (F5 / F6)', () => {
     return trackFromAudio(audio, SR).map((f) => ({ ...f, t: f.t - lead }));
   };
 
-  it('foundations.audition.2 (one smooth octave siren), real detector: a staircase of 6 steps/s with 40 ms ramps no longer passes', () => {
-    const def = byId('foundations.audition.2');
+  it('foundations.audition.8 (one smooth octave siren), real detector: a staircase of 6 steps/s with 40 ms ramps no longer passes', () => {
+    const def = byId('foundations.audition.8');
     const rz = real(def);
     const smooth = analyzeTake(def, rz, audioTake(rz, pitchOf(rz, (n) => ramp(n))), { vibratoStyle: 'pop' });
     expect(evaluate(def, smooth.metrics).passed).toBe(true);
@@ -250,8 +250,8 @@ describe('the real sirens through analyzeTake + evaluate (F5 / F6)', () => {
     }
   });
 
-  it('foundations.audition.2, contour: a staircase of 3 steps/s fails; a smooth siren passes', () => {
-    const def = byId('foundations.audition.2');
+  it('foundations.audition.8, contour: a staircase of 3 steps/s fails; a smooth siren passes', () => {
+    const def = byId('foundations.audition.8');
     const rz = real(def);
     expect(evaluate(def, analyzeTake(def, rz, contourTake(rz, pitchOf(rz, (n) => ramp(n))), { vibratoStyle: 'pop' }).metrics).passed).toBe(true);
     const steps = analyzeTake(def, rz, contourTake(rz, pitchOf(rz, (n) => ramped(n, 3, 50))), { vibratoStyle: 'pop' });
@@ -259,8 +259,8 @@ describe('the real sirens through analyzeTake + evaluate (F5 / F6)', () => {
     expect(evaluate(def, steps.metrics).passed).toBe(false);
   });
 
-  it('foundations.siren.1: +/-25 c vibrato at 5.8 Hz on every glide is smooth, and the take passes (contour and real detector)', () => {
-    const def = byId('foundations.siren.1');
+  it('foundations.sirens.1: +/-25 c vibrato at 5.8 Hz on every glide is smooth, and the take passes (contour and real detector)', () => {
+    const def = byId('foundations.sirens.1');
     const rz = real(def);
     for (const take of [contourTake(rz, pitchOf(rz, (n) => ramp(n), { cents: 25, hz: 5.8 })), audioTake(rz, pitchOf(rz, (n) => ramp(n), { cents: 25, hz: 5.8 }))]) {
       const a = analyzeTake(def, rz, take, { vibratoStyle: 'pop' });
@@ -275,8 +275,8 @@ describe('the real sirens through analyzeTake + evaluate (F5 / F6)', () => {
     }
   });
 
-  it('foundations.siren.1: a staircase siren fails the smoothness the level is about (contour 3 steps/s; real detector 5 steps/s)', () => {
-    const def = byId('foundations.siren.1');
+  it('foundations.sirens.1: a staircase siren fails the smoothness the level is about (contour 3 steps/s; real detector 5 steps/s)', () => {
+    const def = byId('foundations.sirens.1');
     const rz = real(def);
     const contour = analyzeTake(def, rz, contourTake(rz, pitchOf(rz, (n) => ramped(n, 3, 50))), { vibratoStyle: 'pop' });
     expect(contour.metrics['glide.smoothness'] as number).toBeLessThan(0.3);

@@ -12,8 +12,23 @@ vi.mock('./content/index', () => ({ ladderFor: (id: string) => fake.ladders[id] 
 
 import { latestCheckupFocus } from '../checkup/summary';
 import { getExercise, getLevel, POLISH_TIP, STOPPED_TIP } from '../exercises';
-import { coachFrom, coachTake, depthFor, FOCUS_PRACTISE_DEPTH, missesInARow, progressLines, REST_MISSES, REST_TAKES, tipOnly, type CoachSource } from './coach';
-import { attemptOf, checkupWithFocus, outcomeOf, sing, snapshotOf, T0, type SungTake } from './test-takes';
+import {
+  coachedAsPassed,
+  coachFrom,
+  coachTake,
+  depthFor,
+  FOCUS_PRACTISE_DEPTH,
+  missesInARow,
+  progressLines,
+  REST_MISSES,
+  REST_SINGING_SEC,
+  REST_WINDOW_MS,
+  restDue,
+  singingSec,
+  tipOnly,
+  type CoachSource,
+} from './coach';
+import { attemptOf, CHECKUP_MATCH_HOLD, CHECKUP_SIREN, checkupWithFocus, outcomeOf, sing, snapshotOf, T0, type SungTake } from './test-takes';
 
 const ladder = (practiseLevelId?: string): CoachLadder => ({
   tip: 'Plain tip.',
@@ -162,7 +177,7 @@ describe('coachTake: the moves', () => {
     fake.ladders[MISS.tip.id] = ladder('foundations.02');
     const passedEarlier = [attemptOf(null, { exerciseId: 'foundations.range-finder.1', levelId: 'foundations.01', passed: true }), attemptOf(null, { exerciseId: 'foundations.pitch-match.1', levelId: 'foundations.02', passed: true })];
     const open = coachAfter(MISS, 4, { earlier: passedEarlier });
-    expect(open.moves).toContainEqual({ kind: 'practise-level', levelId: 'foundations.02', title: 'Pitch match' });
+    expect(open.moves).toContainEqual({ kind: 'practise-level', levelId: 'foundations.02', title: 'Match one note' });
     const notYet = coachAfter(MISS, 4);
     expect(notYet.moves.some((m) => m.kind === 'practise-level')).toBe(false);
     const tooSoon = coachAfter(MISS, 2, { earlier: passedEarlier });
@@ -183,7 +198,7 @@ describe('coachTake: the moves', () => {
       return c.moves.find((m) => m.kind === 'practise-level');
     };
     expect(MISS.level.id).toBe('foundations.03');
-    expect(practise('foundations.02')).toEqual({ kind: 'practise-level', levelId: 'foundations.02', title: 'Pitch match' });
+    expect(practise('foundations.02')).toEqual({ kind: 'practise-level', levelId: 'foundations.02', title: 'Match one note' });
     // A tip shared by several levels names one practise level: on an earlier level than it, it is not offered.
     expect(practise('foundations.05')).toBeUndefined();
     expect(practise('vibrato.03')).toBeUndefined();
@@ -193,18 +208,18 @@ describe('coachTake: the moves', () => {
   it('leans on the latest voice check-up: a level that trains one of its focus skills is offered from the second miss', () => {
     fake.ladders[MISS.tip.id] = ladder('foundations.02');
     const practises = (c: ReturnType<typeof coachAfter>): boolean => c.moves.some((m) => m.kind === 'practise-level');
-    const passedEarlier = [attemptOf(null, { exerciseId: 'foundations.range-finder.1', levelId: 'foundations.01', passed: true }), attemptOf(null, { exerciseId: 'foundations.pitch-match.1', levelId: 'foundations.02', passed: true })];
-    const pitch = checkupWithFocus(1); // match and hold sung poorly
+    const passedEarlier = [attemptOf(null, { exerciseId: 'foundations.range.1', levelId: 'foundations.01', passed: true }), attemptOf(null, { exerciseId: 'foundations.match.1', levelId: 'foundations.02', passed: true })];
+    const pitch = checkupWithFocus(CHECKUP_MATCH_HOLD); // match and hold sung poorly
     expect(latestCheckupFocus(pitch)).toEqual(['pitch', 'steadiness']);
 
     expect(practises(coachAfter(MISS, 0, { earlier: [...passedEarlier, ...pitch] }))).toBe(false); // the first miss: the tip alone
     const second = coachAfter(MISS, 1, { earlier: [...passedEarlier, ...pitch] });
     expect(second.depth).toBe(FOCUS_PRACTISE_DEPTH);
-    expect(second.moves).toEqual([{ kind: 'practise-level', levelId: 'foundations.02', title: 'Pitch match' }]);
+    expect(second.moves).toEqual([{ kind: 'practise-level', levelId: 'foundations.02', title: 'Match one note' }]);
     expect(coachAfter(MISS, 2, { earlier: [...passedEarlier, ...pitch] }).moves.map((m) => m.kind)).toEqual(['practise-level', 'send-to-claude']);
 
     // A check-up that found another focus leaves the usual fourth miss; so does none at all.
-    const slides = checkupWithFocus(2);
+    const slides = checkupWithFocus(CHECKUP_SIREN);
     expect(latestCheckupFocus(slides)).toEqual(['slides']);
     expect(practises(coachAfter(MISS, 1, { earlier: [...passedEarlier, ...slides] }))).toBe(false);
     expect(practises(coachAfter(MISS, 1, { earlier: passedEarlier }))).toBe(false);
@@ -214,15 +229,38 @@ describe('coachTake: the moves', () => {
     expect(coachAfter(PASS, 1, { earlier: [...passedEarlier, ...pitch] }).moves.filter((m) => m.kind !== 'rest')).toEqual([]);
   });
 
-  it('asks for a rest after many takes in a short time, or a long run of misses', () => {
-    const quick = coachAfter(PASS, REST_TAKES - 1, { gapMs: 60_000 });
+  it('asks for a rest after a lot of singing in a short time, or a long run of misses', () => {
+    // Enough takes of this level to sing REST_SINGING_SEC (the misses before it sing as long as the take).
+    const enough = Math.ceil((REST_SINGING_SEC - 1e-9) / singingSec(attemptOf(PASS)));
+    const quick = coachAfter(PASS, enough - 1, { gapMs: 60_000 });
     expect(quick.moves).toContainEqual({ kind: 'rest' });
-    const spread = coachAfter(PASS, REST_TAKES - 1, { gapMs: 4 * 60_000 });
+    expect(coachAfter(PASS, enough - 2, { gapMs: 60_000 }).moves).not.toContainEqual({ kind: 'rest' }); // one take short
+    const spread = coachAfter(PASS, enough - 1, { gapMs: REST_WINDOW_MS / 4 });
     expect(spread.moves).not.toContainEqual({ kind: 'rest' });
     const missing = coachAfter(MISS, REST_MISSES - 1, { gapMs: 10 * 60_000 });
     expect(missing.missesInARow).toBe(REST_MISSES);
     expect(missing.moves).toContainEqual({ kind: 'rest' });
     expect(coachAfter(MISS, REST_MISSES - 2, { gapMs: 10 * 60_000 }).moves).not.toContainEqual({ kind: 'rest' });
+  });
+
+  it('weighs the seconds sung, not the takes: short practice tries weigh what they sing', () => {
+    const row = attemptOf(PASS);
+    const sung = singingSec(row);
+    expect(sung).toBeGreaterThan(0);
+    expect(sung).toBeLessThan(row.durationSec); // the count-in is not singing
+    expect(singingSec({ ...row, durationSec: 1.5 })).toBe(1.5); // never more than the take ran
+    expect(singingSec({ exerciseId: 'song.hymn', durationSec: 42, tempoBpm: null })).toBe(42); // a song: the time it ran
+    // As many takes as sing REST_SINGING_SEC, a minute apart, ask for a rest; as many tries that sang a third as long do not.
+    const n = Math.ceil((REST_SINGING_SEC - 1e-9) / sung);
+    const at = (i: number): string => new Date(T0 + i * 60_000).toISOString();
+    const takes = Array.from({ length: n }, (_, i) => ({ ...row, id: `take-${i}`, createdAt: at(i) }));
+    const tries = takes.map((a) => ({ ...a, durationSec: sung / 3 }));
+    const now = T0 + (n - 1) * 60_000;
+    expect(restDue(takes, now)).toBe(true);
+    expect(restDue(tries, now)).toBe(false);
+    // Deleted rows, and takes older than the window, do not count.
+    expect(restDue(takes.map((a) => ({ ...a, deletedAt: at(n) })), now)).toBe(false);
+    expect(restDue(takes, now + REST_WINDOW_MS)).toBe(false);
   });
 });
 
@@ -254,6 +292,25 @@ describe('tipOnly', () => {
     expect(c.problem).toEqual({ tipId: MISS.tip.id, metric: MISS.tip.metric, what: '', spots: [] });
     fake.ladders = {};
     expect(tipOnly(PASS.tip, true)).toMatchObject({ passed: true, missesInARow: 0, tip: PASS.tip.text });
+  });
+
+  it('keeps the runner’s own line on a live miss (a practice try its step did not count says so); read back, a clean miss is stopped', () => {
+    fake.ladders = {};
+    const line = { id: POLISH_TIP.id, text: 'Nearly there: sing it once more.', metric: null, value: null };
+    expect(tipOnly(line, false, true)).toMatchObject({ passed: false, tip: 'Nearly there: sing it once more.' });
+    expect(tipOnly(line, false).problem.tipId).toBe(STOPPED_TIP.id);
+  });
+});
+
+describe('coachedAsPassed', () => {
+  it('reads a practice try by its row (its step’s good-try verdict), and any other take by its pass', () => {
+    const take = outcomeOf(PASS, attemptOf(PASS));
+    expect(coachedAsPassed(take)).toBe(true);
+    const drill = { ...take, prepared: { ...take.prepared, target: { kind: 'drill' as const, levelId: 'foundations.03', step: 0 } } };
+    // The drill's own pass rule passed it, but its step did not count it: a miss.
+    expect(coachedAsPassed({ ...drill, attempt: { ...drill.attempt, passed: false } })).toBe(false);
+    // The drill's own pass rule missed it, but its step counted it: no miss.
+    expect(coachedAsPassed({ ...drill, evaluation: { ...drill.evaluation, passed: false }, attempt: { ...drill.attempt, passed: true } })).toBe(true);
   });
 });
 

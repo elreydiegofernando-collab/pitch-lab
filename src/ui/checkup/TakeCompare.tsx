@@ -13,8 +13,13 @@ import { formatDate } from '../progress/format';
 import { DOT } from '../worlds/format';
 import { useSavedTake } from './saved-take';
 
-/** The tasks compared: Match and hold a note, and Slide up and down (indexes into CHECKUP_TASKS). */
-export const COMPARED_TASKS: readonly number[] = [1, 2];
+/**
+ * The tasks compared: the held notes (Match and hold a note) and the slide (Slide up and down), as indexes into
+ * CHECKUP_TASKS, found by the skills they rate so a battery sung in another order still compares the right two.
+ */
+export const COMPARED_TASKS: readonly number[] = (['steadiness', 'slides'] as const)
+  .map((skill) => CHECKUP_TASKS.findIndex((t) => t.skills.some((s) => s.skill === skill)))
+  .filter((i) => i >= 0);
 
 function Line(props: { summary: CheckupSummary; taskIndex: number; label: string }): JSX.Element {
   const { summary, taskIndex, label } = props;

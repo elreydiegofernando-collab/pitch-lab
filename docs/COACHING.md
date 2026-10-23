@@ -20,7 +20,7 @@ Contents: [what the owner does](#1-what-the-owner-does-on-the-iphone) · [where 
 2. Tap **More**, then **Send to Claude**.
 3. Leave **Include audio** off, unless Claude should re-run the audio itself (see "Audio" below). It is off every time the sheet opens.
 4. Tap **Share**, then **Save to OneDrive** (or Files). The file is `pitch-lab-coach-<level>-<date>-<time>.json`, for example `pitch-lab-coach-foundations-05-2026-10-22-1405.json`.
-5. Tell Claude in chat which lesson it is: "I'm on Sirens & glides. Look at my last takes."
+5. Tell Claude in chat which lesson it is: "I'm on Sirens. Look at my last takes."
 
 **A song coaching file** is the same for a song: the song as charted (notes, lyrics, phrases) and up to eight recent takes of it, each with the phrases it covered, its key and its speed, and its pitch line.
 
@@ -136,7 +136,9 @@ How a note is judged (PROVISIONAL, `SONG_READ` in `offline.ts`; the lines sit ne
 - **Check-up n.** Each check-up, oldest first: its tasks (passed or missed with the score, or "not sung"), then each skill: **Range**, **Pitch**, **Steadiness**, **Slides**, **Note starts**, **Connected lines**, with the app's rating, the app's plain sentence about it and the numbers it is read from (for example "Breaks 5", "In tune 72%"). The ratings are never grades: **Solid**, **Getting there**, **Focus here**, or "not measured" (a task skipped, silent or stopped early). The range is measured, not graded: an octave or more is **Solid**, and only a span short of it is rated lower. Then the focus (one or two skills, the most basic first), the starting point (the first Foundations level still to pass, and the levels this check-up's placement tests opened: a test grants only when it was the placement audition's next test as it was sung, so in order, never past Foundations, and a test passed after a missed one grants nothing, then or later), and the range in note names when this check-up's Range finder saved the range the profile has now. A check-up that was left unfinished is not rated: it lists what its sung tasks measured.
 - **Then and now.** Each finished check-up against the one before it (and, from three on, the first against the last): the app's own lines and headline, the ratings side by side, and every measure the battery reads, side by side with which way it moved. A move smaller than the usual noise (a half step of range, 5 points of in-tune time, one break, 40 ms of settling, and so on: `CHECKUP_MOVES` in `offline.ts`, the analyst's yardstick and not the app's) reads "same". A rating can flip on a small move at a band's edge: judge by the numbers, not only the label.
 
-A backup holds only the number of breaks on the siren, never where in the slide they were. To see where the voice flips (the owner's own example is a crack around one note), ask for a coaching file of *Sirens & glides* (foundations.05) or of a song, which carry pitch lines.
+A backup holds only the number of breaks on the siren, never where in the slide they were. To see where the voice flips (the owner's own example is a crack around one note), ask for a coaching file of *Sirens* (foundations.05) or of a song, which carry pitch lines.
+
+Foundations was rebuilt as lessons on 2026-10-23. Its rebuilt exercises have new ids (`foundations.range.1`, `foundations.match.1`, `foundations.hold.1`, `foundations.steady.1`, `foundations.jumps.1`, `foundations.jumps.2`, `foundations.five-notes.1`, `foundations.sirens.1`, `foundations.clean-starts.1`, `foundations.boss-tune`, and the audition tests `foundations.audition.5` to `.8`), and Hold it steady is level `foundations.13`. Takes sung before the rebuild keep their old exercise ids (`foundations.sustain.2`, `foundations.siren.1`, `foundations.audition.1` to `.4` and so on): those retired exercises stay in the catalog, so the tool reads old takes against what was actually sung. A level or a title flag (`--exercise foundations.05`, `--exercise sirens`) names the exercise the level plays today; pass an old exercise id to read takes from before the rebuild.
 
 ## 7. The singer or the app?
 
@@ -162,16 +164,16 @@ Which checklist row a metric touches (lessons):
 
 | Metrics | Row | Where the numbers live |
 |---|---|---|
-| In tune, Typical miss, Pitch spread, Off-centre, Drift | P2 (late start), P1 (voicing) | `CONFIG.accuracy.lateStartAllowanceSec`, `CONFIG.audio` |
-| Settle, Scoop, Overshoot, Crisp onsets | P3 | `CONFIG.onset`, `analysis/onset.ts` |
-| Vibrato heard, in the zone, evenness, centre | P4 | `CONFIG.vibrato`, `analysis/vibrato.ts` |
-| Clean switches, Bloom on cue | P5 | `analysis/switch.ts` |
-| Pulse rate off, Pulse evenness | P6 | `analysis/pulse.ts` |
-| Breaks, Smoothness, Arrival | P7 | `CONFIG.transitions`, `analysis/glide.ts` |
+| In tune, Typical miss, How steady, Off the middle by, Drift | P2 (late start), P1 (voicing) | `CONFIG.accuracy.lateStartAllowanceSec`, `CONFIG.audio` |
+| Time to find the note, Scoop, Going past the note, Clean starts | P3 | `CONFIG.onset`, `analysis/onset.ts` |
+| Vibrato heard, In the vibrato zone, Vibrato evenness, Vibrato off the note by | P4 | `CONFIG.vibrato`, `analysis/vibrato.ts` |
+| Clean switches, Vibrato on cue | P5 | `analysis/switch.ts` |
+| Pulse speed off by, Pulse evenness | P6 | `analysis/pulse.ts` |
+| Breaks, Smoothness, Slide ending off by | P7 | `CONFIG.transitions`, `analysis/glide.ts` |
 | Clean changes | P8 | `analysis/transitions.ts`, `analysis/dtw.ts` |
 | Shape match, Landing | P9 | `analysis/inflections.ts` |
 | Run score, Defined notes, Missed notes | P10 | `CONFIG.runs`, `analysis/runs.ts` |
-| Loudness range, Pitch per dB, Swell symmetry | P11 | `CONFIG.dynamics`, `analysis/dynamics.ts` |
+| Soft to loud, Pitch as the loudness changed, Even swell | P11 | `CONFIG.dynamics`, `analysis/dynamics.ts` |
 | Low to high (range) | P12 | `CONFIG.range` |
 | Level far easier or harder than its tier | P13 | `exercises/catalog/scoring.ts` |
 | Song scores, timing, the pass mark | P14, D4 | `SONG_PASS_SCORE`, `CONFIG.song`, `analysis/phrases.ts`, `analysis/dtw.ts` |

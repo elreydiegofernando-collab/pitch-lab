@@ -6,6 +6,7 @@
  * expects (renamed ids, a boss that is not last, an audition pointing at a boss...).
  */
 import { describe, expect, it } from 'vitest';
+import { CHECKUP_TASKS } from '../checkup/types';
 import { WORLDS, getExercise, getLevel, levelForExercise } from '../exercises/catalog';
 import type { LevelDef, WorldDef } from '../exercises/types';
 import type { AttemptRecord } from '../storage/schema';
@@ -115,7 +116,7 @@ describe('the catalog is what progress expects', () => {
     expect(WORLDS.find((w) => w.id === rangeFinder.worldId)?.unlockedBy).toBeNull();
     expect(ALL_LEVELS.filter((l) => getExercise(l.exerciseId)?.kind === 'range-finder').map((l) => l.id)).toEqual([rangeFinder.id]);
     expect(getExercise(getLevel(LEVEL_REFS.sirens)!.exerciseId)?.kind).toBe('siren');
-    expect(getExercise(getLevel(LEVEL_REFS.crispness)!.exerciseId)?.kind).toBe('staccato');
+    expect(getExercise(getLevel(LEVEL_REFS.cleanStarts)!.exerciseId)?.kind).toBe('staccato');
     expect(getLevel(LEVEL_REFS.foundationsBoss)?.worldId).toBe('foundations');
     for (const id of ['live.vibrato', 'tool.vibrato-meter', 'setting.vibratoStyle'] as const) {
       expect(WORLDS.find((w) => w.id === FEATURES[id].ref)?.unlockedBy).toBe(LEVEL_REFS.foundationsBoss);
@@ -159,8 +160,8 @@ describe('a full playthrough of the real game', () => {
     expect(features('foundations.01')).not.toContain('live.cracks');
     expect(features(LEVEL_REFS.sirens)).toContain('live.cracks');
     expect(features(LEVEL_REFS.sirens)).not.toContain('live.onset');
-    expect(features(LEVEL_REFS.crispness)).toContain('live.onset');
-    expect(features(LEVEL_REFS.crispness)).not.toContain('live.vibrato');
+    expect(features(LEVEL_REFS.cleanStarts)).toContain('live.onset');
+    expect(features(LEVEL_REFS.cleanStarts)).not.toContain('live.vibrato');
     const afterBoss = features(LEVEL_REFS.foundationsBoss);
     for (const id of ['live.vibrato', 'tool.vibrato-meter', 'setting.vibratoStyle', 'song-stage', 'song.import']) expect(afterBoss).toContain(id);
   });
@@ -184,8 +185,10 @@ describe('a full playthrough of the real game', () => {
   it('says how to unlock a locked tile in the catalog\'s own words', () => {
     const s = snap([]);
     expect(levelRequirementHint('foundations.02', s, WORLDS)).toBe('Pass Range finder to unlock.');
-    expect(levelRequirementHint('foundations.03', s, WORLDS)).toBe('Pass Pitch match to unlock.');
-    expect(levelRequirementHint('foundations.boss', s, WORLDS)).toBe('Pass Legato lines to unlock.');
+    expect(levelRequirementHint('foundations.03', s, WORLDS)).toBe('Pass Match one note to unlock.');
+    // The lesson order, not the persisted numbers: 10 comes right after 04, and the boss after Clean starts (06).
+    expect(levelRequirementHint('foundations.10', s, WORLDS)).toBe('Pass Hold it steady to unlock.');
+    expect(levelRequirementHint('foundations.boss', s, WORLDS)).toBe('Pass Clean starts to unlock.');
     expect(levelRequirementHint('vibrato.01', s, WORLDS)).toBe('Pass the Foundations Boss Recital to unlock Vibrato.');
     expect(worldRequirementHint('inflections', s, WORLDS)).toBe('Pass the Vibrato Boss Recital to unlock Inflections.');
     expect(levelRequirementHint('foundations.01', s, WORLDS)).toBeNull();
@@ -302,9 +305,25 @@ describe('placement auditions on the real catalog', () => {
     const s = snap([rangeFinderSung(), ...all]);
     expect(s.worldsUnlocked).toEqual(['foundations']);
     const foundations = ordered(WORLDS[0]);
-    expect(foundations.slice(0, -1).every((l) => s.levels[l.id].status === 'passed')).toBe(true);
-    expect(s.levels[bossLevelOf(WORLDS, 'foundations')!.id].status).toBe('current');
+    // The tests reach as far as Sirens; Clean starts, which no test covers, is next, and the Boss Recital after it.
+    const reach = Math.max(...WORLDS[0].audition!.unlockThrough.map((id) => foundations.findIndex((l) => l.id === id)));
+    expect(foundations[reach].id).toBe('foundations.05');
+    expect(foundations.slice(0, reach + 1).every((l) => s.levels[l.id].status === 'passed')).toBe(true);
+    expect(s.levels['foundations.06'].status).toBe('current');
+    expect(s.levels[bossLevelOf(WORLDS, 'foundations')!.id].status).toBe('locked');
     for (const world of TRAINING.slice(1)) expect(ordered(world).every((l) => s.levels[l.id].status === 'locked'), world.id).toBe(true);
+  });
+
+  it('a voice check-up sung in its own order is the audition in order: every test it passes grants its levels', () => {
+    const checkupId = 'checkup-1';
+    const rows = CHECKUP_TASKS.map((task) =>
+      task.logAs.kind === 'practice' ? realPass(getLevel(task.logAs.levelId)!, { checkupId }) : auditionRow(task.exerciseId, { checkupId, score: 0.9 }),
+    );
+    const s = snap(rows);
+    const foundations = ordered(WORLDS[0]);
+    const reach = Math.max(...WORLDS[0].audition!.unlockThrough.map((id) => foundations.findIndex((l) => l.id === id)));
+    expect(foundations.slice(0, reach + 1).every((l) => s.levels[l.id].status === 'passed'), 'every test was the next one as it was sung').toBe(true);
+    expect(s.levels['foundations.06'].status).toBe('current');
   });
 
   it('GUARD: an audition passed before the Range finder is sung neither passes it nor grants anything yet', () => {

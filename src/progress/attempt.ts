@@ -10,6 +10,9 @@
  *      daily-workout level     -> kind 'workout'  + levelId
  *      warm-up / cool-down     -> kind 'workout'  + levelId null (a routine carries no progression)
  *      placement audition      -> kind 'audition' + the audition exercise's id + levelId null
+ *      lesson practice try     -> kind 'practice' + levelId null (it never passes or opens a level: src/lessons), and
+ *                                 PASSED = it was a good try by its step's lenient rule (the caller judges it:
+ *                                 lessons/progress.ts isGoodTry), never the drill's own pass rule; mastery 0
  *      song                    -> kind 'song'     + songId + levelId null, with the phrases, key and speed sung
  *    and a take of the voice check-up is one of those (its Range finder a practice rep, its placement tests audition
  *    takes) carrying the check-up's id, so a check-up is read back from the log alone (src/checkup);
@@ -40,7 +43,9 @@ export type AttemptSource =
   | { type: 'record'; level: Pick<LevelDef, 'id' | 'exerciseId'> }
   | { type: 'workout-level'; level: Pick<LevelDef, 'id' | 'exerciseId'> }
   | { type: 'workout-routine' }
-  | { type: 'audition' };
+  | { type: 'audition' }
+  /** A lesson's practice try (RunTarget 'drill'): `good` is the step's verdict on it (lessons/progress.ts isGoodTry). */
+  | { type: 'drill'; good: boolean };
 
 /** The parts of a realized exercise (src/exercises/transpose.ts) an attempt records. */
 export interface RealizedTake {
@@ -92,14 +97,24 @@ function kindAndLevel(def: AttemptInput['def'], source: AttemptSource): Pick<Att
       return { kind: 'workout', levelId: null };
     case 'audition':
       return { kind: 'audition', levelId: null };
+    case 'drill':
+      return { kind: 'practice', levelId: null };
   }
 }
 
 /** The AttemptRecord fields for one sung take of an exercise. See the module doc for the conventions it applies. */
 export function buildAttempt(input: AttemptInput): AttemptFields {
-  const { def, realized, evaluation } = input;
-  const { kind, levelId } = kindAndLevel(def, input.source);
+  const { def, realized, evaluation, source } = input;
+  const { kind, levelId } = kindAndLevel(def, source);
+  // A practice try is good or not by its step's lenient rule; it has no pass and no tally, so it carries no mastery.
+  if (source.type === 'drill') return { ...buildRow(input, kind, levelId, source.good), mastery: 0 };
   const passed = evaluation.passed && canPassAtTempo(def, realized.bpm) && realized.fit !== 'folded';
+  return buildRow(input, kind, levelId, passed);
+}
+
+/** The row: the take's fields under the kind, level and verdict decided above (a take not passed carries no mastery). */
+function buildRow(input: AttemptInput, kind: AttemptRecord['kind'], levelId: string | null, passed: boolean): AttemptFields {
+  const { def, realized, evaluation } = input;
   return {
     profileId: input.profileId,
     exerciseId: def.id,

@@ -6,7 +6,7 @@ import { EXERCISES, getExercise } from './catalog';
 import { evaluate, gateHolds, isFolded, passRequirements, reportTiles, termScore } from './evaluate';
 import { METRIC_INFO, formatMetric, metricsProducedBy } from './metrics';
 
-const sustain2 = getExercise('foundations.sustain.2')!;
+const holdItSteady = getExercise('foundations.steady.1')!;
 
 describe('termScore', () => {
   it('maps worst -> 0 and best -> 1 linearly, clamped, in either direction', () => {
@@ -19,8 +19,8 @@ describe('termScore', () => {
   });
 
   it('returns null for an unmeasured metric', () => {
-    expect(termScore(sustain2.scoring[0], undefined)).toBeNull();
-    expect(termScore(sustain2.scoring[0], NaN)).toBeNull();
+    expect(termScore(holdItSteady.scoring[0], undefined)).toBeNull();
+    expect(termScore(holdItSteady.scoring[0], NaN)).toBeNull();
   });
 });
 
@@ -50,75 +50,75 @@ describe('evaluate', () => {
 
   it('never passes a take with nothing measured, and fails a gate on an unmeasured metric', () => {
     for (const def of EXERCISES) expect(evaluate(def, {}).passed).toBe(false);
-    const best = Object.fromEntries(sustain2.scoring.map((t) => [t.metric, t.best])) as Metrics;
-    expect(evaluate(sustain2, best).passed).toBe(true);
+    const best = Object.fromEntries(holdItSteady.scoring.map((t) => [t.metric, t.best])) as Metrics;
+    expect(evaluate(holdItSteady, best).passed).toBe(true);
     delete best['accuracy.absDriftCentsPerSec'];
-    const e = evaluate(sustain2, best);
+    const e = evaluate(holdItSteady, best);
     expect(e.passed).toBe(false);
-    expect(e.failedGates).toEqual([1]);
+    expect(e.failedGates).toEqual([holdItSteady.pass.gates!.findIndex((g) => g.metric === 'accuracy.absDriftCentsPerSec')]);
   });
 
   it('treats NaN like an unmeasured metric', () => {
-    const best = Object.fromEntries(sustain2.scoring.map((t) => [t.metric, t.best])) as Metrics;
+    const best = Object.fromEntries(holdItSteady.scoring.map((t) => [t.metric, t.best])) as Metrics;
     best['accuracy.inTolerancePct'] = NaN;
-    expect(evaluate(sustain2, best).passed).toBe(false);
+    expect(evaluate(holdItSteady, best).passed).toBe(false);
   });
 
   it('lights the tally that the score reaches once passed', () => {
     const at = (score: number): Metrics =>
-      Object.fromEntries(sustain2.scoring.map((t) => [t.metric, t.worst + score * (t.best - t.worst)])) as Metrics;
-    expect(evaluate(sustain2, at(0.65)).mastery).toBe(1);
-    expect(evaluate(sustain2, at(0.85)).mastery).toBe(2);
-    expect(evaluate(sustain2, at(1)).mastery).toBe(3);
-    expect(evaluate(sustain2, at(0.5)).mastery).toBe(0);
+      Object.fromEntries(holdItSteady.scoring.map((t) => [t.metric, t.worst + score * (t.best - t.worst)])) as Metrics;
+    expect(evaluate(holdItSteady, at(0.65)).mastery).toBe(1);
+    expect(evaluate(holdItSteady, at(0.85)).mastery).toBe(2);
+    expect(evaluate(holdItSteady, at(1)).mastery).toBe(3);
+    expect(evaluate(holdItSteady, at(0.5)).mastery).toBe(0);
   });
 
   it('never passes a take whose realization was folded by octaves or lost a figure, but still shows its score', () => {
-    const best = Object.fromEntries(sustain2.scoring.map((t) => [t.metric, t.best])) as Metrics;
-    expect(evaluate(sustain2, best, { fit: 'fits', plan: { issues: [] } })).toMatchObject({ passed: true, mastery: 3 });
-    expect(evaluate(sustain2, best, { fit: 'extended' }).passed).toBe(true);
-    const folded = evaluate(sustain2, best, { fit: 'folded' });
+    const best = Object.fromEntries(holdItSteady.scoring.map((t) => [t.metric, t.best])) as Metrics;
+    expect(evaluate(holdItSteady, best, { fit: 'fits', plan: { issues: [] } })).toMatchObject({ passed: true, mastery: 3 });
+    expect(evaluate(holdItSteady, best, { fit: 'extended' }).passed).toBe(true);
+    const folded = evaluate(holdItSteady, best, { fit: 'folded' });
     expect(folded).toMatchObject({ passed: false, mastery: 0, notJudged: 'folded' });
     expect(folded.score).toBeCloseTo(1, 12);
-    expect(evaluate(sustain2, best, { fit: 'fits', plan: { issues: ['step 8 (rep 0) "Flip up": a flip is a held note followed directly by a higher one'] } }).passed).toBe(false);
+    expect(evaluate(holdItSteady, best, { fit: 'fits', plan: { issues: ['step 8 (rep 0) "Flip up": a flip is a held note followed directly by a higher one'] } }).passed).toBe(false);
     expect(isFolded({})).toBe(false);
   });
 });
 
 describe('pass requirements and report tiles', () => {
   it('states the score and every gate the way the level screen shows them', () => {
-    const req = passRequirements(getExercise('foundations.staccato.1')!).map((r) => r.text);
+    const req = passRequirements(getExercise('foundations.clean-starts.1')!).map((r) => r.text);
     expect(req[0]).toBe('Score ≥ 60%');
-    expect(req[1]).toMatch(/^Settle ≤ \d+ ms$/);
+    expect(req[1]).toMatch(/^Time to find the note ≤ \d+ ms$/);
     expect(req[2]).toMatch(/^Scoop ≤ \d+¢$/);
     expect(passRequirements(getExercise('runs.run.1')!).map((r) => r.text)[1]).toMatch(/^Defined notes ≥ \d+%$/);
   });
 
   it('shows gated metrics first, then the heaviest terms, up to four', () => {
-    const def = getExercise('foundations.boss-recital')!;
-    const m: Metrics = { 'accuracy.inTolerancePct': 50, 'onset.scoopCents': 40, 'transition.cleanRate': 0.9, 'accuracy.sdCents': 12 };
+    const def = getExercise('foundations.boss-tune')!;
+    const m: Metrics = { 'accuracy.inTolerancePct': 60, 'onset.scoopCents': 50, 'transition.cleanRate': 0.9, 'accuracy.sdCents': 12 };
     const tiles = reportTiles(def, m);
     expect(tiles).toHaveLength(4);
     expect(tiles.slice(0, 3).map((t) => t.metric)).toEqual(def.pass.gates!.map((g) => g.metric));
-    expect(tiles[0]).toMatchObject({ label: 'In tune', display: '50%', met: true });
-    expect(tiles[1].met).toBe(false); // 40¢ scoop against a studio gate
+    expect(tiles[0]).toMatchObject({ label: 'In tune', display: '60%', met: true });
+    expect(tiles[1].met).toBe(false); // a 50¢ scoop against the tune's gate
     expect(tiles[3].metric).toBe('accuracy.sdCents');
     expect(reportTiles(def, {})[0]).toMatchObject({ value: null, display: '–', met: null });
   });
 
   it('gives every tile its threshold: the gate for a gated metric, else where the term scores the pass mark', () => {
-    // Sustain II (default tier): gates on in-tune time and drift, then the terms by weight: spread (0.3), then typical miss (0.15).
-    // A term's target is worst + pass x (best - worst): spread [13, 30.5] -> 20 c, typical miss [10, 22.5] -> 15 c.
+    // Hold it steady (default tier): gates on in-tune time, the spread (half way up its band [13, 30.5]: 22 c) and drift,
+    // then the one term left by weight, typical miss, whose target is worst + pass x (best - worst): [10, 22.5] -> 15 c.
     const m: Metrics = { 'accuracy.inTolerancePct': 60, 'accuracy.absDriftCentsPerSec': 7, 'accuracy.sdCents': 18, 'accuracy.medianAbsCents': 16 };
-    const tiles = reportTiles(sustain2, m);
+    const tiles = reportTiles(holdItSteady, m);
     expect(tiles.map((t) => ({ metric: t.metric, op: t.op, target: Number(t.target.toFixed(3)), targetDisplay: t.targetDisplay, display: t.display, met: t.met }))).toEqual([
       { metric: 'accuracy.inTolerancePct', op: '>=', target: 53, targetDisplay: '53%', display: '60%', met: true },
+      { metric: 'accuracy.sdCents', op: '<=', target: 22, targetDisplay: '22¢', display: '18¢', met: true },
       { metric: 'accuracy.absDriftCentsPerSec', op: '<=', target: 6.3, targetDisplay: '6.3 ¢/s', display: '7.0 ¢/s', met: false },
-      { metric: 'accuracy.sdCents', op: '<=', target: 20, targetDisplay: '20¢', display: '18¢', met: true },
       { metric: 'accuracy.medianAbsCents', op: '<=', target: 15, targetDisplay: '15¢', display: '16¢', met: false },
     ]);
-    // Crispness lists typical miss (0.2) after overshoot (0.15) and crisp rate (0.1): the tiles still go by weight.
-    const crisp = getExercise('foundations.staccato.1')!;
+    // Clean starts lists typical miss (0.2) after overshoot (0.1) and crisp rate (0.1): the tiles still go by weight.
+    const crisp = getExercise('foundations.clean-starts.1')!;
     expect(crisp.scoring.map((t) => t.metric).indexOf('accuracy.medianAbsCents')).toBeGreaterThan(crisp.scoring.map((t) => t.metric).indexOf('onset.overshootCents'));
     expect(reportTiles(crisp, {}).map((t) => t.metric)).toEqual(['onset.settleMs', 'onset.scoopCents', 'accuracy.medianAbsCents', 'onset.overshootCents']);
     // Rates are stored 0..1 and shown as %; a non-gated rate term's target follows the same rule.

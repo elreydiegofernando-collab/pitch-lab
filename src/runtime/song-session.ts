@@ -82,7 +82,7 @@ export const MAX_TRANSPOSE = 12;
 export const OFFSET_RANGE_MS = 2000;
 
 /** DESIGN.md §13.9: the banner and the refusal say the same thing. */
-export const NO_CALIBRATION_MESSAGE = 'Calibrate latency first so your takes line up.';
+export const NO_CALIBRATION_MESSAGE = 'Run the timing check in Setup first, so your takes line up.';
 
 /** Guide notes and backing passes are scheduled this far ahead of the AudioContext clock. */
 const LOOKAHEAD_SEC = 1;

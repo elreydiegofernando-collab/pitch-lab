@@ -5,11 +5,15 @@
  * Order (SPEC §11): Foundations -> Vibrato -> Inflections -> Runs & Riffs ->
  * Dynamics; Song Stage opens after the Foundations Boss Recital. Level and
  * exercise ids are persisted in attempts: never rename or renumber one; add
- * new ones instead (index sets the order, id is identity).
+ * new ones instead (index sets the order, id is identity). Material that is
+ * rebuilt takes new ids, and the old exercises stay here, retired
+ * (ExerciseDef.retired: no level, audition or lesson plays them), so every
+ * take in the log can still be read against what it was sung against.
  */
 import type { AuditionDef, ExerciseDef, LevelDef, WorldDef, WorldId } from '../types';
 import { DYNAMICS, DYNAMICS_EXERCISES } from './dynamics';
 import { FOUNDATIONS, FOUNDATIONS_EXERCISES } from './foundations';
+import { FOUNDATIONS_RETIRED } from './foundations-retired';
 import { INFLECTIONS, INFLECTIONS_EXERCISES } from './inflections';
 import { RUNS, RUNS_EXERCISES } from './runs';
 import { SONG_STAGE } from './song-stage';
@@ -32,8 +36,9 @@ function deepFreeze<T>(o: T): T {
 export const WORLDS: readonly WorldDef[] = deepFreeze([FOUNDATIONS, VIBRATO, INFLECTIONS, RUNS, DYNAMICS, SONG_STAGE]);
 export const WORLD_ORDER: readonly WorldId[] = WORLDS.map((w) => w.id);
 
+/** Every exercise: the ones sung today, world by world, then the retired ones (read back, never sung). */
 export const EXERCISES: readonly ExerciseDef[] = deepFreeze([
-  ...FOUNDATIONS_EXERCISES, ...VIBRATO_EXERCISES, ...INFLECTIONS_EXERCISES, ...RUNS_EXERCISES, ...DYNAMICS_EXERCISES,
+  ...FOUNDATIONS_EXERCISES, ...VIBRATO_EXERCISES, ...INFLECTIONS_EXERCISES, ...RUNS_EXERCISES, ...DYNAMICS_EXERCISES, ...FOUNDATIONS_RETIRED,
 ]);
 
 export const CATALOG: Catalog = Object.freeze({ worlds: WORLDS, exercises: EXERCISES });

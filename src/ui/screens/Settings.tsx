@@ -1,8 +1,12 @@
 /**
- * Settings: vibrato style (once the Vibrato world is unlocked), detector, reference sound, notation, theme,
- * reduced motion, note names, whether to keep take audio, and the doors to Profiles and Data & backup. No
- * difficulty or tolerance setting lives here: that comes from the level (docs/DESIGN.md, settings-types.ts), and
- * anything that belongs to a skill the singer has not earned yet is shown locked (SPEC §11.1).
+ * Settings: vibrato style (once the Vibrato world is unlocked), how the app listens for the note, the listen sound,
+ * sharps or flats, theme, reduced motion, note names, whether to keep take audio, and the doors to Profiles and Data &
+ * backup. No difficulty or in-tune-zone setting lives here: that comes from the level (docs/DESIGN.md,
+ * settings-types.ts), and anything that belongs to a skill the singer has not earned yet is shown locked (SPEC §11.1).
+ *
+ * In plain words (owner, 2026-10-23: "you're using a lot of technical terms in the app that I don't know"): no Hz or
+ * cents, no algorithm names, no "timbre" or "notation"; a music word is a Term to tap, and each choice says in a line what
+ * it does. The values stored stay what they were ('mpm' and 'yin', 'sine'), so nothing saved changes meaning.
  */
 import type { JSX } from 'preact';
 import { ChevronRight, Database, Settings as SettingsIcon, Users, Volume2 } from 'lucide-preact';
@@ -14,7 +18,7 @@ import { activeProfile, isUnlocked } from '../../state/session';
 import { settings, updateSettings } from '../../state/settings';
 import type { Settings as SettingsShape } from '../../state/settings-types';
 import { requirementHint } from '../../progress';
-import { CONFIG } from '../../config';
+import { vibratoStyleWords } from '../../teach/vibrato-words';
 import { parseNote, type Notation } from '../../core/music';
 import type { DetectorKind } from '../../dsp/detector-types';
 import type { Timbre } from '../../audio/synth-types';
@@ -26,6 +30,7 @@ import { Locked } from '../components/Locked';
 import { Segmented } from '../components/Segmented';
 import { Slider } from '../components/Slider';
 import { Toggle } from '../components/Toggle';
+import { Term } from '../teach/Term';
 
 const A3_MIDI = parseNote('A3');
 
@@ -34,13 +39,13 @@ const VIBRATO_OPTIONS = [
   { value: 'classical' as const, label: 'Classical' },
 ];
 const DETECTOR_OPTIONS = [
-  { value: 'mpm' as const, label: 'MPM' },
-  { value: 'yin' as const, label: 'YIN' },
+  { value: 'mpm' as const, label: 'Standard' },
+  { value: 'yin' as const, label: 'Alternative' },
 ];
 const TIMBRE_OPTIONS = [
   { value: 'piano' as const, label: 'Piano' },
   { value: 'soft' as const, label: 'Soft' },
-  { value: 'sine' as const, label: 'Sine' },
+  { value: 'sine' as const, label: 'Pure' },
 ];
 const NOTATION_OPTIONS = [
   { value: 'sharps' as const, label: 'Sharps ♯' },
@@ -75,7 +80,6 @@ function playSample(): void {
 
 export function Settings(): JSX.Element {
   const s = settings.value;
-  const vibratoZone = CONFIG.vibrato.styles[s.vibratoStyle];
   const vibratoOpen = isUnlocked('setting.vibratoStyle');
 
   return (
@@ -84,7 +88,9 @@ export function Settings(): JSX.Element {
       <div class="pl-scroll">
         <div class="pl-page">
           <section class="pl-stack">
-            <span class="pl-label">Vibrato style</span>
+            <span class="pl-label">
+              <Term id="vibrato">Vibrato</Term> style
+            </span>
             {vibratoOpen ? (
               <>
                 <Segmented
@@ -93,9 +99,8 @@ export function Settings(): JSX.Element {
                   value={s.vibratoStyle}
                   onChange={(v: VibratoStyle) => updateSettings({ vibratoStyle: v })}
                 />
-                <p class="pl-body-s pl-muted pl-tabular">
-                  {vibratoZone.rateHz[0]}-{vibratoZone.rateHz[1]} Hz, extent &plusmn;{vibratoZone.extentCents[0]}-
-                  {vibratoZone.extentCents[1]}&cent;
+                <p class="pl-body-s pl-muted pl-prose" data-testid="vibrato-words">
+                  {vibratoStyleWords(s.vibratoStyle)} The shaded band on your pitch line follows this choice.
                 </p>
               </>
             ) : (
@@ -104,36 +109,47 @@ export function Settings(): JSX.Element {
           </section>
 
           <section class="pl-stack">
-            <span class="pl-label">Pitch detector</span>
+            <span class="pl-label">
+              <Term id="pitch">Pitch</Term> detector
+            </span>
             <Segmented aria-label="Pitch detector" options={DETECTOR_OPTIONS} value={s.detector} onChange={updateDetector} />
+            <p class="pl-body-s pl-muted pl-prose">
+              How the app works out which note you are singing. Standard suits most voices; if the note readout jumps around, try Alternative.
+            </p>
           </section>
 
           <section class="pl-stack">
-            <span class="pl-label">Reference sound</span>
+            <span class="pl-label">Listen sound</span>
             <Segmented
-              aria-label="Reference sound timbre"
+              aria-label="Listen sound"
               options={TIMBRE_OPTIONS}
               value={s.referenceTimbre}
               onChange={(v: Timbre) => updateSettings({ referenceTimbre: v })}
             />
+            <p class="pl-body-s pl-muted pl-prose">The sound the app plays when you tap Listen.</p>
             <Slider
-              aria-label="Reference volume"
+              aria-label="Listen volume"
               value={s.referenceVolume}
               onChange={(v) => updateSettings({ referenceVolume: v })}
             />
             <Button variant="secondary" icon={Volume2} onClick={playSample}>
-              Play sample
+              Play a sample note
             </Button>
           </section>
 
           <section class="pl-stack">
-            <span class="pl-label">Notation</span>
+            <span class="pl-label">
+              <Term id="sharp">Sharps</Term> or <Term id="flat">flats</Term>
+            </span>
             <Segmented
-              aria-label="Sharp/flat notation"
+              aria-label="Sharps or flats"
               options={NOTATION_OPTIONS}
               value={s.notation}
               onChange={(v: Notation) => updateSettings({ notation: v })}
             />
+            <p class="pl-body-s pl-muted pl-prose">
+              Some notes sit between the white keys of a piano and have two names: C♯ and D♭ are the same note. Pick the one you like to read.
+            </p>
           </section>
 
           <section class="pl-stack">
@@ -160,7 +176,7 @@ export function Settings(): JSX.Element {
             <div class="pl-list">
               <ListRow
                 title="Note names"
-                subtitle="Show note names on the pitch trace"
+                subtitle="Label the notes beside the pitch line, like A3 and B3"
                 trailing={
                   <Toggle
                     checked={s.showNoteNames}

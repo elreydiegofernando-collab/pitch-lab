@@ -13,7 +13,9 @@
  *     to back on one pitch) and reads what each hold means from its cues:
  *     vibrato windows (straight / bloom / vibrato on), a pulse train, a dynamic
  *     shape or soft/loud steps. A hold-glide-hold chain (slide, scoop, fall,
- *     siren) becomes one voice. Everything else stays plain notes.
+ *     siren) becomes one voice. The reference tones do the same: a lesson's
+ *     echo plays a slide or a siren as it is to be sung (Listen steps that
+ *     glide), heard as one sliding voice. Everything else stays plain notes.
  *  2. `buildDemo` schedules the voices on the injected synth. Plain notes go
  *     out as one `playSequence`; sustained vibrato and pulses as `playNote`
  *     with a VibratoSpec (delaySec + fadeInSec blooms it on cue); a single
@@ -377,10 +379,40 @@ export function planDemoVoices(def: ExerciseDef, layout: DemoLayout, style: Vibr
   // (the starting pitch in the count-in, right up to the downbeat; a new key's first note) ends a release earlier, so
   // it has faded out when the note begins: the two are the same pitch, and their overlap would sum up to twice the level.
   const sungStarts = layout.notes.map((n) => n.start).sort((a, b) => a - b);
-  for (const r of layout.reference) {
-    const next = sungStarts.find((s) => s > r.start + EPS && s < r.end + RELEASE_SEC - EPS);
-    const end = next === undefined ? r.end : Math.min(r.end, next - RELEASE_SEC);
-    if (end - r.start > EPS) plain.push({ midi: r.midi, start: r.start, duration: end - r.start });
+  const clearEnd = (start: number, end: number): number => {
+    const next = sungStarts.find((s) => s > start + EPS && s < end + RELEASE_SEC - EPS);
+    return next === undefined ? end : Math.min(end, next - RELEASE_SEC);
+  };
+  // A run of touching reference tones around a slide (a lesson's echo plays a slide or a siren as it is to be sung:
+  // Listen steps that glide) is one sliding voice, as a sung slide is, so the singer hears the slide itself: one slide
+  // with its holds is one glide, a siren's way up and down one voice following the path.
+  const refs = [...layout.reference].sort((a, b) => a.start - b.start);
+  const slides = (r: TargetNote): boolean => r.toMidi !== undefined && !samePitch(r.toMidi, r.midi);
+  for (let i = 0; i < refs.length; ) {
+    let j = i + 1;
+    while (j < refs.length && touching(refs[j - 1].end, refs[j].start) && samePitch(refs[j - 1].toMidi ?? refs[j - 1].midi, refs[j].midi)) j++;
+    const run = refs.slice(i, j);
+    i = j;
+    const glides = run.filter(slides);
+    if (glides.length === 0) {
+      for (const r of run) {
+        const end = clearEnd(r.start, r.end);
+        if (end - r.start > EPS) plain.push({ midi: r.midi, start: r.start, duration: end - r.start });
+      }
+      continue;
+    }
+    const start = run[0].start;
+    const runEnd = run[run.length - 1].end;
+    const end = clearEnd(start, runEnd);
+    if (end - start <= EPS) continue;
+    const g = glides[0];
+    if (glides.length === 1 && end >= runEnd - EPS) {
+      voices.push({ kind: 'glide', fromMidi: g.midi, toMidi: g.toMidi as number, start, holdBefore: g.start - start, glideDuration: g.end - g.start, holdAfter: end - g.end });
+      continue;
+    }
+    const pitch: Array<{ t: number; midi: number }> = [{ t: 0, midi: run[0].midi }];
+    for (const r of run) pitch.push({ t: r.end - start, midi: r.toMidi ?? r.midi });
+    voices.push({ kind: 'shaped', start, duration: end - start, timbre, pitch, initialGain: 1, level: [] });
   }
 
   const cueAt = (t: number): string | undefined => {

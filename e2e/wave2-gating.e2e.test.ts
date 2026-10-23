@@ -20,11 +20,22 @@ interface Refusal {
   never: string[];
 }
 
+/**
+ * Foundations as it is taught now: thirteen lessons whose level ids no longer follow their numbers (Hold it steady is .13 and
+ * comes fourth). A locked lesson names the lesson right before it in this order, by its title.
+ */
+const FOUNDATIONS_ORDER = [
+  'foundations.01', 'foundations.02', 'foundations.03', 'foundations.13', 'foundations.10', 'foundations.07', 'foundations.08',
+  'foundations.11', 'foundations.09', 'foundations.12', 'foundations.05', 'foundations.06', 'foundations.boss',
+] as const;
+
 const BOSS = 'Pass the Foundations Boss Recital to';
 const REFUSED: readonly Refusal[] = [
   { hash: '#/level/foundations.02', toast: 'Pass Range finder to unlock.', lands: 'map-screen', never: ['level-screen'] },
-  { hash: '#/level/foundations.03', toast: 'Pass Pitch match to unlock.', lands: 'map-screen', never: ['level-screen'] },
-  { hash: '#/level/foundations.boss', toast: 'Pass Legato lines to unlock.', lands: 'map-screen', never: ['level-screen'] },
+  { hash: '#/level/foundations.03', toast: 'Pass Match one note to unlock.', lands: 'map-screen', never: ['level-screen'] },
+  { hash: '#/level/foundations.13', toast: 'Pass Hold it to unlock.', lands: 'map-screen', never: ['level-screen'] },
+  { hash: '#/level/foundations.10', toast: 'Pass Hold it steady to unlock.', lands: 'map-screen', never: ['level-screen'] },
+  { hash: '#/level/foundations.boss', toast: 'Pass Clean starts to unlock.', lands: 'map-screen', never: ['level-screen'] },
   { hash: '#/level/vibrato.01', toast: `${BOSS} unlock Vibrato.`, lands: 'map-screen', never: ['level-screen'] },
   { hash: '#/level/inflections.01', toast: 'Pass the Vibrato Boss Recital to unlock Inflections.', lands: 'map-screen', never: ['level-screen'] },
   { hash: '#/level/dynamics.boss', toast: 'Pass the Runs & Riffs Boss Recital to unlock Dynamics.', lands: 'map-screen', never: ['level-screen'] },
@@ -84,7 +95,7 @@ describe('Wave 2 - everything is earned, at the front door', () => {
     try {
       await openDeepLink(page, '#/level/foundations.01');
       await page.getByTestId('level-screen').waitFor({ state: 'visible', timeout: 15_000 });
-      expect(await page.getByTestId('level-label').textContent()).toContain('01');
+      expect(await page.getByTestId('level-label').textContent()).toContain('Lesson 1');
       expect(await toastMessages(page)).toEqual([]);
     } finally {
       await context.close();
@@ -94,7 +105,8 @@ describe('Wave 2 - everything is earned, at the front door', () => {
   it('cannot deep-link a take or its report: they open Home, and nothing renders', async () => {
     await freshProfile();
     try {
-      for (const hash of ['#/sing', '#/sing/level', '#/report', '#/sing/level/foundations.01']) {
+      // A practice try (a lesson's drill) is a take like any other: it starts from a tap, never from a link, even for a lesson that is open.
+      for (const hash of ['#/sing', '#/sing/level', '#/report', '#/sing/level/foundations.01', '#/sing/drill/foundations.01/0', '#/sing/drill/foundations.02/0']) {
         await openDeepLink(page, hash);
         await page.getByTestId('home-screen').waitFor({ state: 'visible', timeout: 15_000 });
         await page.getByTestId('continue-card').waitFor({ state: 'visible', timeout: 15_000 });
@@ -151,15 +163,16 @@ describe('Wave 2 - everything is earned, at the front door', () => {
       await page.getByTestId('dest-dashboard').click({ force: true });
       expect(await page.getByTestId('home-screen').isVisible()).toBe(true);
 
-      // The map: only the level the singer is on is a control; the rest say what opens them.
+      // The map: only the lesson the singer is on is a control; the rest say what opens them.
       await page.getByTestId('dest-map').click();
       await page.getByTestId('map-screen').waitFor({ state: 'visible' });
       expect(await page.getByTestId('node-foundations.01').getAttribute('data-state')).toBe('current');
       expect(await page.getByTestId('node-foundations.01').locator('button').count()).toBe(1);
       const nodes = page.locator('[data-testid^="node-foundations."]');
-      expect(await nodes.count()).toBe(10);
-      for (let i = 2; i <= 10; i++) {
-        const id = i === 10 ? 'foundations.boss' : `foundations.${String(i).padStart(2, '0')}`;
+      expect(await nodes.count()).toBe(FOUNDATIONS_ORDER.length);
+      // On the page in the order they are taught, not the order of their numbers.
+      expect(await nodes.evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')))).toEqual(FOUNDATIONS_ORDER.map((id) => `node-${id}`));
+      for (const id of FOUNDATIONS_ORDER.slice(1)) {
         const node = page.getByTestId(`node-${id}`);
         expect(await node.getAttribute('data-state'), id).toBe('locked');
         expect(await node.locator('button').count(), `${id} must not be a control`).toBe(0);

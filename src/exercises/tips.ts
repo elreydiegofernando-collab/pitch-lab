@@ -293,7 +293,7 @@ export const POLISH_TIP: CoachingTip = {
 export const NO_VOICE_TIP: CoachingTip = {
   id: 'general.no-voice',
   when: { metric: 'accuracy.inTolerancePct', op: '>=', value: 0 },
-  text: 'No singing came through. Check that the mic is allowed, then start singing as the count-in ends.',
+  text: 'No singing came through. Check that the mic is allowed, then sing each part when the screen says “sing now”.',
   priority: 0,
 };
 

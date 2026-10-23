@@ -54,7 +54,7 @@ describe('locate: accuracy', () => {
   });
 
   it('says a wavering note wavered, and a sinking one sank', () => {
-    const wobbly = sing('foundations.04', { jitterCents: 30 });
+    const wobbly = sing('foundations.13', { jitterCents: 30 });
     expect(problemOf(wobbly, 'acc.unstable').what).toMatch(/^The pitch was (a little wavery|wavery|very wavery) as you held the notes/);
     const p = problemOf(take, 'acc.drift-flat');
     expect(p.what).toMatch(/^The pitch sank as you held the notes/);
@@ -103,10 +103,11 @@ describe('locate: notes that missed both ways (review R1)', () => {
   });
 
   it('says held notes drifted both ways when some sank and some rose', () => {
-    const sustain = sing('foundations.04');
+    const sustain = sing('foundations.13');
     const notes = sustain.analysis.details.accuracy;
     expect(notes.length).toBeGreaterThanOrEqual(2);
-    const drifts = notes.map((a, i) => ({ ...a, result: { ...a.result, driftCentsPerSec: i % 2 === 0 ? -12 : 12 } }));
+    // One sank, one rose, any others held level: no way wins.
+    const drifts = notes.map((a, i) => ({ ...a, result: { ...a.result, driftCentsPerSec: i === 0 ? -12 : i === 1 ? 12 : 0 } }));
     const p = locate({
       def: sustain.def,
       realized: sustain.realized,
@@ -123,16 +124,19 @@ describe('locate: notes that missed both ways (review R1)', () => {
 
 describe('locate: breaks and slides', () => {
   it('places each break at its time, near the note the voice was on', () => {
-    // The synthetic singer's breaks are short silences: the sound cut out, which the analyzer counts as a break.
-    const take = sing('foundations.05', { breaks: [1.8, 2.5] });
+    // The synthetic singer's breaks are short silences: the sound cut out, which the analyzer counts as a break. Both
+    // fall on the first sung slide up (the app plays the siren first, so the singing starts a few seconds in).
+    const up = sing('foundations.05').realized.notes.find((n) => n.toMidi !== undefined && n.toMidi > n.midi)!;
+    const at = [up.start + 0.4 * (up.end - up.start), up.start + 0.75 * (up.end - up.start)];
+    const take = sing('foundations.05', { breaks: at });
     expect(take.analysis.details.cracks.every((c) => c.kind === 'dropout')).toBe(true);
     const p = problemOf(take, 'glide.cracks');
     expect(p.what).toMatch(/^Your voice broke or cut out twice on the way up/);
     const times = p.spots.map((s) => s.t).sort((a, b) => a - b);
     expect(times).toHaveLength(2);
-    expect(times[0]).toBeCloseTo(1.8, 1);
-    expect(times[1]).toBeCloseTo(2.5, 1);
-    for (const s of p.spots) expect(s.label).toMatch(/^0:0[23], near [A-G]♯?\d, the sound cut out$/);
+    expect(times[0]).toBeCloseTo(at[0], 1);
+    expect(times[1]).toBeCloseTo(at[1], 1);
+    for (const s of p.spots) expect(s.label).toMatch(/^0:\d\d, near [A-G]♯?\d, the sound cut out$/);
     // The level's own allowance is said in words.
     expect(p.what).toMatch(/\(this level allows (none|one|up to \d+)\)/);
   });
@@ -190,14 +194,15 @@ describe('locate: the start of the note', () => {
     expect(scoop.what).toMatch(/^Your notes started below the pitch and slid up into it/);
     expect(scoop.spots[0].label).toMatch(/from .* below$/);
     const settle = problemOf(take, 'onset.settle-slow');
-    expect(settle.what).toMatch(/^Your notes typically took (a split second|about .*second) to settle on the pitch/);
-    expect(settle.spots.every((s) => /took (a split second|about .*second)|never settled/.test(s.label))).toBe(true);
+    expect(settle.what).toMatch(/^Your notes typically took (a split second|about .*second) to find the pitch/);
+    expect(settle.spots.every((s) => /took (a split second|about .*second)|never found the pitch/.test(s.label))).toBe(true);
+    expect(settle.what).not.toMatch(/settl/i);
   });
 
-  it('says notes that never settled stayed off the pitch, and which way', () => {
+  it('says notes that never landed in tune stayed off the pitch, and which way', () => {
     const take = sing('foundations.06', { biasCents: -40 });
     const p = problemOf(take, 'onset.settle-missing');
-    expect(p.what).toMatch(/^Most notes never settled in tune: \d+ of the \d+ stayed off the pitch; most sat flat by /);
+    expect(p.what).toMatch(/^Most notes never landed in tune: \d+ of the \d+ stayed off the pitch; most sat flat by /);
   });
 });
 
@@ -287,8 +292,8 @@ describe('locate: figures, note changes, pulses and range', () => {
   it('counts the clean note changes and names the slowest', () => {
     const take = sing('foundations.09', { transitionMs: 300 });
     const p = problemOf(take, 'transition.smeared');
-    expect(p.what).toMatch(/^\d+ of your \d+ note changes were clean \(this level asks for \d+%\); the change from note \d+ \([A-G]♯?\d\)( at 0:\d\d)? to [A-G]♯?\d (took|never settled|went past)/);
-    expect(p.spots[0].label).toMatch(/^0:\d\d, [A-G]♯?\d to [A-G]♯?\d, (took|never settled|went past)/);
+    expect(p.what).toMatch(/^\d+ of your \d+ note changes were clean \(this level asks for \d+%\); the change from note \d+ \([A-G]♯?\d\)( at 0:\d\d)? to [A-G]♯?\d (took|never landed|went past)/);
+    expect(p.spots[0].label).toMatch(/^0:\d\d, [A-G]♯?\d to [A-G]♯?\d, (took|never landed|went past)/);
   });
 
   it('says whether the pulses ran too fast or too slow for the clicks', () => {
@@ -331,16 +336,16 @@ describe('locate: the general tips', () => {
   });
 
   it('lists the notes that went unsung, and how many the level needs', () => {
-    const take = sing('foundations.07', POOR_SINGER);
+    const take = sing('foundations.09', POOR_SINGER);
     expect(take.tip.id).toBe('general.unsung');
     const p = problemOf(take);
-    expect(p.what).toMatch(/^You sang \d+ of the 12 notes, and this level needs 11/);
+    expect(p.what).toMatch(/^You sang \d+ of the 16 notes, and this level needs 15/);
     expect(p.spots.length).toBeGreaterThan(0);
-    for (const s of p.spots) expect(s.label).toMatch(/^note \d+ \([A-G]♯?\d\), not sung$/);
+    for (const s of p.spots) expect(s.label).toMatch(/^note \d+ \([A-G]♯?\d\)( at 0:\d\d)?, not sung$/); // a long exercise says when
   });
 
-  it('says every note is needed on a short exercise (review R7: Sirens has 9)', () => {
-    const take = sing('foundations.05', {}, { edit: (t, r) => unvoiced(t, r.notes[4].start, r.notes[4].end) });
+  it('says every note is needed on a short exercise (review R7: Clean starts has 9)', () => {
+    const take = sing('foundations.06', {}, { edit: (t, r) => unvoiced(t, r.notes[4].start, r.notes[4].end) });
     expect(take.realized.notes).toHaveLength(9);
     const p = problemOf(take, 'general.unsung');
     expect(p.what).toMatch(/^You sang \d of the 9 notes, and this level needs all 9/);

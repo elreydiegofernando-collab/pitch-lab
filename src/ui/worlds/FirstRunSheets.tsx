@@ -26,10 +26,10 @@ export function HeadphoneSheet(props: { open: boolean; onLater: () => void; onSe
   const { open, onLater, onSetup } = props;
   return (
     <Sheet open={open} title="Before you start" onClose={onLater} initialFocus="sheet">
-      <p class="pl-body">Wired headphones are recommended: the reference tones won't bleed into the mic while you sing.</p>
+      <p class="pl-body">Wired headphones are recommended: then the notes the app plays don't reach the microphone, so it hears only you.</p>
       <p class="pl-body-s pl-muted">
-        Bluetooth and AirPods add about 120-300 ms of delay and their mic is narrowband. Pitch Lab will ask you to use the
-        phone or laptop mic even when your headphones are connected.
+        Bluetooth and AirPods add a short delay, and their microphone is not clear enough to follow your voice. Pitch Lab
+        will ask you to use the phone or laptop microphone even when your headphones are connected.
       </p>
       <div class="pl-row-flex">
         <Button variant="ghost" onClick={onLater}>

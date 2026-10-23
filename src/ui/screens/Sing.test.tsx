@@ -11,13 +11,18 @@ vi.mock('../../state/settings', async () => (await import('../practice/test-fake
 vi.mock('../../state/audio', async () => (await import('../practice/test-fakes')).audioModule());
 vi.mock('../pitch-view/PitchViewHost', async () => ({ PitchViewHost: (await import('../practice/test-fakes')).PitchViewHostStub }));
 
+import { FRAME_RATE } from '../../analysis/fixtures';
 import { EXERCISES, WORLDS } from '../../exercises';
+import { CUE } from '../../exercises/cues';
 import { bindDesktopBackKey, installRouteGuard, resetRouterForTests, route, routeOf } from '../../router';
 import { paramsForTarget } from '../../runtime/targets';
-import type { RunTarget } from '../../runtime/types';
+import type { PreparedRun, RunTarget } from '../../runtime/types';
+import { HINT_TICK_MS } from '../practice/live-hint';
+import { exercise, note, prepare, rest, voiceFrames } from '../practice/live-hint-fixtures';
 import {
   FakeRunner,
   createRunnerMock,
+  engineRig,
   hostProbe,
   makePrepared,
   resetRunner,
@@ -73,7 +78,7 @@ describe('Sing: the ready screen', () => {
     expect(createRunnerMock).toHaveBeenCalledTimes(1);
     expect(createRunnerMock).toHaveBeenCalledWith(LEVEL);
     expect(runner.target).toEqual(LEVEL);
-    expect(text()).toContain('Sustain I');
+    expect(text()).toContain(runner.prepared.value!.level!.title);
     expect(q('[data-testid="listen-button"]')?.textContent).toContain('Listen');
     expect(q('[data-testid="sing-button"]')?.textContent).toContain('Sing');
     expect(q('[data-testid="more-button"]')).not.toBeNull();
@@ -443,5 +448,152 @@ describe('Sing: errors and Esc', () => {
     await mount();
     container.querySelector<HTMLButtonElement>('button[aria-label="Back"]')!.click();
     expect(route.value.name).toBe('level');
+  });
+});
+
+describe('Sing: the live hint', () => {
+  const DRILL: RunTarget = { kind: 'drill', levelId: 'foundations.03', step: 1 };
+  /**
+   * An eight-second hold in the medium (+-25) zone of Hold it steady and after, where steady and wobbly are said; the
+   * note is the one the exercise was realized at.
+   */
+  const HOLD = prepare(exercise([note(0, 8)], { tolerance: 'default' }));
+  const NOTE = HOLD.realized.steps[0].midi!;
+  /** An echo: the app plays the note for two seconds, a one-second rest, then the singer's three. */
+  const ECHO = prepare(exercise([note(0, 2, { cue: CUE.listen }), rest(1), note(0, 3, { cue: CUE.sing })]));
+  const ORIGIN = 12.5;
+
+  /** The prepared run the screen is given for a target: the level's or the drill's own, with a hand-written exercise in it. */
+  const singable =
+    (source: typeof HOLD) =>
+    (target: RunTarget): PreparedRun => ({
+      ...makePrepared('foundations.01'),
+      target,
+      def: source.def,
+      realized: source.realized,
+      ...(target.kind === 'drill' ? { drill: { levelId: target.levelId, step: target.step, stepCount: 4, good: 0, needed: 2 } } : {}),
+    });
+
+  const hint = (): HTMLElement => q('[data-testid="live-hint"]')!;
+  const words = (): string => q('[data-testid="live-hint-text"]')?.textContent ?? '';
+  const tick = (): Promise<void> =>
+    act(() => {
+      vi.advanceTimersByTime(HINT_TICK_MS);
+    });
+  /** The take is on (or in its count-in), on the runner's clock. */
+  const start = (runner: FakeRunner, phase: 'count-in' | 'singing' = 'singing'): Promise<void> =>
+    act(() => {
+      runner.phase.value = phase;
+      runner.origin.value = ORIGIN;
+    });
+  /** Deliver frames as the engine would, a timer period at a time, with a look after each. */
+  async function play(frames: ReturnType<typeof voiceFrames>): Promise<void> {
+    const per = Math.round((FRAME_RATE * HINT_TICK_MS) / 1000);
+    for (let i = 0; i < frames.length; i += per) {
+      engineRig.emit(frames.slice(i, i + per));
+      await tick();
+    }
+  }
+  const silence = (from: number, to: number) => voiceFrames(ORIGIN, from, to, () => NaN);
+  const sung = (from: number, to: number, cents: number) => voiceFrames(ORIGIN, from, to, () => NOTE + cents / 100, 2);
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    runnerState.prepare = singable(HOLD);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('is on the canvas from the start, silent, and listening to nothing until the take', async () => {
+    const runner = await mount();
+    expect(q('.pl-live-body__canvas [data-testid="live-hint"]')).not.toBeNull();
+    expect(hint().dataset.kind).toBe('none');
+    const quiet = engineRig.listeners; // the readouts
+    await act(() => {
+      runner.phase.value = 'listening'; // the Listen demo: the app plays, nothing to say
+    });
+    expect(hint().dataset.kind).toBe('none');
+    expect(engineRig.listeners).toBe(quiet);
+  });
+
+  it('follows the singer through a take: sing now, a little lower, then steady, and lets go when the take is scored', async () => {
+    const runner = await mount();
+    const quiet = engineRig.listeners;
+    await start(runner);
+    expect(engineRig.listeners).toBe(quiet + 1);
+    await play(silence(0, 0.6));
+    expect(hint().dataset.kind).toBe('sing');
+    expect(words()).toBe('sing now');
+    await play(sung(0.6, 2.2, 80)); // 80 cents sharp in a medium zone
+    expect(words()).toBe('a little lower');
+    expect(hint().dataset.glyph).toBe('down');
+    await play(sung(2.2, 5.5, 0));
+    expect(words()).toBe('steady, good');
+    expect(hint().dataset.glyph).toBe('check');
+    await act(() => {
+      runner.phase.value = 'analyzing';
+    });
+    expect(hint().dataset.kind).toBe('none');
+    expect(engineRig.listeners).toBe(quiet);
+  });
+
+  it('reads the gauge against the note asked for, as the hint does (review R1): a half step sharp is off, never "On it"', async () => {
+    const runner = await mount();
+    await start(runner);
+    await play(sung(0.6, 2.4, 100)); // right on the next key up: the nearest note would have read "On it"
+    expect(q('[data-testid="live-pitch"]')?.textContent).toBe('A little high');
+    expect(words()).toBe('a little lower');
+    await play(sung(2.4, 3.6, 0));
+    expect(q('[data-testid="live-pitch"]')?.textContent).toBe('On it');
+  });
+
+  it('keeps its words while the screen around it changes (the cue, the progress)', async () => {
+    const runner = await mount();
+    await start(runner);
+    await play(silence(0, 0.6));
+    expect(words()).toBe('sing now');
+    await act(() => {
+      runner.cue.value = 'Hold it steady and straight';
+      runner.progress.value = 0.3;
+    });
+    await act(() => {
+      runner.cue.value = 'Next note';
+    });
+    expect(hint().dataset.kind).toBe('sing');
+    expect(words()).toBe('sing now');
+  });
+
+  it.each([
+    ['a level take', LEVEL],
+    ['a drill take', DRILL],
+  ])('is the same on %s', async (_name, target) => {
+    const runner = await mount(target);
+    await start(runner);
+    await play(silence(0, 0.6));
+    expect(words()).toBe('sing now');
+    await play(sung(0.6, 2.0, -80));
+    expect(words()).toBe('a little higher');
+    expect(hint().dataset.glyph).toBe('up');
+  });
+
+  it('says "listen..." while the app plays the note, "breathe" in the rest, and "sing now" on the singer\'s turn', async () => {
+    runnerState.prepare = singable(ECHO);
+    const runner = await mount();
+    await start(runner);
+    await play(silence(0, 0.9));
+    expect(words()).toBe('listen...');
+    await play(silence(0.9, 2.5));
+    expect(words()).toBe('breathe');
+    await play(silence(2.5, 3.6));
+    expect(words()).toBe('sing now');
+  });
+
+  it('says "listen..." through the count-in while its starting pitch sounds', async () => {
+    const runner = await mount();
+    await start(runner, 'count-in');
+    await play(silence(-1.5, -0.8));
+    expect(hint().dataset.kind).toBe('listen');
+    expect(words()).toBe('listen...');
   });
 });

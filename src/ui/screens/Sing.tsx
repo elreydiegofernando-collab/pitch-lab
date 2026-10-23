@@ -1,7 +1,9 @@
 /**
  * Sing: the take (docs/DESIGN.md §13.4). The Live layout with the exercise on the canvas: target bars whose height is the
  * level's tolerance band, the vibrato zone where the exercise scores vibrato, a count-in counter, the cue pill, a 2 px
- * progress hairline and one context chip (tempo rung, audition test, workout item). One runner per visit; Listen, Sing
+ * progress hairline, one context chip (tempo rung, audition test, workout item, practice step) and the live hint ("a
+ * little higher", "steady, good": drill takes and level takes alike). The readouts' gauge reads the voice against the
+ * note being asked for (gauge-target.ts), so it and the hint always agree. One runner per visit; Listen, Sing
  * and Stop call it straight from the click or key event, which keeps iOS audio start inside the gesture. When the runner
  * is done the report replaces this screen, so Back from the report returns to the level.
  */
@@ -21,11 +23,13 @@ import { Button } from '../components/Button';
 import { ReadoutCluster } from '../components/ReadoutCluster';
 import { PitchViewHost } from '../pitch-view/PitchViewHost';
 import type { PitchView } from '../pitch-view/types';
+import { LiveHint } from '../practice/LiveHint';
 import { MoreSheet } from '../practice/MoreSheet';
 import { PracticeBar } from '../practice/PracticeBar';
 import { TraceReplay } from '../practice/TraceReplay';
 import { Unavailable } from '../practice/Unavailable';
 import { contextChip, singTitle } from '../practice/copy';
+import { planGauge } from '../practice/gauge-target';
 import { viewReducedMotion } from '../practice/motion';
 import { fitPitchWindow } from '../practice/replay-geometry';
 import { tryCreateRunner } from '../practice/runner-handle';
@@ -91,6 +95,10 @@ function SingTake(props: { target: RunTarget }): JSX.Element {
   }, [phase]);
 
   const tolerance = prepared ? CONFIG.tolerance[prepared.def.tolerance] : CONFIG.tolerance.default;
+  // The gauge reads the voice against the note asked for during the take (gauge-target.ts), never the nearest note, so
+  // it says what the hint says; outside a take nothing is asked.
+  const gauge = useMemo(() => (prepared ? planGauge(prepared.def, prepared.realized) : null), [prepared]);
+  const gaugeTarget = (frameT: number): number | 'listen' | null => (gauge && origin !== null ? gauge.at(frameT - origin) : null);
   const notes = prepared?.realized.notes;
   const rangeFinder = prepared?.def.kind === 'range-finder';
   const pitchWindow = useMemo(() => (notes ? fitPitchWindow(notes, [], rangeFinder ? { margin: RANGE_FINDER_MARGIN } : {}) : null), [notes, rangeFinder]);
@@ -130,7 +138,7 @@ function SingTake(props: { target: RunTarget }): JSX.Element {
 
       <div class="pl-live-body">
         <div class="pl-live-body__readouts pl-safe-x">
-          <ReadoutCluster engine={engine} toleranceCents={tolerance} notation={notation} />
+          <ReadoutCluster engine={engine} toleranceCents={tolerance} notation={notation} targetAt={gaugeTarget} />
           {error ? <RunErrorBanner error={error} /> : null}
           {defaultRange && !error ? <Banner kind="info" message="Using a default range until you pass the Range finder." /> : null}
         </div>
@@ -166,6 +174,7 @@ function SingTake(props: { target: RunTarget }): JSX.Element {
             <ContextChip text={prepared ? contextChip(prepared, props.target) : null} />
           </div>
           <CountInOverlay beat={countIn} beats={prepared?.def.countInBeats ?? 0} />
+          <LiveHint engine={engine} prepared={prepared} origin={origin} active={taking} />
         </div>
 
         <div class="pl-live-body__bottombar">

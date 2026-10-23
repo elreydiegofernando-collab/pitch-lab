@@ -1,5 +1,9 @@
 // @vitest-environment happy-dom
-/** Report on a real judged take (the synthetic singer through the real analyzers), with the runner's next-step list mocked. */
+/**
+ * Report on a real judged take (the synthetic singer through the real analyzers), with the runner's next-step list mocked.
+ * A practice try of a lesson reads its lesson from fixture lessons (src/ui/lesson/test-support.ts), never the Foundations
+ * content.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
@@ -13,16 +17,25 @@ vi.mock('../../runtime/runner', async () => (await import('../practice/test-fake
 vi.mock('../../state/session', async () => (await import('../practice/test-fakes')).sessionModule());
 vi.mock('../../state/settings', async () => (await import('../practice/test-fakes')).settingsModule());
 vi.mock('../../state/audio', async () => (await import('../practice/test-fakes')).audioModule());
+vi.mock('../../lessons', async () => (await import('../lesson/test-support')).lessonsModule());
+vi.mock('../../lessons/progress', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lessons/progress')>()),
+  ...(await import('../lesson/test-support')).lessonProgressModule(),
+}));
 const exportMock = vi.hoisted(() => ({ build: vi.fn() }));
 vi.mock('../../coaching/export', async (importOriginal) => ({ ...(await importOriginal<typeof import('../../coaching/export')>()), buildCoachingFile: exportMock.build }));
 
 import { back, installRouteGuard, resetRouterForTests, route, routeOf } from '../../router';
 import { CHECKUP_TASKS } from '../../checkup/types';
 import { coachTake } from '../../coaching/coach';
-import { getExercise } from '../../exercises';
+import { getExercise, getLevel, getWorld } from '../../exercises';
+import type { LessonDef } from '../../lessons/types';
 import { attempt } from '../../progress/test-fixtures';
 import { activeCheckup, startCheckup } from '../../runtime/checkup';
 import type { AfterTakeAction, TakeOutcome } from '../../runtime/types';
+import type { AttemptRecord } from '../../storage/schema';
+import { lessonNumber } from '../lesson/model';
+import { fixtureLesson, lessonRig, resetLessons, setLessons } from '../lesson/test-support';
 import { makeOutcome } from '../practice/outcome-fixture';
 import { createRunnerMock, lastOutcomeSignal, resetRunner, resetSession, runnerState, session, settingsSignal, snapshotAfter, synthMocks, type FakeRunner } from '../practice/test-fakes';
 import { DEFAULT_SETTINGS } from '../../state/settings-types';
@@ -30,7 +43,7 @@ import { Report } from './Report';
 
 const NEXT: AfterTakeAction[] = [
   { kind: 'retry', label: 'Retry', primary: false, route: routeOf('sing', { target: 'level', levelId: 'foundations.03' }) },
-  { kind: 'next-level', label: 'Next level', primary: true, route: routeOf('level', { levelId: 'foundations.04' }) },
+  { kind: 'next-level', label: 'Next level', primary: true, route: routeOf('level', { levelId: 'foundations.13' }) },
 ];
 const MISSED: AfterTakeAction[] = [
   { kind: 'retry', label: 'Retry', primary: true, route: routeOf('sing', { target: 'level', levelId: 'foundations.03' }) },
@@ -61,6 +74,7 @@ const MISS = makeOutcome({ singer: { offsetSemis: 2 }, audio: true });
 beforeEach(() => {
   resetSession(['foundations.01', 'foundations.02']);
   resetRunner();
+  resetLessons();
   exportMock.build.mockReset();
   flow.afterTakeActions.mockReset();
   document.documentElement.dataset.reducedMotion = 'on';
@@ -104,7 +118,7 @@ describe('Report: the verdict and the score', () => {
 
   it('names what was sung, with the tempo for a ladder level', async () => {
     await mount(PASSING);
-    expect(q('.pl-verdict')?.textContent).toContain('Sustain I');
+    expect(q('.pl-verdict')?.textContent).toContain(getLevel('foundations.03')!.title);
     await act(() => {
       render(null, container);
     });
@@ -201,7 +215,7 @@ describe('Report: the verdict and the score', () => {
 });
 
 describe('Report: tiles, replay, tip', () => {
-  it('shows each tile with its value, its target and a glyph for met or unmet', async () => {
+  it('shows each tile in plain words: its reading, its goal and a glyph for met or unmet (src/ui/practice/ReportParts.tsx)', async () => {
     await mount(PASSING);
     const tiles = [...container.querySelectorAll('.pl-tile')];
     expect(tiles.length).toBe(PASSING.tiles.length);
@@ -210,17 +224,16 @@ describe('Report: tiles, replay, tip', () => {
     for (const [i, el] of tiles.entries()) {
       const t = PASSING.tiles[i];
       expect(el.textContent).toContain(t.label);
-      expect(el.textContent).toContain(t.display);
-      expect(el.textContent).toContain(t.targetDisplay);
-      expect(el.textContent).toContain(t.op === '>=' ? '≥' : '≤');
+      expect(el.querySelector(`[data-testid="tile-${t.metric}-value"]`)?.textContent?.length).toBeGreaterThan(0);
+      expect(el.querySelector(`[data-testid="tile-${t.metric}-goal"]`)?.textContent).toMatch(/^Goal: /);
       expect(el.querySelector('svg')).not.toBeNull();
-      expect(el.textContent).toMatch(/target met|target not met|not measured/);
+      expect(el.textContent).toMatch(/goal met|goal not met|not measured/);
     }
   });
 
   it('marks an unmet tile with words as well as a glyph', async () => {
     await mount(MISS, MISSED);
-    expect(text()).toContain('target not met');
+    expect(text()).toContain('goal not met');
   });
 
   it('shows the replay with its note names and legend, and exactly one coaching tip', async () => {
@@ -285,7 +298,7 @@ describe('Report: the next steps', () => {
   it('opens an action with replace, so Back from the next screen skips the report', async () => {
     await mount(PASSING);
     q<HTMLButtonElement>('[data-testid="report-primary"]')!.click();
-    expect(route.value).toEqual(routeOf('level', { levelId: 'foundations.04' }));
+    expect(route.value).toEqual(routeOf('level', { levelId: 'foundations.13' }));
     // [home, level, report] became [home, level, next level]: the report is gone from the stack.
     resetRouterForTests([routeOf('home'), routeOf('level', { levelId: 'foundations.03' }), routeOf('report')]);
     installRouteGuard(() => ({ ok: true }));
@@ -332,9 +345,9 @@ describe('Report: the next steps', () => {
 
 describe('Report: what the take unlocked', () => {
   const events: TakeOutcome['unlocked'] = [
-    { kind: 'level-passed', levelId: 'foundations.03', title: 'Sustain I', mastery: 2 },
-    { kind: 'level-opened', levelId: 'foundations.04', title: 'Sustain II' },
-    { kind: 'feature', featureId: 'live.cracks', title: 'Crack markers on the Live trace' },
+    { kind: 'level-passed', levelId: 'foundations.03', title: 'Hold it', mastery: 2 },
+    { kind: 'level-opened', levelId: 'foundations.13', title: 'Hold it steady' },
+    { kind: 'feature', featureId: 'live.cracks', title: 'Cracks marked on your Live line' },
   ];
 
   it('lists what opened after a pass, but not the pass itself', async () => {
@@ -342,9 +355,9 @@ describe('Report: what the take unlocked', () => {
     const strip = q('[data-testid="unlocked-strip"]')!;
     expect(strip).not.toBeNull();
     expect(strip.textContent).toContain('Unlocked');
-    expect(strip.textContent).toContain('Sustain II');
-    expect(strip.textContent).toContain('Crack markers on the Live trace');
-    expect(strip.textContent).not.toContain('Sustain I,');
+    expect(strip.textContent).toContain('Hold it steady');
+    expect(strip.textContent).toContain('Cracks marked on your Live line');
+    expect(strip.textContent).not.toContain('Hold it,');
     expect(strip.querySelector('svg')).not.toBeNull();
   });
 
@@ -393,9 +406,12 @@ describe('Report: the Range finder', () => {
 describe('Report: a task of the voice check-up', () => {
   const SIREN = makeOutcome({ levelId: 'foundations.05' });
   const RESULTS: AfterTakeAction[] = [{ kind: 'checkup-results', label: 'See your results', primary: true, route: routeOf('checkup') }];
+  /** The check-up's siren task (wherever the battery puts it), and its plain title. */
+  const SLIDE = CHECKUP_TASKS.findIndex((t) => t.skills.some((s) => s.skill === 'slides'));
+  const SLIDE_TITLE = CHECKUP_TASKS[SLIDE].title;
 
   /** A take of check-up task `taskIndex` (the siren), as the runner prepares and logs it: an audition take tagged with the check-up. */
-  function checkupTake(base: TakeOutcome, over: { passed?: boolean; durationSec?: number; noVoice?: boolean; notJudged?: 'stopped' } = {}, taskIndex = 2): TakeOutcome {
+  function checkupTake(base: TakeOutcome, over: { passed?: boolean; durationSec?: number; noVoice?: boolean; notJudged?: 'stopped' } = {}, taskIndex = SLIDE): TakeOutcome {
     const def = getExercise(CHECKUP_TASKS[taskIndex].exerciseId)!;
     return {
       ...base,
@@ -418,7 +434,7 @@ describe('Report: a task of the voice check-up', () => {
   it('names the task plainly, gives a calm verdict and no score ring or tally: a check-up, not a test', async () => {
     await mount(checkupTake(SIREN), RESULTS);
     expect(q('[data-testid="verdict"]')?.textContent).toBe('Sung');
-    expect(q('.pl-verdict')?.textContent).toContain('Slide up and down');
+    expect(q('.pl-verdict')?.textContent).toContain(SLIDE_TITLE);
     expect(text()).not.toContain('Audition');
     expect(text()).not.toMatch(/Not yet|fail|wrong/i);
     expect(q('[data-testid="score-reveal"]')).toBeNull();
@@ -428,12 +444,12 @@ describe('Report: a task of the voice check-up', () => {
   });
 
   it('a test that passed says so, and shows what it opened', async () => {
-    const opened: TakeOutcome['unlocked'] = [{ kind: 'level-opened', levelId: 'foundations.05', title: 'Sirens & glides' }];
+    const opened: TakeOutcome['unlocked'] = [{ kind: 'level-opened', levelId: 'foundations.05', title: 'Sirens' }];
     await mount({ ...checkupTake(SIREN, { passed: true }), unlocked: opened }, RESULTS);
     expect(q('[data-testid="verdict"]')?.textContent).toBe('Passed');
-    expect(q('.pl-verdict')?.textContent).toContain('Slide up and down');
+    expect(q('.pl-verdict')?.textContent).toContain(SLIDE_TITLE);
     expect(q('[data-testid="score-reveal"]')).toBeNull();
-    expect(q('[data-testid="unlocked-strip"]')?.textContent).toContain('Sirens & glides');
+    expect(q('[data-testid="unlocked-strip"]')?.textContent).toContain('Sirens');
   });
 
   it('a take that measured nothing says why in check-up words, never “not judged for the level” or “as a test”', async () => {
@@ -459,7 +475,7 @@ describe('Report: a task of the voice check-up', () => {
     const s = startCheckup();
     activeCheckup.value = { ...s, attemptIds: ['a', 'b', 'c', 'd', 'e'] };
     flow.afterTakeActions.mockReturnValue(RESULTS);
-    lastOutcomeSignal.value = checkupTake(SIREN, {}, 4);
+    lastOutcomeSignal.value = checkupTake(SIREN, {}, SLIDE);
     resetRouterForTests([routeOf('home'), routeOf('checkup'), routeOf('report')]);
     installRouteGuard(() => ({ ok: true }));
     container = document.createElement('div');
@@ -682,5 +698,166 @@ describe('Report: the coaching', () => {
     expect(q('[data-testid="coach-depth"]')).toBeNull();
     expect(q('[data-testid="coach-why"]')).toBeNull();
     expect(q('[data-testid="coach-send"]')).toBeNull();
+  });
+});
+
+describe('Report: a practice try of a lesson (training, not testing)', () => {
+  const LEVEL_ID = 'foundations.13';
+  const lessonNo = (): number => lessonNumber(getWorld('foundations'), getLevel(LEVEL_ID)!);
+
+  /** The fixture lesson, with step `real` singing the takes' own exercise (so the coaching reads a real exercise). */
+  function lessonWith(real: number): LessonDef {
+    const base = fixtureLesson(LEVEL_ID);
+    return { ...base, practice: base.practice.map((p, i) => (i === real ? { ...p, exerciseId: MISS.prepared.def.id } : p)) };
+  }
+
+  /** `base` as a try of practice step `step`, as the runner writes one: kind 'practice', no level, and the step's counts. */
+  function drillTake(base: TakeOutcome, step: number, counts: { good: number; needed: number } | null = null): TakeOutcome {
+    const lesson = lessonRig.lessons[LEVEL_ID];
+    const practice = lesson.practice[step];
+    return {
+      ...base,
+      prepared: {
+        ...base.prepared,
+        target: { kind: 'drill', levelId: LEVEL_ID, step },
+        level: null,
+        passLines: [],
+        drill: counts ? { levelId: LEVEL_ID, step, stepCount: lesson.practice.length, ...counts } : null,
+      },
+      attempt: { ...base.attempt, kind: 'practice', levelId: null, exerciseId: practice.exerciseId, metrics: base.analysis.metrics },
+    };
+  }
+
+  /** Earlier tries of a step in the log, good (in tune most of the time, the fixture rule) or not. */
+  function tries(step: number, n: number, good: boolean): AttemptRecord[] {
+    const exerciseId = lessonRig.lessons[LEVEL_ID].practice[step].exerciseId;
+    return Array.from({ length: n }, () =>
+      attempt({ profileId: 'singer-1', exerciseId, levelId: null, passed: good, score: good ? 0.8 : 0.2, metrics: { 'accuracy.inTolerancePct': good ? 90 : 10 } }),
+    );
+  }
+
+  const actions = (step: number): AfterTakeAction[] => [
+    { kind: 'next-try', label: 'Again', primary: true, route: routeOf('sing', { target: 'drill', levelId: LEVEL_ID, itemIndex: String(step) }) },
+    { kind: 'lesson', label: 'Back to the lesson', primary: false, route: routeOf('level', { levelId: LEVEL_ID }) },
+  ];
+
+  beforeEach(() => setLessons(lessonWith(1)));
+
+  it('has a good and a not-good try to work with (the fixture rule: in tune at least half the time)', () => {
+    expect(PASSING.analysis.metrics['accuracy.inTolerancePct'] ?? 0).toBeGreaterThanOrEqual(50);
+    expect(MISS.analysis.metrics['accuracy.inTolerancePct'] ?? 0).toBeLessThan(50);
+  });
+
+  it('says "Good try" with a glyph, the lesson and step, and the step’s good tries: no score ring, tiles or celebration', async () => {
+    const take = { ...drillTake(PASSING, 1), unlocked: [{ kind: 'level-opened' as const, levelId: 'foundations.05', title: 'Next' }] };
+    session.attemptLog.value = [...tries(1, 1, true), take.attempt];
+    await mount(take, actions(1));
+    expect(q('[data-testid="verdict"]')?.textContent).toBe('Good try');
+    expect(q('.pl-drill--good svg')).not.toBeNull();
+    expect(q('[data-testid="drill-step"]')?.textContent).toBe(`Lesson ${lessonNo()} · Step 2 of 3: ${lessonRig.lessons[LEVEL_ID].practice[1].title}`);
+    expect(q('[data-testid="drill-verdict"] [data-testid="good-tries"]')?.textContent).toBe('2 of 3 good tries');
+    expect(q('[data-testid="drill-verdict"]')?.querySelectorAll('.pl-tries__dot--good')).toHaveLength(2);
+    expect(q('[data-testid="drill-next"]')).toBeNull();
+    expect(q('[data-testid="score-reveal"]')).toBeNull();
+    expect(q('.pl-tiles')).toBeNull();
+    expect(q('.pl-tally-lights')).toBeNull();
+    expect(q('[data-testid="unlocked-strip"]')).toBeNull();
+    expect(q('.pl-appbar__title')?.textContent).toBe('Practice');
+    expect(document.activeElement).toBe(q('[data-testid="verdict"]'));
+  });
+
+  it('says when the try finished its step', async () => {
+    const take = drillTake(PASSING, 1);
+    session.attemptLog.value = [...tries(1, 2, true), take.attempt];
+    await mount(take, actions(1));
+    expect(q('[data-testid="good-tries"]')?.textContent).toBe('3 of 3 good tries');
+    expect(q('[data-testid="drill-next"]')?.textContent).toBe('This step is done. On to the next one.');
+  });
+
+  it('says the singer is ready for the check once every step is done, and the check is the next move', async () => {
+    setLessons(lessonWith(2));
+    const take = drillTake(PASSING, 2);
+    session.attemptLog.value = [...tries(0, 2, true), ...tries(1, 3, true), ...tries(2, 1, true), take.attempt];
+    await mount(take, [{ kind: 'take-check', label: 'Take the check', primary: true, route: routeOf('sing', { target: 'level', levelId: LEVEL_ID }) }]);
+    expect(q('[data-testid="good-tries"]')?.textContent).toBe('2 of 2 good tries');
+    expect(q('[data-testid="drill-next"]')?.textContent).toBe('Every practice step is done: you are ready for the check.');
+    q<HTMLButtonElement>('[data-testid="report-primary"]')!.click();
+    expect(route.value).toEqual(routeOf('sing', { target: 'level', levelId: LEVEL_ID }));
+  });
+
+  it('says "Not quite yet", never alarm copy, and keeps the coaching and the replay (they are the training)', async () => {
+    const take = drillTake(MISS, 1);
+    session.attemptLog.value = [...tries(1, 1, true), take.attempt];
+    await mount(take, actions(1));
+    expect(q('[data-testid="verdict"]')?.textContent).toBe('Not quite yet');
+    expect(q('.pl-drill--not-yet svg')).not.toBeNull();
+    expect(q('[data-testid="good-tries"]')?.textContent).toBe('1 of 3 good tries');
+    expect(text()).not.toMatch(/fail|wrong|bad/i);
+    expect(q('[data-testid="score-reveal"]')).toBeNull();
+    expect(q('.pl-tiles')).toBeNull();
+    expect(q('[data-testid="coach-card"]')).not.toBeNull();
+    expect(q('.pl-replay canvas')).not.toBeNull();
+  });
+
+  it('says why a try stopped early, or with nothing heard, did not count', async () => {
+    lessonRig.good = false; // what the lesson's rule says of a try that did not run to its end
+    const take = drillTake(PASSING, 1);
+    await mount({ ...take, evaluation: { ...take.evaluation, passed: false, notJudged: 'stopped' } }, actions(1));
+    expect(q('[data-testid="verdict"]')?.textContent).toBe('Not quite yet');
+    expect(q('[data-testid="verdict-reason"]')?.textContent).toBe('Stopped early: a try counts when you sing it to the end.');
+    await act(() => {
+      render(null, container);
+    });
+    container.remove();
+    await mount({ ...take, analysis: { ...take.analysis, tipContext: { ...take.analysis.tipContext, noVoice: true } } }, actions(1));
+    expect(q('[data-testid="verdict"]')?.textContent).toBe('Nothing came through');
+    expect(q('.pl-drill--silent')).not.toBeNull();
+    expect(q('[data-testid="verdict-reason"]')?.textContent).toContain('Nothing came through the microphone');
+  });
+
+  it('sings the same step again from the amber button, replacing the report', async () => {
+    const take = drillTake(MISS, 1);
+    await mount(take, actions(1));
+    expect(q('[data-testid="report-primary"]')?.textContent).toContain('Again');
+    q<HTMLButtonElement>('[data-testid="report-primary"]')!.click();
+    expect(route.value).toEqual(routeOf('sing', { target: 'drill', levelId: LEVEL_ID, itemIndex: '1' }));
+    expect(back()).toBe(true);
+    expect(route.value).toEqual(routeOf('level', { levelId: 'foundations.03' }));
+  });
+
+  it('"Back to the lesson" returns to the lesson page the try came from: one Back then leaves it (no second copy)', async () => {
+    flow.afterTakeActions.mockReturnValue(actions(1));
+    lastOutcomeSignal.value = drillTake(MISS, 1);
+    resetRouterForTests([routeOf('home'), routeOf('map'), routeOf('level', { levelId: LEVEL_ID }), routeOf('report')]);
+    installRouteGuard(() => ({ ok: true }));
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    await act(() => {
+      render(<Report />, container);
+    });
+    [...container.querySelectorAll<HTMLButtonElement>('nav button')].find((b) => b.textContent?.includes('Back to the lesson'))!.click();
+    expect(route.value).toEqual(routeOf('level', { levelId: LEVEL_ID }));
+    expect(back()).toBe(true);
+    expect(route.value.name).toBe('map');
+  });
+
+  it('plays the try’s own demo from the coaching’s listen move, never the level’s check', async () => {
+    const take = drillTake(MISS, 1);
+    session.attemptLog.value = [...tries(1, 4, false), take.attempt];
+    await mount(take, actions(1));
+    expect(q('[data-testid="coach-card"]')?.getAttribute('data-depth')).toBe('4');
+    q<HTMLButtonElement>('[data-testid="coach-listen"]')!.click();
+    expect(createRunnerMock).toHaveBeenCalledWith({ kind: 'drill', levelId: LEVEL_ID, step: 1 });
+    expect((runnerState.last as FakeRunner).listen).toHaveBeenCalledTimes(1);
+  });
+
+  it('still reports a try of a lesson it cannot find, from the counts the runner wrote', async () => {
+    const take = drillTake(PASSING, 1, { good: 2, needed: 3 });
+    setLessons();
+    await mount(take, actions(1));
+    expect(q('[data-testid="verdict"]')?.textContent).toBe('Good try');
+    expect(q('[data-testid="drill-step"]')?.textContent).toBe('Step 2 of 3');
+    expect(q('[data-testid="good-tries"]')?.textContent).toBe('2 of 3 good tries');
+    expect(q('[data-testid="score-reveal"]')).toBeNull();
   });
 });

@@ -54,7 +54,7 @@ describe('progress lines', () => {
   it('reads one measure on both takes', () => {
     expect(measureLine('accuracy.inTolerancePct', 52, 68)).toEqual({ label: 'Time in tune', before: '52%', now: '68%', better: true });
     expect(measureLine('glide.cracks', 0, 2)).toEqual({ label: 'Breaks', before: 'none', now: '2', better: false });
-    expect(measureLine('onset.settleMs', undefined, 260)).toEqual({ label: 'Time to settle', before: 'not measured', now: 'about a quarter of a second', better: null });
+    expect(measureLine('onset.settleMs', undefined, 260)).toEqual({ label: 'Time to find the note', before: 'not measured', now: 'about a quarter of a second', better: null });
     expect(scoreLine(0.42, 0.61)).toEqual({ label: 'Score', before: '42%', now: '61%', better: true });
     expect(scoreLine(0.6, 0.6)).toMatchObject({ better: null });
   });

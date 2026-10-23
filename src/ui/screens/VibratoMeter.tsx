@@ -3,7 +3,8 @@
  * readouts (rate, extent, centring) each say where they sit against the style's zone, and wobble, bleat and straight
  * show as chips. The numbers come from a sliding window of the last couple of seconds, analysed a few times a second by
  * the same analyzer that scores a take. Listen plays a tone with vibrato at the middle of the zone, so the goal can be
- * heard. The tool opens with the Vibrato world; the screen checks that itself as well as the router.
+ * heard. The tool opens with the Vibrato world; the screen checks that itself as well as the router. The style choice in
+ * More is in plain words (owner, 2026-10-23: no Hz or cents in anything a singer reads), with vibrato a word to tap.
  */
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
@@ -20,9 +21,11 @@ import { activePitchView } from '../../state/pitch-view-registry';
 import { isUnlocked } from '../../state/session';
 import { settings, updateSettings } from '../../state/settings';
 import { requirementHint } from '../../progress';
+import { vibratoStyleWords } from '../../teach/vibrato-words';
 import { AppBar } from '../components/AppBar';
 import { Locked } from '../components/Locked';
 import { Segmented } from '../components/Segmented';
+import { Term } from '../teach/Term';
 import { PitchViewHost } from '../pitch-view/PitchViewHost';
 import { EngineIssue } from '../practice/EngineIssue';
 import { MoreSheet } from '../practice/MoreSheet';
@@ -32,7 +35,7 @@ import type { LiveFeatures, LiveHooks } from '../practice/live-analysis';
 import { viewReducedMotion } from '../practice/motion';
 import { useLiveAnalysis } from '../practice/use-live-analysis';
 import { useReleaseMicOnLeave } from '../practice/use-mic-release';
-import { rateRangeLabel, extentRangeLabel, viewZone, zoneInfo } from '../practice/vibrato-zone';
+import { viewZone, zoneInfo } from '../practice/vibrato-zone';
 
 const METER_FEATURES: LiveFeatures = { cracks: false, onset: false, vibrato: true };
 const NO_MARKERS: LiveHooks = { onCrack: () => {}, onOnset: () => {} };
@@ -144,7 +147,9 @@ function MeterView(): JSX.Element {
       <MoreSheet open={moreOpen} onClose={() => setMoreOpen(false)} showReset>
         {isUnlocked('setting.vibratoStyle') ? (
           <div class="pl-stack">
-            <span class="pl-label">Vibrato style</span>
+            <span class="pl-label">
+              <Term id="vibrato">Vibrato</Term> style
+            </span>
             <Segmented
               aria-label="Vibrato style"
               value={zone.style}
@@ -154,8 +159,8 @@ function MeterView(): JSX.Element {
               ]}
               onChange={(value) => updateSettings({ vibratoStyle: value })}
             />
-            <p class="pl-body-s pl-muted">
-              {zone.name}: {rateRangeLabel(zone)}, {extentRangeLabel(zone)}. The band on the trace follows it.
+            <p class="pl-body-s pl-muted pl-prose" data-testid="meter-style-words">
+              {vibratoStyleWords(zone.style)} The shaded band on your pitch line follows it.
             </p>
           </div>
         ) : (

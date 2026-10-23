@@ -53,26 +53,35 @@ describe('worlds and unlocks (SPEC §11, §11.2)', () => {
     expect(worldsUnlockedBy('foundations.boss').map((w) => w.id)).toEqual(['vibrato', 'song-stage']);
   });
 
-  it('gives every training world 6-10 levels ending in exactly one studio-tolerance Boss Recital', () => {
+  it('gives every later world 6-10 levels ending in exactly one studio-tolerance Boss Recital, and Foundations 13 small lessons', () => {
     for (const w of WORLDS.filter((x) => x.id !== 'song-stage')) {
-      expect(w.levels.length).toBeGreaterThanOrEqual(6);
-      expect(w.levels.length).toBeLessThanOrEqual(10);
+      const foundations = w.id === 'foundations';
+      if (foundations) expect(w.levels).toHaveLength(13);
+      else {
+        expect(w.levels.length).toBeGreaterThanOrEqual(6);
+        expect(w.levels.length).toBeLessThanOrEqual(10);
+      }
       const boss = bossOf(w.id)!;
       expect(boss).toBe(w.levels[w.levels.length - 1]);
       expect(w.levels.filter((l) => l.kind === 'boss')).toHaveLength(1);
       expect(ex(boss.exerciseId).kind).toBe('boss-recital');
-      expect(ex(boss.exerciseId).tolerance).toBe('studio');
+      // The boss is sung at its world's strictest tolerance: studio, except in Foundations, which never reaches it.
+      expect(ex(boss.exerciseId).tolerance).toBe(foundations ? 'default' : 'studio');
     }
   });
 
-  it('tightens tolerance easy -> default -> studio inside each world, never loosening', () => {
+  it('tightens tolerance inside each world, never loosening: easy -> default -> studio, and easy -> default in Foundations', () => {
     const strict = { easy: 0, default: 1, studio: 2 } as const;
     for (const w of WORLDS.filter((x) => x.id !== 'song-stage')) {
       const tols = w.levels.map((l) => strict[ex(l.exerciseId).tolerance]);
       expect(tols[0]).toBe(0);
-      expect(tols[tols.length - 1]).toBe(2);
       for (let i = 1; i < tols.length; i++) expect(tols[i]).toBeGreaterThanOrEqual(tols[i - 1]);
-      expect(new Set(tols).size).toBe(3);
+      if (w.id === 'foundations') {
+        expect(new Set(tols)).toEqual(new Set([0, 1]));
+      } else {
+        expect(tols[tols.length - 1]).toBe(2);
+        expect(new Set(tols).size).toBe(3);
+      }
     }
   });
 
@@ -82,57 +91,151 @@ describe('worlds and unlocks (SPEC §11, §11.2)', () => {
     expect(song.audition).toBeNull();
   });
 
-  it('never steps across a world with nextLevel', () => {
-    expect(nextLevel('foundations.09')?.id).toBe('foundations.boss');
+  it('never steps across a world with nextLevel, and steps in level order, not id order', () => {
+    expect(nextLevel('foundations.06')?.id).toBe('foundations.boss');
+    expect(nextLevel('foundations.13')?.id).toBe('foundations.10');
+    expect(nextLevel('foundations.09')?.id).toBe('foundations.12');
     expect(nextLevel('foundations.boss')).toBeNull();
     expect(nextLevel('nope')).toBeNull();
     expect(getLevel('vibrato.01')?.worldId).toBe('vibrato');
-    expect(levelForExercise('foundations.sustain.2')?.id).toBe('foundations.04');
-    expect(levelForExercise('foundations.audition.1')).toBeUndefined();
+    expect(levelForExercise('foundations.steady.1')?.id).toBe('foundations.13');
+    expect(levelForExercise('foundations.audition.5')).toBeUndefined();
   });
 });
 
-describe('Foundations (SPEC §9.1)', () => {
-  it('follows the unlock map order', () => {
+describe('the Foundations rebuild keeps every old take readable', () => {
+  const RETIRED = [
+    'foundations.range-finder.1', 'foundations.pitch-match.1', 'foundations.sustain.1', 'foundations.sustain.2', 'foundations.siren.1',
+    'foundations.staccato.1', 'foundations.intervals.1', 'foundations.intervals.2', 'foundations.legato.1', 'foundations.boss-recital',
+    'foundations.audition.1', 'foundations.audition.2', 'foundations.audition.3', 'foundations.audition.4',
+  ];
+
+  it('keeps the old material under its old ids, retired: readable, but played by no level or audition', () => {
+    const played = new Set(WORLDS.flatMap((w) => [...w.levels.map((l) => l.exerciseId), ...(w.audition?.exerciseIds ?? [])]));
+    for (const id of RETIRED) {
+      expect(ex(id).retired, id).toBe('2026-10-23');
+      expect(played.has(id), id).toBe(false);
+      expect(levelForExercise(id), id).toBeUndefined();
+    }
+    expect(EXERCISES.filter((e) => e.retired !== undefined).map((e) => e.id).sort()).toEqual([...RETIRED].sort());
+    // The old material as it was sung: Sustain II held for six and eight seconds and never judged a wobble.
+    expect(ex('foundations.sustain.2').title).toBe('Sustain II');
+    expect((ex('foundations.sustain.2').pass.gates ?? []).map((g) => g.metric)).not.toContain('accuracy.sdCents');
+  });
+
+  it('gives Hold it steady a level of its own: it judges a wobble, so a pass of Sustain II (the old .04) is not a pass of it', () => {
+    expect(getLevel('foundations.04')).toBeUndefined();
+    expect(levelsOf('foundations')[3]).toMatchObject({ id: 'foundations.13', title: 'Hold it steady', exerciseId: 'foundations.steady.1' });
+    expect((ex('foundations.steady.1').pass.gates ?? []).map((g) => g.metric)).toContain('accuracy.sdCents');
+  });
+
+  it('records the old placement audition, so what its tests granted stays granted (only the levels that still teach the same)', () => {
+    const former = getAudition('foundations.audition')!.former!;
+    expect(former.exerciseIds).toEqual(['foundations.audition.1', 'foundations.audition.2', 'foundations.audition.3', 'foundations.audition.4']);
+    expect(former.unlockThrough).toEqual(['foundations.04', 'foundations.05', 'foundations.08', 'foundations.09']);
+    expect(former.keeps).not.toContain('foundations.13');
+    expect(former.keeps).not.toContain('foundations.04');
+    for (const id of ['foundations.10', 'foundations.11', 'foundations.12']) expect(former.keeps, id).not.toContain(id);
+  });
+});
+
+describe('Foundations (SPEC §9.1): thirteen small lessons', () => {
+  it('teaches one new thing per level, in the lessons\' order, keeping every persisted level id', () => {
+    expect(levelsOf('foundations').map((l) => [l.index, l.id, l.title])).toEqual([
+      [1, 'foundations.01', 'Range finder'],
+      [2, 'foundations.02', 'Match one note'],
+      [3, 'foundations.03', 'Hold it'],
+      [4, 'foundations.13', 'Hold it steady'],
+      [5, 'foundations.10', 'Two notes, one step apart'],
+      [6, 'foundations.07', 'Two notes, a jump apart'],
+      [7, 'foundations.08', 'Bigger jumps'],
+      [8, 'foundations.11', 'Three notes: do-re-mi'],
+      [9, 'foundations.09', 'Five notes in a row'],
+      [10, 'foundations.12', 'Small slides'],
+      [11, 'foundations.05', 'Sirens'],
+      [12, 'foundations.06', 'Clean starts'],
+      [13, 'foundations.boss', 'Boss Recital'],
+    ]);
     expect(kindsOf('foundations')).toEqual([
-      'range-finder', 'pitch-match', 'sustain', 'sustain', 'siren', 'staccato', 'intervals', 'intervals', 'legato', 'boss-recital',
+      'range-finder', 'pitch-match', 'sustain', 'sustain', 'intervals', 'intervals', 'intervals', 'legato', 'legato', 'siren', 'siren', 'staccato',
+      'boss-recital',
     ]);
   });
 
-  it('has the level names the progressive-disclosure features key on (Sirens & glides, Crispness)', () => {
-    const titles = levelsOf('foundations').map((l) => l.title.toLowerCase());
-    expect(titles.some((t) => t.includes('siren'))).toBe(true);
-    expect(titles.some((t) => t.includes('crisp'))).toBe(true);
+  it('keeps the levels the progressive-disclosure features key on: the sirens open crack markers, clean starts the start readouts', () => {
+    expect(getLevel('foundations.05')!.title).toBe('Sirens');
+    expect(ex(getLevel('foundations.05')!.exerciseId).kind).toBe('siren');
+    expect(getLevel('foundations.06')!.title).toBe('Clean starts');
+    expect(ex(getLevel('foundations.06')!.exerciseId).kind).toBe('staccato');
   });
 
-  it('holds sustains for 4 to 8 seconds', () => {
-    const holds = ['foundations.sustain.1', 'foundations.sustain.2'].flatMap((id) => planAnalysis(realizeId(id)).holds.map((h) => h.note.end - h.note.start));
-    expect(Math.min(...holds)).toBeCloseTo(4, 6);
-    expect(Math.max(...holds)).toBeCloseTo(8, 6);
+  it('opens wide and narrows once, at Hold it steady, where a narrower in-tune zone shows the wobble', () => {
+    const tols = levelsOf('foundations').map((l) => ex(l.exerciseId).tolerance);
+    expect(tols.slice(0, 3)).toEqual(['easy', 'easy', 'easy']);
+    expect(tols.slice(3).every((t) => t === 'default')).toBe(true);
+    for (const e of EXERCISES.filter((x) => x.worldId === 'foundations' && x.retired === undefined)) expect(e.tolerance, e.id).not.toBe('studio');
   });
 
-  it('jumps thirds and fifths, then fifths and octaves, landing each as a fresh attack', () => {
-    const intervals = (id: string) => {
+  it('plays every chunk before it is sung, with nothing sounding while the singer sings', () => {
+    for (const e of EXERCISES.filter((x) => x.worldId === 'foundations' && x.retired === undefined)) {
+      expect(e.pattern[0].cue, e.id).toBe(CUE.listen);
+      expect(e.metronome, e.id).toBe(false);
+      const r = realizeId(e.id);
+      expect(r.reference.length, e.id).toBeGreaterThan(0);
+      for (const tone of r.reference) for (const n of r.notes) expect(tone.end <= n.start || tone.start >= n.end, e.id).toBe(true);
+    }
+  });
+
+  it('holds a note 4 seconds in Hold it, then 4 to 6 seconds in Hold it steady, judging the wobble and the drift only there', () => {
+    const holds = (id: string) => planAnalysis(realizeId(id)).holds.map((h) => Math.round(h.note.end - h.note.start));
+    expect(holds('foundations.hold.1')).toEqual([4, 4, 4]);
+    expect(holds('foundations.steady.1')).toEqual([4, 5, 6]);
+    const judged = (id: string) => [...ex(id).scoring.map((t) => t.metric), ...(ex(id).pass.gates ?? []).map((g) => g.metric)];
+    expect(judged('foundations.hold.1')).not.toContain('accuracy.sdCents');
+    expect(judged('foundations.steady.1')).toEqual(expect.arrayContaining(['accuracy.sdCents', 'accuracy.absDriftCentsPerSec']));
+  });
+
+  it('moves two notes at a time by a step, then jumps of a third and a fifth, then up to an octave, landing each second note as a fresh start', () => {
+    const moves = (id: string) => {
       const notes = realizeId(id).notes;
       const out = new Set<number>();
       for (let i = 0; i + 1 < notes.length; i += 2) out.add(Math.abs(notes[i + 1].midi - notes[i].midi));
       return [...out].sort((a, b) => a - b);
     };
-    expect(intervals('foundations.intervals.1')).toEqual([3, 4, 7]);
-    expect(intervals('foundations.intervals.2')).toEqual([7, 12]);
-    for (const id of ['foundations.intervals.1', 'foundations.intervals.2', 'foundations.staccato.1', 'foundations.pitch-match.1']) {
+    expect(moves('foundations.steps.1')).toEqual([1, 2]);
+    expect(moves('foundations.jumps.1')).toEqual([4, 7]);
+    expect(moves('foundations.jumps.2')).toEqual([7, 12]);
+    for (const id of ['foundations.steps.1', 'foundations.jumps.1', 'foundations.jumps.2', 'foundations.clean-starts.1', 'foundations.match.1']) {
       const r = realizeId(id);
-      expect(planAnalysis(r).attacks).toHaveLength(r.notes.length);
+      expect(planAnalysis(r).attacks, id).toHaveLength(r.notes.length);
     }
   });
 
-  it('marks crack detection per phrase on the sirens and judges the range finder only on range', () => {
-    expect(ex('foundations.siren.1').analyzers).toEqual(['glide', 'cracks']);
-    expect(ex('foundations.range-finder.1').analyzers).toEqual(['range']);
+  it('joins three notes, then five, into connected lines', () => {
+    const lines = (id: string) => planAnalysis(realizeId(id)).transitions.map((t) => t.length);
+    expect(lines('foundations.do-re-mi.1')).toEqual([3, 3, 3, 3]);
+    expect(lines('foundations.five-notes.1')).toEqual([3, 3, 5, 5]);
+  });
+
+  it('slides a step and a third before the full sirens, and judges cracks and the range finder\'s range where they belong', () => {
+    const glides = (id: string) => realizeId(id).notes.filter((n) => n.toMidi !== undefined).map((n) => Math.abs(n.toMidi! - n.midi));
+    expect(glides('foundations.slides.1')).toEqual([2, 2, 4, 4]);
+    expect(Math.max(...glides('foundations.sirens.1'))).toBe(12);
+    expect(ex('foundations.sirens.1').analyzers).toEqual(['glide', 'cracks']);
+    expect(ex('foundations.range.1').analyzers).toEqual(['range']);
+  });
+
+  it('plays a slide or a siren as it is sung: the same slides, at the speed sung, before the singer slides', () => {
+    for (const id of ['foundations.slides.1', 'foundations.sirens.1', 'foundations.drill.first-slide', 'foundations.audition.8']) {
+      const r = realizeId(id);
+      const heard = r.reference.filter((n) => n.toMidi !== undefined).map((n) => [n.toMidi! - n.midi, Math.round((n.end - n.start) * 100)]);
+      const sung = r.notes.filter((n) => n.toMidi !== undefined).map((n) => [n.toMidi! - n.midi, Math.round((n.end - n.start) * 100)]);
+      expect(heard, id).toEqual(sung);
+    }
   });
 
   it('has a pitch match that plays each note before the singer sings it', () => {
-    const r = realizeId('foundations.pitch-match.1');
+    const r = realizeId('foundations.match.1');
     expect(r.reference).toHaveLength(r.notes.length);
     r.notes.forEach((n, i) => {
       expect(n.midi).toBe(r.reference[i].midi);
@@ -140,12 +243,14 @@ describe('Foundations (SPEC §9.1)', () => {
     });
   });
 
-  it('chains a long straight hold, an octave attack and a legato line in its Boss Recital', () => {
-    const r = realizeId('foundations.boss-recital');
+  it('ends with a short tune, phrase by phrase: a long held note, do-re-mi, a jump, steps down and a slide home', () => {
+    const r = realizeId('foundations.boss-tune');
     const plan = planAnalysis(r);
-    expect(Math.max(...plan.holds.map((h) => h.note.end - h.note.start))).toBeGreaterThanOrEqual(5);
-    expect(plan.attacks.map((a) => a.note.midi - r.tonicMidi)).toEqual([0, 12]);
-    expect(plan.transitions[0].length).toBeGreaterThanOrEqual(7);
+    expect(plan.holds[0].note.end - plan.holds[0].note.start).toBeGreaterThanOrEqual(3.5);
+    expect(plan.attacks.map((a) => a.note.midi - r.tonicMidi)).toEqual([0, 0, 4, 7, 2]); // each phrase starts from silence
+    expect(plan.transitions.map((t) => t.length)).toEqual([3, 2, 3]);
+    expect(plan.glides).toHaveLength(1);
+    expect(r.notes.every((n) => n.midi - r.tonicMidi >= 0 && n.midi - r.tonicMidi <= 7)).toBe(true);
   });
 });
 

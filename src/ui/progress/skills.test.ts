@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { WORLDS } from '../../exercises';
+import { WORLDS, getExercise } from '../../exercises';
 import { dayIndexOf } from '../../progress';
 import { SKILLS, isLowerBetter, skillForKind, skillLevel, skillTrend, sparkCoords, unlockedSkills } from './skills';
 import { attemptAt, localNoon, localOffsetMinutes, passWorld, snapshotOf } from './test-fixtures';
@@ -14,6 +14,11 @@ const transitions = SKILLS.find((s) => s.id === 'transitions')!;
 const crispness = SKILLS.find((s) => s.id === 'crispness')!;
 /** The Accuracy skill's metric: the typical miss in cents (lower is better, the same at every tolerance). */
 const MISS = 'accuracy.medianAbsCents';
+/** A level judged on the narrow (studio) zone, held notes and no deliberate pitch motion: none in Foundations since the rebuild. */
+const STUDIO = WORLDS.flatMap((w) => w.levels).find((l) => {
+  const def = getExercise(l.exerciseId);
+  return def?.tolerance === 'studio' && !def.analyzers.some((a) => a === 'pulse' || a === 'vibrato' || a === 'switch');
+})!.id;
 
 describe('which skills show', () => {
   it('shows only the Foundations skills at the start, in dashboard order', () => {
@@ -92,12 +97,12 @@ describe('skillTrend', () => {
   });
 
   it('follows the voice, not the curriculum: an unchanged singer moving from easy to studio levels keeps a flat Accuracy and Crispness line', () => {
-    // Pitch match (easy) -> Sustain II (default) -> Legato lines (studio): the same 14-cent typical miss and 20-cent
+    // Match one note (easy) -> Hold it steady (default) -> a studio level: the same 14-cent typical miss and 20-cent
     // scoop every day. A share "in tolerance" would have fallen 91 -> 68 -> 32 for no change in the voice.
     const attempts = [
       attemptAt('foundations.02', { daysAgo: 6, metrics: { [MISS]: 14, 'onset.scoopCents': 20, 'accuracy.inTolerancePct': 91, 'onset.crispRate': 1 } }),
-      attemptAt('foundations.04', { daysAgo: 3, metrics: { [MISS]: 14, 'accuracy.inTolerancePct': 68 } }),
-      attemptAt('foundations.09', { daysAgo: 0, metrics: { [MISS]: 14, 'onset.scoopCents': 20, 'accuracy.inTolerancePct': 32, 'onset.crispRate': 0.2 } }),
+      attemptAt('foundations.13', { daysAgo: 3, metrics: { [MISS]: 14, 'accuracy.inTolerancePct': 68 } }),
+      attemptAt(STUDIO, { daysAgo: 0, metrics: { [MISS]: 14, 'onset.scoopCents': 20, 'accuracy.inTolerancePct': 32, 'onset.crispRate': 0.2 } }),
     ];
     expect(skillTrend(accuracy, attempts, TODAY, OFFSET).points.map((p) => p.value)).toEqual([14, 14, 14]);
     expect(skillTrend(crispness, attempts, TODAY, OFFSET).points.map((p) => p.value)).toEqual([20, 20]);
@@ -111,7 +116,7 @@ describe('skillTrend', () => {
   });
 
   it('follows Transitions on one tolerance tier, the one sung most recently, and says which', () => {
-    const studio = attemptAt('foundations.09', { daysAgo: 2, metrics: { 'transition.cleanRate': 0.5 } });
+    const studio = attemptAt(STUDIO, { daysAgo: 2, metrics: { 'transition.cleanRate': 0.5 } });
     const trend = skillTrend(transitions, [studio], TODAY, OFFSET);
     expect(trend.tier).toEqual({ tolerance: 'studio', label: 'at ±10¢' });
     expect(trend.points.map((p) => p.value)).toEqual([0.5]);

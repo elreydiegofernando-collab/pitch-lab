@@ -210,7 +210,7 @@ function Player(props: { session: SongSession; heard: boolean; onHeard(): void }
   if (taking) primary = { label: 'Stop', icon: Square, ariaLabel: 'Stop the take', onClick: () => session.stop(), stop: true };
   else if (phase === 'starting') primary = { label: 'Starting…', icon: Mic, ariaLabel: 'Starting the microphone', onClick: () => undefined, busy: true };
   else if (phase === 'scoring') primary = { label: 'Scoring…', icon: Mic, ariaLabel: 'Scoring the take', onClick: () => undefined, busy: true };
-  else if (!calibrated) primary = { label: 'Calibrate', icon: SlidersHorizontal, ariaLabel: 'Calibrate latency in Setup', onClick: () => navigate('setup') };
+  else if (!calibrated) primary = { label: 'Calibrate', icon: SlidersHorizontal, ariaLabel: 'Run the timing check in Setup', onClick: () => navigate('setup') };
   else {
     primary = {
       label: 'Sing',

@@ -2365,9 +2365,12 @@ export function resolveExercise(query: string): ExerciseDef {
     const def = getExercise(level.exerciseId);
     if (def) return def;
   }
-  const hits = EXERCISES.filter((e) => e.id.toLowerCase().includes(q) || e.title.toLowerCase().includes(q));
+  const all = EXERCISES.filter((e) => e.id.toLowerCase().includes(q) || e.title.toLowerCase().includes(q));
+  // A title shared with retired material (sung before a rebuild) means the exercise sung today; its id still finds the old one.
+  const current = all.filter((e) => e.retired === undefined);
+  const hits = current.length > 0 ? current : all;
   if (hits.length === 1) return hits[0];
-  if (hits.length === 0) throw new CoachInputError(`no exercise matches "${query}" (try an exercise id like foundations.siren.1, a level id like foundations.05, or part of a title)`);
+  if (hits.length === 0) throw new CoachInputError(`no exercise matches "${query}" (try an exercise id like foundations.sirens.1, a level id like foundations.05, or part of a title)`);
   throw new CoachInputError(`"${query}" matches ${hits.length} exercises: ${hits.slice(0, 6).map((e) => e.id).join(', ')}${hits.length > 6 ? ', ...' : ''}; name one`);
 }
 
@@ -4257,10 +4260,12 @@ function ratingVerdict(before: SkillRating | null, after: SkillRating | null): C
 function readCheckup(checkupId: string, rows: readonly AttemptRecord[], summary: CheckupSummary | null): CheckupRead {
   const tasks: CheckupTaskRead[] = CHECKUP_TASKS.map((def, index): CheckupTaskRead => {
     const fromSummary = summary?.tasks[index]?.attemptId ?? null;
-    const attempt = (fromSummary !== null ? rows.find((a) => a.id === fromSummary) : undefined) ?? [...rows].reverse().find((a) => a.exerciseId === def.exerciseId) ?? null;
+    // A check-up sung before the rebuild has its tasks under their retired exercises (CheckupTask.formerExerciseIds).
+    const own = (a: AttemptRecord): boolean => a.exerciseId === def.exerciseId || (def.formerExerciseIds ?? []).includes(a.exerciseId);
+    const attempt = (fromSummary !== null ? rows.find((a) => a.id === fromSummary) : undefined) ?? [...rows].reverse().find(own) ?? null;
     return {
       index,
-      exerciseId: def.exerciseId,
+      exerciseId: attempt?.exerciseId ?? def.exerciseId,
       title: def.title,
       attemptId: attempt?.id ?? null,
       at: attempt?.createdAt || null,

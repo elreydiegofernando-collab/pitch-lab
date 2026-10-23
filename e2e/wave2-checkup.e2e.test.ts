@@ -22,7 +22,7 @@ import { launchWithFakeMic } from './chrome';
 import { dismissFirstRun } from './ui';
 import { CHECKUP_TASKS } from '../src/checkup/types';
 
-/** The Range finder is 20 s of material after a 4 s count-in; scoring is well under a second. */
+/** The Range finder is 25 s of material after a 2 s count-in; scoring is well under a second. */
 const TAKE_TIMEOUT_MS = 60_000;
 
 /** The app words a range with an en dash (U+2013), and a context chip with a middle dot (U+00B7). Built from code points so this file stays plain ASCII. */
@@ -169,7 +169,7 @@ describe('Wave 2 - the voice check-up, through the real UI', () => {
     expect(range, 'comfortable range = trimmed inside them').toContain(COMFORTABLE_RANGE);
     expect(await page.getByTestId('score-reveal').count(), 'a check-up task is measured, never graded: no score ring, no tally lights').toBe(0);
     const unlocked = (await page.getByTestId('unlocked-strip').textContent()) ?? '';
-    expect(unlocked, 'passing the Range finder by singing it opens the next level').toContain('Pitch match');
+    expect(unlocked, 'passing the Range finder by singing it opens the next lesson').toContain('Match one note');
 
     // The way on: "Next task" is the one amber button; the same task can be sung again, as a secondary one.
     const primary = page.getByTestId('report-primary');

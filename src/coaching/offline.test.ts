@@ -772,7 +772,7 @@ describe('across the takes', () => {
     expect(text).toMatch(/\n {4}measure +take 3 +take 2 +take 1 +trend +gate\n/);
     expect(text).toMatch(/\n {4}Smoothness +\d+(\.\d+)?% +\d+(\.\d+)?% +\d+(\.\d+)?% +same +>= 25% \(missed in 3 of 3\)\n/);
     expect(text).toMatch(/\n {4}Breaks +3 +2 +1 +better +<= 3\.8 \(missed in 0 of 3\)\n/);
-    expect(text).toMatch(/\n {4}Arrival +\d+(\.\d+)? cents/);
+    expect(text).toMatch(/\n {4}Slide ending off by +\d+(\.\d+)? cents/);
     expect(d.comparison?.metrics.find((m) => m.metric === 'glide.cracks')).toMatchObject({ gate: '<= 3.8', gateMisses: 0 });
   });
 
@@ -838,13 +838,20 @@ describe('a backup', () => {
   });
 
   it('takes the exercise from a flag (an id, a level, or a title) and lists the last six attempts of it', () => {
-    for (const exercise of ['foundations.siren.1', 'foundations.05', 'sirens']) {
-      const [d] = analyzeInputs([backupInput([...sirens, ...pitch, ...song])], { exercise });
-      expect(d.exercise.id).toBe(SIRENS.id);
+    // A level or a title names the exercise the level plays today.
+    const today = getExercise('foundations.sirens.1') as ExerciseDef;
+    const rebuilt = sirens.map((a) => ({ ...a, id: `n${a.id}`, exerciseId: today.id }));
+    for (const exercise of [today.id, 'foundations.05', 'sirens']) {
+      const [d] = analyzeInputs([backupInput([...sirens, ...rebuilt, ...pitch, ...song])], { exercise });
+      expect(d.exercise.id).toBe(today.id);
       expect(d.takes).toHaveLength(6);
-      expect(d.takes.map((t) => t.attemptId)).toEqual(['s6', 's5', 's4', 's3', 's2', 's1']);
+      expect(d.takes.map((t) => t.attemptId)).toEqual(['ns6', 'ns5', 'ns4', 'ns3', 'ns2', 'ns1']);
       expect(d.takes.every((t) => t.source === 'metrics')).toBe(true);
     }
+    // Retired material (sung before the rebuild) is found by its own id, and its takes read back against it.
+    const [old] = analyzeInputs([backupInput([...sirens, ...rebuilt, ...pitch, ...song])], { exercise: SIRENS.id });
+    expect(old.exercise.id).toBe(SIRENS.id);
+    expect(old.takes.map((t) => t.attemptId)).toEqual(['s6', 's5', 's4', 's3', 's2', 's1']);
     expect(() => analyzeInputs([backupInput(sirens)], { exercise: 'no such thing' })).toThrow(/no exercise matches "no such thing"/);
     expect(() => analyzeInputs([backupInput(sirens)], { exercise: 'foundations.' })).toThrow(/matches \d+ exercises/);
     expect(() => analyzeInputs([backupInput(sirens)], { exercise: 'foundations.sustain.1' })).toThrow(/has no attempts of Sustain I/);
@@ -1196,7 +1203,7 @@ describe('the file the app writes', () => {
     const name = coachingFileName(file);
     expect(name).toMatch(/^pitch-lab-coach-foundations-05-\d{4}-\d\d-\d\d-\d{4}\.json$/);
     const [d] = analyzeInputs([readCoachInput(new TextEncoder().encode(await coachingBlob(file).text()), name)], { engine: fakeEngine() });
-    expect(d.title).toBe('Sirens & glides (foundations.05)');
+    expect(d.title).toBe('Sirens (foundations.05)'); // the level's title today; the takes are the old siren's
     expect(d.appVersion).toBe('0.1.0+index-test');
     expect(d.singer?.notation).toBe('flats');
     expect(d.takes.map((t) => t.attemptId)).toEqual(['att-3', 'att-2', 'att-1']);

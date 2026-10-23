@@ -3,7 +3,9 @@
  * wrong and where (spot chips that mark the moment on the replay), the tip, then more help the more misses in a row:
  * why it happens (depth 2), a numbered walk-through (depth 3), a gentler way in and the moves (depth 4), and "since
  * last time". Calm and plain: no alarm colours, every button secondary (the screen's own action stays the one amber
- * primary), and nothing said by colour alone.
+ * primary), and nothing said by colour alone. Music words in the card's sentences ("sharp", "half step") are tappable,
+ * the first time each appears on the card (ui/lesson/terms.tsx), so the advice never leans on a word the singer cannot
+ * look up.
  */
 import type { JSX } from 'preact';
 import { ArrowRight, Coffee, Equal, Headphones, Lightbulb, MapPin, Repeat, Send, Square, TrendingDown, TrendingUp } from 'lucide-preact';
@@ -11,7 +13,9 @@ import { REST_MISSES } from '../../coaching/coach';
 import { ordinal, sentence } from '../../coaching/plain';
 import type { CoachMove, Coaching, ProgressLine } from '../../coaching/types';
 import type { ExerciseDef } from '../../exercises/types';
+import type { TermId } from '../../teach/glossary';
 import { Button } from '../components/Button';
+import { linkTerms } from '../lesson/terms';
 
 /** True when the exercise's Listen demo plays a slow pass first (a slow demo or a tempo ladder): the move reads "Listen slowly". */
 export function hasSlowDemo(def: Pick<ExerciseDef, 'demo' | 'tempoLadder'>): boolean {
@@ -74,6 +78,9 @@ export function CoachCard(props: CoachCardProps): JSX.Element {
   const lead = depthLine(coaching);
   const rest = coaching.moves.some((m) => m.kind === 'rest');
   const buttons = coaching.moves.filter((m) => m.kind !== 'rest' && (m.kind !== 'listen-slow' || listen));
+  // One set for the whole card: each music word is tappable where it first appears, never a field of links.
+  const seen = new Set<TermId>();
+  const prose = (text: string) => linkTerms(text, seen);
 
   return (
     <section class="pl-card pl-coach" aria-label={title} data-testid="coach-card" data-depth={coaching.depth}>
@@ -93,7 +100,7 @@ export function CoachCard(props: CoachCardProps): JSX.Element {
 
       {problem.what ? (
         <p class="pl-body pl-prose" data-testid="coach-what">
-          {problem.what}
+          {prose(problem.what)}
         </p>
       ) : null}
 
@@ -129,7 +136,7 @@ export function CoachCard(props: CoachCardProps): JSX.Element {
       <div class="pl-coach__part">
         <h4 class="pl-label">{coaching.passed ? 'Next' : 'Try this'}</h4>
         <p class="pl-body pl-prose" data-testid="tip">
-          {coaching.tip}
+          {prose(coaching.tip)}
         </p>
       </div>
 
@@ -137,7 +144,7 @@ export function CoachCard(props: CoachCardProps): JSX.Element {
         <div class="pl-coach__part">
           <h4 class="pl-label">Why it happens</h4>
           <p class="pl-body pl-prose" data-testid="coach-why">
-            {coaching.why}
+            {prose(coaching.why)}
           </p>
         </div>
       ) : null}
@@ -151,7 +158,7 @@ export function CoachCard(props: CoachCardProps): JSX.Element {
                 <span class="pl-coach__step-n pl-tabular" aria-hidden="true">
                   {i + 1}
                 </span>
-                <span class="pl-prose">{step}</span>
+                <span class="pl-prose">{prose(step)}</span>
               </li>
             ))}
           </ol>
@@ -162,7 +169,7 @@ export function CoachCard(props: CoachCardProps): JSX.Element {
         <div class="pl-coach__part">
           <h4 class="pl-label">An easier way in</h4>
           <p class="pl-body pl-prose" data-testid="coach-easier">
-            {coaching.easier}
+            {prose(coaching.easier)}
           </p>
         </div>
       ) : null}

@@ -2,12 +2,13 @@
  * A singer's first session through the real UI of the production build, on ONE browser profile, so IndexedDB and the
  * service worker carry from step to step the way they do on a phone:
  *
- *   Home -> voice care -> Continue -> the Range finder -> Sing -> a passed report (its audio, its range, what it opened)
- *   -> the map shows the next level open and the rest still locked -> Listen plays the next level's demo without the mic,
- *   and Esc in the middle of a take goes back and saves nothing -> a reload keeps the progress, the attempt and the take
- *   (IndexedDB), and the take replays -> the app works offline once the service worker has installed -> Export backup
- *   downloads valid JSON with no audio, Export WAV downloads the real take -> the backup restores the singer on a fresh
- *   device -> a second profile does not see the first one's unlocks -> nothing left the app's own origin.
+ *   Home -> voice care -> Continue -> Lesson 1, the Range finder (Learn, Practise, Check) -> its check -> Sing -> a passed
+ *   report (its audio, its range, what it opened) -> the map shows the next lesson open and the rest still locked -> Listen
+ *   plays the next lesson's demo without the mic, and Esc in the middle of a take goes back and saves nothing -> a reload
+ *   keeps the progress, the attempt and the take (IndexedDB), and the take replays -> the app works offline once the
+ *   service worker has installed -> Export backup downloads valid JSON with no audio, Export WAV downloads the real take ->
+ *   the backup restores the singer on a fresh device -> a second profile does not see the first one's unlocks -> nothing
+ *   left the app's own origin. (The practice drills of a lesson are sung in wave2-lesson.e2e.test.ts.)
  *
  * The fake mic loops e2e/range-signal.ts (A2 held, a siren, D4 held, a siren, a breath), which
  * range-signal.e2e.test.ts proves passes the Range finder from any point of the loop. That matters here: the take is the
@@ -17,6 +18,8 @@ import { afterAll, beforeAll, describe, expect, it, type TestContext } from 'vit
 import type { Browser, BrowserContext, Locator, Page } from 'playwright-core';
 import { PREVIEW_URL, RANGE_WAV_PATH } from './config';
 import { launchWithFakeMic } from './chrome';
+import { rangeFinder } from '../src/exercises/catalog/foundations';
+import { realize } from '../src/exercises/transpose';
 import {
   dismissFirstRun,
   ensureServiceWorkerControl,
@@ -30,7 +33,7 @@ import {
   waitForToast,
 } from './ui';
 
-/** The Range finder is 20 s of material after a 4 s count-in; scoring is well under a second. */
+/** The Range finder is 25 s of material after a 2 s count-in; scoring is well under a second. */
 const TAKE_TIMEOUT_MS = 60_000;
 
 /** The app words a range with an en dash (U+2013), as in "A2-D4". Built from its code point so this file stays plain ASCII. */
@@ -86,7 +89,7 @@ describe('Wave 2 - a first session, through the real UI', () => {
     await browser?.close();
   });
 
-  it('Home -> voice care -> Continue -> Level 01 -> Sing: a passed Range finder, with its audio, its range and what it opened', async () => {
+  it('Home -> voice care -> Continue -> Lesson 1 -> its check: a passed Range finder, with its audio, its range and what it opened', async () => {
     // ?debug=1 only adds the read-only window.__pitchlab hook; the app is the same one.
     await page.goto(`${PREVIEW_URL}?debug=1`, { waitUntil: 'load' });
     await page.getByTestId('home-screen').waitFor({ state: 'visible', timeout: 15_000 });
@@ -101,20 +104,29 @@ describe('Wave 2 - a first session, through the real UI', () => {
     await headphoneSheet.getByRole('button', { name: 'Later' }).click();
     await headphoneSheet.waitFor({ state: 'hidden' });
 
-    // Home's one amber button continues at the first number on the set list.
+    // Home's one amber button continues at the first lesson on the set list.
     const card = page.getByTestId('continue-card');
     expect(await card.textContent()).toContain('Range finder');
-    expect(await card.textContent()).toMatch(/Next up\s*\S\s*01/i);
+    expect(await card.textContent()).toMatch(/Next up\s*\S\s*Lesson 1/i);
     await page.getByTestId('continue-button').click();
     await page.getByTestId('level-screen').waitFor();
-    expect(await page.getByTestId('level-label').textContent()).toContain('01');
-    // The Range finder measures rather than grades: it shows the saved range (none yet), never a score.
+
+    // The lesson: Learn, Practise and Check on one page, Learn open by itself (a first visit), the amber move Practise.
+    expect(await page.getByTestId('level-label').textContent()).toContain('Lesson 1');
+    expect(await page.getByTestId('lesson-title').textContent()).toBe('Range finder');
+    expect(await page.getByTestId('part-learn').getAttribute('data-state')).toBe('now');
+    expect(await page.getByTestId('part-practise').getAttribute('data-state')).toBe('next');
+    expect(await page.getByTestId('part-check').getAttribute('data-state')).toBe('next');
+    await page.getByTestId('learn-page').waitFor();
+    expect((await page.getByTestId('sing-button').textContent())?.trim()).toBe('Practise');
+    // The Range finder measures rather than grades: its check shows the saved range (none yet), never a score.
     expect(await page.getByTestId('saved-range').textContent()).toContain('Not measured yet');
     expect(await page.getByTestId('best-score').count()).toBe(0);
 
-    // Level -> Sing (ready) -> Sing (the mic opens inside this tap).
-    await page.getByTestId('sing-button').click();
+    // The check can be taken any time (never pushed): Lesson -> Sing (ready) -> Sing (the mic opens inside this tap).
+    await page.getByTestId('skip-to-check').click();
     await page.getByTestId('sing-screen').waitFor();
+    expect(await page.getByTestId('context-chip').count(), 'the check is the level, not a practice step').toBe(0);
     await page.getByTestId('sing-button').click();
     await page.getByTestId('count-in').waitFor({ timeout: 10_000 });
     await page.locator('[data-testid="sing-screen"][data-phase="singing"]').waitFor({ timeout: 10_000 });
@@ -134,7 +146,7 @@ describe('Wave 2 - a first session, through the real UI', () => {
     // The first take of a launch must have its audio (playback is offered), and what it opened is listed.
     await page.getByTestId('play-take').waitFor({ timeout: 5_000 });
     const unlocked = (await page.getByTestId('unlocked-strip').textContent()) ?? '';
-    for (const opened of ['Pitch match', 'Progress dashboard', 'Daily workout', 'Personal records']) expect(unlocked, `Unlocked strip lists ${opened}`).toContain(opened);
+    for (const opened of ['Match one note', 'Progress dashboard', 'Daily workout', 'Personal records']) expect(unlocked, `Unlocked strip lists ${opened}`).toContain(opened);
     expect(await page.getByTestId('report-primary').textContent()).toContain('Next level');
 
     // Leaving Sing turned the mic off.
@@ -145,12 +157,13 @@ describe('Wave 2 - a first session, through the real UI', () => {
     journey.sang = true;
   }, TAKE_TIMEOUT_MS + 60_000);
 
-  it('the next level opens on the map, and everything after it is still locked', async (t) => {
+  it('the next lesson opens on the map, and everything after it is still locked', async (t) => {
     needFirstTake(t);
-    // "Next level" opens Level 02.
+    // "Next level" opens Lesson 2, Match one note.
     await page.getByTestId('report-primary').click();
     await page.getByTestId('level-screen').waitFor();
-    expect(await page.getByTestId('level-label').textContent()).toContain('02');
+    expect(await page.getByTestId('level-label').textContent()).toContain('Lesson 2');
+    expect(await page.getByTestId('lesson-title').textContent()).toBe('Match one note');
     expect(await page.getByTestId('sing-button').isEnabled()).toBe(true);
 
     await openFromHome(page, 'dest-map');
@@ -158,24 +171,25 @@ describe('Wave 2 - a first session, through the real UI', () => {
     expect(await page.getByTestId('node-foundations.01').getAttribute('data-state')).toBe('passed');
     const next = page.getByTestId('node-foundations.02');
     expect(await next.getAttribute('data-state')).toBe('current');
-    expect(await next.locator('button').count(), 'the next level is a control').toBe(1);
+    expect(await next.locator('button').count(), 'the next lesson is a control').toBe(1);
+    expect(await next.getByTestId('node-practice').textContent(), 'the lesson you are on says where its practice is').toContain('New lesson');
     const after = page.getByTestId('node-foundations.03');
     expect(await after.getAttribute('data-state')).toBe('locked');
-    expect(await after.locator('button').count(), 'the level after that is not').toBe(0);
-    expect(await after.textContent()).toContain('Pass Pitch match to unlock.');
-    expect(await page.getByTestId('world-foundations').textContent()).toContain('1 of 10');
+    expect(await after.locator('button').count(), 'the lesson after that is not').toBe(0);
+    expect(await after.textContent()).toContain('Pass Match one note to unlock.');
+    expect(await page.getByTestId('world-foundations').textContent()).toContain('1 of 13');
 
     // It opens from the map, and not the one beyond it.
     await next.locator('button').click();
     await page.getByTestId('level-screen').waitFor();
-    expect(await page.getByTestId('level-label').textContent()).toContain('02');
-    expect(await page.getByTestId('best-score').textContent()).toContain('Not sung yet');
+    expect(await page.getByTestId('level-label').textContent()).toContain('Lesson 2');
+    expect(await page.getByTestId('check-status').textContent()).toContain('Not taken yet');
     expect(await toastMessages(page)).toEqual([]);
   }, 40_000);
 
   it('Listen plays the demo and Stop ends it, without ever opening the microphone', async (t) => {
     needFirstTake(t);
-    // We are on Level 02 (Pitch match). Listen starts the AudioContext inside the tap and builds the real demo.
+    // We are on Lesson 2 (Match one note). Listen starts the AudioContext inside the tap and builds the real demo.
     const listen = page.getByTestId('listen-button');
     await listen.click();
     await page.waitForFunction(() => document.querySelector('[data-testid="listen-button"]')?.getAttribute('aria-label') === 'Stop the demo', undefined, { timeout: 10_000 });
@@ -186,19 +200,21 @@ describe('Wave 2 - a first session, through the real UI', () => {
     expect(await page.getByRole('alert').count(), 'no error banner').toBe(0);
   }, 40_000);
 
-  it('Esc in the middle of a take goes back to the level, turns the mic off and saves nothing', async (t) => {
+  it('Esc in the middle of a take goes back to the lesson, turns the mic off and saves nothing', async (t) => {
     needFirstTake(t);
-    await page.getByTestId('sing-button').click(); // Level -> Sing (ready)
+    await page.getByTestId('sing-button').click(); // Lesson -> Sing (ready): the amber move is the first practice step
     await page.getByTestId('sing-screen').waitFor();
+    expect((await page.getByTestId('context-chip').textContent())?.trim()).toMatch(/^Practice\s*\S\s*step 1 of 3$/);
     await page.getByTestId('sing-button').click(); // the mic opens, the count-in starts
     await page.getByTestId('count-in').waitFor({ timeout: 10_000 });
     expect(await page.evaluate(() => window.__pitchlab?.info().state)).toBe('running');
 
     await page.keyboard.press('Escape');
     await page.getByTestId('level-screen').waitFor({ timeout: 10_000 });
-    expect(await page.getByTestId('level-label').textContent()).toContain('02');
+    expect(await page.getByTestId('level-label').textContent()).toContain('Lesson 2');
     await page.waitForFunction(() => window.__pitchlab?.info().state === 'idle', undefined, { timeout: 10_000 });
-    expect(await page.getByTestId('best-score').textContent(), 'half a take is not an attempt').toContain('Not sung yet');
+    expect(await page.getByTestId('check-status').textContent(), 'half a take is not an attempt').toContain('Not taken yet');
+    expect(await page.getByTestId('good-tries').first().textContent(), 'and not a try of the practice step either').toContain('0 of 2');
     expect(await page.getByTestId('report-screen').count()).toBe(0);
   }, 40_000);
 
@@ -209,15 +225,15 @@ describe('Wave 2 - a first session, through the real UI', () => {
     await page.getByTestId('continue-card').waitFor();
 
     // The first-run sheets are done for good (they decide once this profile's settings have loaded, so give them a moment
-    // to appear if they were going to); progress picks up at the next level.
+    // to appear if they were going to); progress picks up at the next lesson.
     await page.waitForTimeout(700);
     expect(await page.getByTestId('voice-care-done').count(), 'voice care is not asked twice').toBe(0);
     const card = (await page.getByTestId('continue-card').textContent()) ?? '';
-    expect(card).toContain('Pitch match');
-    expect(card).toMatch(/Next up\s*\S\s*02/i);
+    expect(card).toContain('Match one note');
+    expect(card).toMatch(/Next up\s*\S\s*Lesson 2/i);
     expect(await page.getByTestId('dest-dashboard').getAttribute('data-locked'), 'the dashboard stays open').toBeNull();
 
-    // The attempt: Level 01 remembers its best, and the log counts it.
+    // The attempt: Lesson 1 remembers its saved range, and the log counts the take.
     await page.getByTestId('dest-map').click();
     await page.getByTestId('node-foundations.01').locator('button').click();
     await page.getByTestId('level-screen').waitFor();
@@ -255,13 +271,13 @@ describe('Wave 2 - a first session, through the real UI', () => {
       await page.reload({ waitUntil: 'load' });
       await page.getByTestId('home-screen').waitFor({ state: 'visible', timeout: 15_000 });
       await page.getByTestId('continue-card').waitFor();
-      expect(await page.getByTestId('continue-card').textContent()).toContain('Pitch match');
+      expect(await page.getByTestId('continue-card').textContent()).toContain('Match one note');
 
-      // The map, a level and the saved take are all still there with no network.
+      // The map, a lesson and the saved take are all still there with no network.
       await page.getByTestId('dest-map').click();
       await page.getByTestId('node-foundations.02').locator('button').click();
       await page.getByTestId('level-screen').waitFor();
-      expect(await page.getByTestId('level-label').textContent()).toContain('02');
+      expect(await page.getByTestId('level-label').textContent()).toContain('Lesson 2');
       await openFromHome(page, 'util-data');
       await page.getByTestId('recording-row').waitFor();
 
@@ -309,7 +325,7 @@ describe('Wave 2 - a first session, through the real UI', () => {
 
     expect(file.attempts).toHaveLength(1);
     const attempt = file.attempts[0];
-    expect(attempt).toMatchObject({ profileId: me?.id, exerciseId: 'foundations.range-finder.1', levelId: 'foundations.01', kind: 'practice', passed: true, takeId: null });
+    expect(attempt).toMatchObject({ profileId: me?.id, exerciseId: 'foundations.range.1', levelId: 'foundations.01', kind: 'practice', passed: true, takeId: null });
     expect(attempt.score).toBeGreaterThan(0.99);
     expect(attempt.metrics['range.spanSemitones']).toBe(17);
     expect(file.settings.profiles[me?.id ?? '']?.voiceCareSeen).toBe(true);
@@ -336,10 +352,12 @@ describe('Wave 2 - a first session, through the real UI', () => {
     const dataBytes = wav.readUInt32LE(40);
     expect(wav.length).toBe(44 + dataBytes);
 
-    // The take is the pre-roll, the 20 s of material and the tail, about 21 s.
+    // The take is the pre-roll, the Range finder's material (the app plays each note first, so it is 25 s) and the tail:
+    // read from the exercise itself, so a change to its length is a change here and not a surprise.
+    const material = realize(rangeFinder, null, 'unknown').totalSec;
     const seconds = dataBytes / 2 / sampleRate;
-    expect(seconds).toBeGreaterThan(19);
-    expect(seconds).toBeLessThan(24);
+    expect(seconds).toBeGreaterThan(material - 1);
+    expect(seconds).toBeLessThan(material + 2);
     // It is the fake singer's voice (a tone with a peak of 0.3), not silence: a healthy overall level, though a good part
     // of the take is breaths and sirens.
     let sumSquares = 0;
@@ -383,8 +401,8 @@ describe('Wave 2 - a first session, through the real UI', () => {
       // Progress is back, and so is the range.
       await goHome(fresh);
       const card = (await fresh.getByTestId('continue-card').textContent()) ?? '';
-      expect(card).toContain('Pitch match');
-      expect(card).toMatch(/Next up\s*\S\s*02/i);
+      expect(card).toContain('Match one note');
+      expect(card).toMatch(/Next up\s*\S\s*Lesson 2/i);
       expect(await fresh.getByTestId('dest-dashboard').getAttribute('data-locked')).toBeNull();
       await openFromHome(fresh, 'util-profiles');
       expect(await fresh.locator('.pl-profiles-item').count(), 'the empty starter profile was replaced, not kept beside it').toBe(1);
@@ -420,7 +438,7 @@ describe('Wave 2 - a first session, through the real UI', () => {
     expect(await page.getByTestId('profile-chip').getAttribute('aria-label')).toContain('Sam');
     const card = (await page.getByTestId('continue-card').textContent()) ?? '';
     expect(card).toContain('Range finder');
-    expect(card).toMatch(/Next up\s*\S\s*01/i);
+    expect(card).toMatch(/Next up\s*\S\s*Lesson 1/i);
     for (const row of ['dest-dashboard', 'dest-workout', 'dest-songs', 'dest-vibrato-meter']) {
       expect(await page.getByTestId(row).getAttribute('data-locked'), `${row} is locked for Sam`).toBe('true');
     }
@@ -444,7 +462,7 @@ describe('Wave 2 - a first session, through the real UI', () => {
     await page.getByRole('button', { name: 'Sing as Me' }).click();
     await page.getByTestId('home-screen').waitFor({ state: 'visible' });
     expect(await page.getByTestId('profile-chip').getAttribute('aria-label')).toContain('Me');
-    expect(await page.getByTestId('continue-card').textContent()).toContain('Pitch match');
+    expect(await page.getByTestId('continue-card').textContent()).toContain('Match one note');
     await openDeepLink(page, '#/dashboard');
     await page.getByTestId('dashboard-screen').waitFor({ state: 'visible', timeout: 15_000 });
     expect(await toastMessages(page)).toEqual([]);

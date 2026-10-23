@@ -7,7 +7,8 @@
  *
  * Depth follows the misses in a row on the exercise (depthFor): the tip, then why it happens, then a walk-through, then
  * a gentler way in with next moves. A passed take is depth 1 with the polish or next-step tip and no more. Two voice-care
- * rules add a rest: many takes in a short time, or a long run of misses.
+ * rules add a rest: a lot of singing in a short time (the seconds sung, so short practice tries weigh what they sing), or
+ * a long run of misses.
  *
  * The coaching leans on the latest voice check-up (owner, 2026-10-22: "if you can hold a note, but you have voice
  * cracking ... you should maybe practice voice cracking"): "Practise <level>" for a level that trains one of its focus
@@ -29,7 +30,7 @@ import { WORLDS, getExercise, getLevel, levelForExercise } from '../exercises/ca
 import { evaluate } from '../exercises/evaluate';
 import { canPassAtTempo } from '../exercises/ladder';
 import { POLISH_TIP, STOPPED_TIP, type PickedTip } from '../exercises/tips';
-import type { RealizedExercise } from '../exercises/transpose';
+import { realize, type RealizedExercise } from '../exercises/transpose';
 import type { ExerciseDef, LevelDef } from '../exercises/types';
 import { withRoutines } from '../progress/routines';
 import type { TakeOutcome } from '../runtime/types';
@@ -39,8 +40,13 @@ import { locate } from './locate';
 import { progressLinesFor } from './progress';
 import type { CoachDepth, CoachLadder, CoachMove, Coaching, ProgressLine, TakeProblem } from './types';
 
-/** Voice care: this many takes (of anything) within REST_WINDOW_MS ask for a rest ... */
-export const REST_TAKES = 8;
+/**
+ * Voice care: this much singing (seconds of sung notes, summed over every take) within REST_WINDOW_MS asks for a rest.
+ * The load is the time actually sung, not the number of takes, so a lesson's short practice tries weigh what they sing
+ * (about three of them make one long take) and a run of short tries does not read as a long session. PROVISIONAL: about
+ * fifteen full Foundations takes, or a whole lesson's practice and its check, sung within twenty minutes.
+ */
+export const REST_SINGING_SEC = 180;
 export const REST_WINDOW_MS = 20 * 60_000;
 /** ... and so do this many misses in a row on one exercise. */
 export const REST_MISSES = 6;
@@ -118,8 +124,14 @@ export interface CoachSource {
   /** This take's row of the log. */
   attempt: AttemptRecord;
   tip: PickedTip;
-  /** The take passed the pass rule at the tempo it was sung (TakeOutcome.evaluation.passed). */
+  /** The take got it: its pass at the tempo it was sung, or a practice try's good-try verdict (coachedAsPassed). */
   passed: boolean;
+  /**
+   * The tip is the runner's, worded for this take as it finished (coachTake), and is kept as it is. Read back, a miss
+   * that measures clean is coached as stopped (missTip); live, the only clean miss is a practice try its step did not
+   * count, and the runner's line already says so.
+   */
+  live?: boolean;
   metrics: Metrics;
   /** The analysis detail; null when only the attempt's metrics are known (a take whose pitch line was not saved). */
   analysis: Pick<TakeAnalysis, 'details' | 'tipContext' | 'reach'> | null;
@@ -136,7 +148,7 @@ export interface CoachContext {
   now?: number;
 }
 
-/** "Sirens & glides", or the Boss Recital's own title. */
+/** "Match one note", or the Boss Recital's own title. */
 function levelTitle(level: LevelDef): string {
   if (level.kind !== 'boss') return level.title;
   return getExercise(level.exerciseId)?.title ?? level.title;
@@ -172,15 +184,40 @@ export function checkupFocusLevels(log: readonly AttemptRecord[]): ReadonlySet<s
   return new Set(latestCheckupFocus(log).flatMap((skill) => SKILL_LEVELS[skill]));
 }
 
-/** Takes of anything in the REST_WINDOW_MS up to `now`. */
-function recentTakes(log: readonly AttemptRecord[], now: number): number {
-  let n = 0;
+/** Sung seconds of an exercise at a tempo, by `${exerciseId}@${bpm}` (catalog data is frozen, so it never goes stale). */
+const sungSecCache = new Map<string, number>();
+
+/**
+ * Seconds a take sang: the sung notes its exercise asks for at the tempo sung (the Listen steps and rests are not
+ * singing), never more than the take ran; for a take with no exercise (a song) the time it ran.
+ */
+export function singingSec(a: Pick<AttemptRecord, 'exerciseId' | 'durationSec' | 'tempoBpm'>): number {
+  const ran = Number.isFinite(a.durationSec) ? Math.max(0, a.durationSec) : 0;
+  const def = lookup(a.exerciseId);
+  if (!def) return ran;
+  const bpm = typeof a.tempoBpm === 'number' && Number.isFinite(a.tempoBpm) && a.tempoBpm > 0 ? a.tempoBpm : def.tempoBpm;
+  const key = `${def.id}@${bpm}`;
+  let sung = sungSecCache.get(key);
+  if (sung === undefined) {
+    try {
+      sung = realize(def, null, 'unknown', { bpm }).steps.reduce((s, st) => s + (st.role === 'sing' ? st.end - st.start : 0), 0);
+    } catch {
+      sung = ran;
+    }
+    sungSecCache.set(key, sung);
+  }
+  return Math.min(ran, sung);
+}
+
+/** True when the takes in the REST_WINDOW_MS up to `now` sang REST_SINGING_SEC or more (the song coach asks the same). */
+export function restDue(log: readonly AttemptRecord[], now: number): boolean {
+  let sec = 0;
   for (const a of log) {
     if (a.deletedAt !== null) continue;
     const at = Date.parse(a.createdAt);
-    if (Number.isFinite(at) && at <= now + 1000 && now - at < REST_WINDOW_MS) n++;
+    if (Number.isFinite(at) && at <= now + 1000 && now - at < REST_WINDOW_MS) sec += singingSec(a);
   }
-  return n;
+  return sec >= REST_SINGING_SEC - 1e-9;
 }
 
 /**
@@ -194,10 +231,11 @@ function cardTip(tip: PickedTip, ladder: CoachLadder | undefined): string {
 
 /**
  * A miss is never coached as clean. Read back without what the runner knew (the take was stopped early: the log says
- * so, the pitch line does not), a missed take can measure clean; it was practice, and gets the stopped tip.
+ * so, the pitch line does not), a missed take can measure clean; it was practice, and gets the stopped tip. A live tip
+ * (CoachSource.live) is the runner's and stands.
  */
-function missTip(tip: PickedTip, passed: boolean): PickedTip {
-  return !passed && tip.id === POLISH_TIP.id ? { id: STOPPED_TIP.id, text: STOPPED_TIP.text, metric: null, value: null } : tip;
+function missTip(tip: PickedTip, passed: boolean, live = false): PickedTip {
+  return !passed && !live && tip.id === POLISH_TIP.id ? { id: STOPPED_TIP.id, text: STOPPED_TIP.text, metric: null, value: null } : tip;
 }
 
 /** The coaching for one take of `src.def`; `log` is the profile's attempt log with this take in it (it is added when missing). */
@@ -210,7 +248,7 @@ export function coachFrom(src: CoachSource, log: readonly AttemptRecord[], ctx: 
   const misses = passed ? 0 : 1 + missesInARow(def.id, before);
   const depth: CoachDepth = passed ? 1 : depthFor(misses);
   const notation = ctx.notation ?? 'sharps';
-  const tip = missTip(src.tip, passed);
+  const tip = missTip(src.tip, passed, src.live);
 
   const problem = locate({
     def,
@@ -242,7 +280,7 @@ export function coachFrom(src: CoachSource, log: readonly AttemptRecord[], ctx: 
   }
   if (!passed && depth >= 3) moves.push({ kind: 'send-to-claude' });
   const now = ctx.now ?? Date.parse(attempt.createdAt);
-  if (misses >= REST_MISSES || (Number.isFinite(now) && recentTakes(upTo, now) >= REST_TAKES)) moves.push({ kind: 'rest' });
+  if (misses >= REST_MISSES || (Number.isFinite(now) && restDue(upTo, now))) moves.push({ kind: 'rest' });
 
   return {
     depth,
@@ -258,9 +296,12 @@ export function coachFrom(src: CoachSource, log: readonly AttemptRecord[], ctx: 
   };
 }
 
-/** The take's own tip and nothing more: what a screen shows if coaching a take ever fails, rather than no report at all. */
-export function tipOnly(tip: PickedTip, passed: boolean): Coaching {
-  const shown = missTip(tip, passed);
+/**
+ * The take's own tip and nothing more: what a screen shows if coaching a take ever fails, rather than no report at all.
+ * `live`: the tip is the runner's for a take just sung, and stands (CoachSource.live).
+ */
+export function tipOnly(tip: PickedTip, passed: boolean, live = false): Coaching {
+  const shown = missTip(tip, passed, live);
   return {
     depth: 1,
     missesInARow: passed ? 0 : 1,
@@ -275,7 +316,19 @@ export function tipOnly(tip: PickedTip, passed: boolean): Coaching {
   };
 }
 
-/** The coaching for a finished take; `log` is the profile's attempt log AFTER this take was written. */
+/**
+ * Whether a finished take is coached as getting it: its pass, or for a lesson's practice try its step's good-try verdict
+ * (its step's lenient rule, written as the row's `passed`), never the drill's own stricter pass rule: a good try is not
+ * a miss, and a try its step did not count is one.
+ */
+export function coachedAsPassed(outcome: Pick<TakeOutcome, 'prepared' | 'attempt' | 'evaluation'>): boolean {
+  return outcome.prepared.target.kind === 'drill' ? outcome.attempt.passed : outcome.evaluation.passed;
+}
+
+/**
+ * The coaching for a finished take; `log` is the profile's attempt log AFTER this take was written. A lesson's practice
+ * try is coached as the good try it was or was not (coachedAsPassed), with the runner's own line.
+ */
 export function coachTake(outcome: TakeOutcome, log: readonly AttemptRecord[], opts?: { notation?: Notation; vibratoStyle?: VibratoStyle; now?: number }): Coaching {
   const { prepared, analysis, attempt } = outcome;
   return coachFrom(
@@ -283,7 +336,8 @@ export function coachTake(outcome: TakeOutcome, log: readonly AttemptRecord[], o
       def: prepared.def,
       attempt,
       tip: outcome.tip,
-      passed: outcome.evaluation.passed,
+      live: true,
+      passed: coachedAsPassed(outcome),
       metrics: analysis.metrics,
       analysis,
       realized: prepared.realized,

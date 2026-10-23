@@ -22,8 +22,9 @@
  * with Settings › Keep take audio on).
  *
  * practiseLevelId names the Foundations level that builds the skill; the coach offers it only once that level is passed:
- * Pitch match for the tune, Sustain for long notes and breath, Sirens & glides for the top and bottom of the range and
- * the gear change, Crispness for the beat, Interval jumps II for big jumps, Legato lines for joining phrases.
+ * Match one note for the tune, Hold it for breath, Hold it steady for long notes, Sirens for the top and bottom of the
+ * range and the gear change, Clean starts for the beat, Bigger jumps for big jumps, Five notes in a row for joining
+ * phrases.
  */
 import type { SongTipId } from '../song-tips';
 import type { CoachLadder } from '../types';
@@ -207,7 +208,7 @@ export const LADDERS_SONG: Readonly<Record<string, CoachLadder>> = {
       'Sing the phrase on a lip trill (lips buzzing like a motorboat): the buzz stops as soon as the air runs short, so you feel where to save it. ' +
       'Keep the speed at 100% for this one, since a slowed phrase needs more air. ' +
       'Stop if you feel light-headed or anything hurts.',
-    practiseLevelId: 'foundations.04',
+    practiseLevelId: 'foundations.03',
   },
   'song.cracks': {
     tip: 'Let your voice get lighter just before the word where it broke, so it can change gears smoothly instead of snapping, and keep the air flowing through it.',
@@ -245,7 +246,7 @@ export const LADDERS_SONG: Readonly<Record<string, CoachLadder>> = {
     easier:
       'Hold the phrase’s longest note on its own first: hum it through a drinking straw, or on a lip trill, for as long as its bar lasts, then sing it on its word. ' +
       'Sing a little softer; a gentle, medium-soft tone is the easiest to keep level.',
-    practiseLevelId: 'foundations.03',
+    practiseLevelId: 'foundations.13',
   },
 
   // ---------------------------------------------------------------- getting through it

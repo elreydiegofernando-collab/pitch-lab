@@ -102,7 +102,7 @@ describe('Dashboard: skills show only with their world', () => {
     await mount();
     const rows = Array.from(container.querySelectorAll('.pl-dash-skill'));
     const transitions = rows.find((r) => r.textContent?.includes('Transitions'))!;
-    expect(transitions.textContent).toContain('Clean changes at ±10¢');
+    expect(transitions.textContent).toContain('Clean changes at ±25¢'); // Five notes in a row: the medium zone
     expect(transitions.textContent).toContain('75%');
   });
 });
@@ -158,13 +158,13 @@ describe('Dashboard: the numbers behind the charts', () => {
 
 describe('Dashboard: level map, range, bests, practice', () => {
   it('counts the levels of each open world and names what unlocks the next', async () => {
-    show(passWorld('foundations', 'foundations.04'));
+    show(passWorld('foundations', 'foundations.13'));
     await mount();
     const levels = container.querySelector('[data-testid="dash-levels"]')!;
-    expect(levels.textContent).toContain('4 of 10 levels · Next: Sirens & glides');
+    expect(levels.textContent).toContain('4 of 13 levels · Next: Two notes, one step apart');
     const fill = levels.querySelector<HTMLElement>('.pl-dash-meter__fill')!;
-    expect(fill.style.width).toBe('40%');
-    expect(levels.querySelector('button')!.getAttribute('aria-label')).toContain('4 of 10 levels');
+    expect(parseFloat(fill.style.width)).toBeCloseTo((4 / 13) * 100, 3);
+    expect(levels.querySelector('button')!.getAttribute('aria-label')).toContain('4 of 13 levels');
     expect(levels.textContent).toContain('Pass the Foundations Boss Recital to unlock Vibrato.');
   });
 
@@ -195,9 +195,9 @@ describe('Dashboard: level map, range, bests, practice', () => {
     ]);
     await mount();
     const bests = container.querySelector('[data-testid="dash-bests"]')!;
-    expect(bests.textContent).toContain('Pitch match');
+    expect(bests.textContent).toContain('Match one note');
     expect(bests.textContent).toContain('In tune 92%');
-    expect(bests.textContent).toContain('Settle 210 ms');
+    expect(bests.textContent).toContain('Time to find the note 210 ms');
   });
 
   it('draws a single Range finder measurement as one dot with no line', async () => {

@@ -225,7 +225,7 @@ export const LADDERS_EXPRESSION: Readonly<Record<string, CoachLadder>> = {
       'Keep your loud comfortable, well short of your loudest.',
     ],
     easier: 'Make the loud part only medium loud for now, and change more slowly. A smaller change that stays on the note beats a big one that rises.',
-    practiseLevelId: 'foundations.04',
+    practiseLevelId: 'foundations.13',
   },
   'dyn.flat-soft': {
     tip: 'As you get softer, keep the note up where it was. Soft still needs a steady stream of air.',
@@ -238,7 +238,7 @@ export const LADDERS_EXPRESSION: Readonly<Record<string, CoachLadder>> = {
       'Watch your line on the screen: it should stay level as the sound gets softer.',
     ],
     easier: 'Go only to medium soft at first, slowly, and keep the sound clear. A gentle hum on “mm” is a good way to feel soft but steady.',
-    practiseLevelId: 'foundations.04',
+    practiseLevelId: 'foundations.13',
   },
   'dyn.against-cue': {
     tip: 'Follow the loudness shape the cue names, the way the demo plays it: start where it says, then grow, fade or switch on time.',
@@ -263,7 +263,7 @@ export const LADDERS_EXPRESSION: Readonly<Record<string, CoachLadder>> = {
       'Rest between notes, so each one starts fresh and relaxed.',
     ],
     easier: 'Make the change smaller and slower for now, going only to medium loud. A small, steady change is the way in.',
-    practiseLevelId: 'foundations.04',
+    practiseLevelId: 'foundations.13',
   },
   'dyn.slope-any': {
     tip: 'Your pitch is holding well. Keep the line flat from soft to full while only the loudness changes.',

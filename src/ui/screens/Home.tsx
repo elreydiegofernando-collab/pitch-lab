@@ -86,11 +86,11 @@ const TRAINING: readonly Destination[] = [
 ];
 
 const UTILITIES: readonly Destination[] = [
-  { key: 'setup', icon: SlidersHorizontal, title: 'Setup & calibration', subtitle: 'Headphones, mic, latency', open: () => navigate('setup') },
+  { key: 'setup', icon: SlidersHorizontal, title: 'Setup & calibration', subtitle: 'Headphones, microphone, timing check', open: () => navigate('setup') },
   { key: 'settings', icon: SettingsIcon, title: 'Settings', subtitle: 'Theme, reference sound, notation', open: () => navigate('settings') },
   { key: 'profiles', icon: Users, title: 'Profiles', subtitle: 'Switch singer or add one', open: () => navigate('profiles') },
   { key: 'data', icon: HardDrive, title: 'Data & backup', subtitle: 'Backups, saved takes, storage', open: () => navigate('data') },
-  { key: 'diagnostics', icon: Gauge, title: 'Diagnostics', subtitle: 'Audio path, latency, storage', open: () => navigate('diagnostics') },
+  { key: 'diagnostics', icon: Gauge, title: 'Diagnostics', subtitle: 'Sound, timing and storage checks', open: () => navigate('diagnostics') },
   { key: 'about', icon: Heart, title: 'About & voice care', subtitle: 'Privacy, voice care, credits', open: () => navigate('about') },
 ];
 
@@ -140,7 +140,7 @@ function UtilityList(): JSX.Element {
             key={d.key}
             icon={d.icon}
             title={d.title}
-            subtitle={d.key === 'setup' && calibrate ? 'Calibrate latency so your takes line up' : d.subtitle}
+            subtitle={d.key === 'setup' && calibrate ? 'Run the timing check so your takes line up' : d.subtitle}
             testId={`util-${d.key}`}
             onOpen={d.open}
             attention={attention}

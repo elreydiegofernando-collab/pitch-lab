@@ -6,6 +6,9 @@
  * afterTakeActions and open with replace, so Back from the next screen skips the report. Nothing here is colour-only.
  * A task of the voice check-up is measured, never graded: its plain task title, a calm verdict ("Sung", or why it
  * measured nothing) and no score ring.
+ * A practice try of a lesson (a drill) is training, not testing (docs/DESIGN.md 13.3): "Good try" or "Not quite yet"
+ * with the step's good tries (src/ui/lesson/DrillVerdict.tsx), the coaching, the replay and playback, and no score ring,
+ * no metric tiles and no celebration (practice never passes or opens anything). Its Listen plays the drill's own demo.
  */
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
@@ -13,15 +16,15 @@ import { MicOff } from 'lucide-preact';
 import { back, previousRoute, replace, sameRoute } from '../../router';
 import { CONFIG } from '../../config';
 import { isTaskMeasured } from '../../checkup/summary';
-import { coachTake, tipOnly } from '../../coaching/coach';
+import { coachTake, coachedAsPassed, tipOnly } from '../../coaching/coach';
 import type { CoachMove } from '../../coaching/types';
 import { canPassAtTempo, rangeFromMeasurement } from '../../exercises';
 import { finishCheckup } from '../../runtime/checkup';
 import { afterTakeActions } from '../../runtime/flow';
 import { lastOutcome } from '../../runtime/runner';
-import type { AfterTakeAction, ExerciseRunner, TakeOutcome } from '../../runtime/types';
+import type { AfterTakeAction, ExerciseRunner, RunTarget, TakeOutcome } from '../../runtime/types';
 import { finishWorkout } from '../../runtime/workout';
-import { activeProfile, attemptLog } from '../../state/session';
+import { activeProfile, attemptLog, snapshot } from '../../state/session';
 import { settings } from '../../state/settings';
 import { AppBar } from '../components/AppBar';
 import { Banner } from '../components/Banner';
@@ -38,6 +41,8 @@ import { SendToClaudeSheet } from '../practice/SendToClaudeSheet';
 import { TraceReplay } from '../practice/TraceReplay';
 import { Unavailable } from '../practice/Unavailable';
 import { UnlockedStrip } from '../practice/UnlockedStrip';
+import { drillSummary } from '../lesson/drill';
+import { DrillVerdict } from '../lesson/DrillVerdict';
 
 interface Judgement {
   kind: Verdict;
@@ -134,6 +139,9 @@ function captionOf(outcome: TakeOutcome): string {
   return prepared.bpm < prepared.def.tempoBpm ? `${sung} · the level passes at ${prepared.def.tempoBpm} bpm` : sung;
 }
 
+/** A practice try is never judged as a level take (its verdict is DrillVerdict's): no grade, no celebration. */
+const PRACTICE_TRY: Judgement = { kind: 'done', word: 'Practice', celebrate: false };
+
 export function Report(): JSX.Element {
   const outcome = lastOutcome.value;
   if (!outcome) return <Unavailable title="Take report" message="There's no take to show yet. Sing one from a level." />;
@@ -144,7 +152,8 @@ function ReportView(props: { outcome: TakeOutcome }): JSX.Element {
   const { outcome } = props;
   const { prepared, analysis, take, evaluation } = outcome;
   const def = prepared.def;
-  const verdict = judge(outcome);
+  const practiceTry = prepared.target.kind === 'drill';
+  const verdict = practiceTry ? PRACTICE_TRY : judge(outcome);
   const checkupTask = isCheckupTask(outcome);
   const unmeasured = unmeasuredReason(outcome);
   const reasonLine = unmeasured ? unmeasuredLine(unmeasured) : evaluation.notJudged ? notJudgedLine(evaluation.notJudged, prepared.target.kind === 'audition') : null;
@@ -158,17 +167,22 @@ function ReportView(props: { outcome: TakeOutcome }): JSX.Element {
       rangeFromMeasurement(analysis.details.range?.lowestMidi ?? null, analysis.details.range?.highestMidi ?? null, outcome.attempt.createdAt))
     : null;
 
-  // The coaching: this take against the log it was written into (the session's, which already holds it). Should it ever
-  // fail, the take's own tip still shows: the report never goes blank over its coaching.
+  // The log the take was written into (the session's, which already holds it).
   const log = attemptLog.value;
+  const snap = snapshot.value;
+  // A practice try of a lesson: how it went on its step (null for any other take).
+  const drill = useMemo(() => drillSummary(outcome, log, snap), [outcome, log, snap]);
+  // The coaching: this take against that log. Should it ever fail, the take's own tip still shows: the report never goes
+  // blank over its coaching.
   const vibratoStyle = settings.value.vibratoStyle;
   const coaching = useMemo(() => {
     try {
       return coachTake(outcome, log, { notation, vibratoStyle });
     } catch {
-      return tipOnly(outcome.tip, evaluation.passed);
+      // A practice try is coached as the good try it was or was not, with the runner's own line, as coachTake would.
+      return tipOnly(outcome.tip, coachedAsPassed(outcome), true);
     }
-  }, [outcome, log, notation, vibratoStyle, evaluation.passed]);
+  }, [outcome, log, notation, vibratoStyle]);
   const [spot, setSpot] = useState<number | null>(null);
   const mark = spot !== null ? (coaching.problem.spots[spot] ?? null) : null;
   const replayRef = useRef<HTMLDivElement>(null);
@@ -178,18 +192,19 @@ function ReportView(props: { outcome: TakeOutcome }): JSX.Element {
     if (index !== null) replayRef.current?.scrollIntoView?.({ block: 'nearest', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
   };
 
-  // "Listen slowly" plays the level's demo again. Its runner is made on the first tap (inside the gesture, for iOS
-  // audio) and disposed on leaving; an audition test or a routine has no level to play.
+  // "Listen slowly" plays the demo again: the level's, or a practice try's own drill. Its runner is made on the first tap
+  // (inside the gesture, for iOS audio) and disposed on leaving; an audition test or a routine has no level to play.
   const listenRef = useRef<ExerciseRunner | null>(null);
   const [listener, setListener] = useState<ExerciseRunner | null>(null);
   const [listenFailure, setListenFailure] = useState<string | null>(null);
   useEffect(() => () => listenRef.current?.dispose(), []);
-  const listenLevel = prepared.level;
+  const listenTarget: RunTarget | null =
+    prepared.target.kind === 'drill' ? prepared.target : prepared.level ? { kind: 'level', levelId: prepared.level.id } : null;
   const handleListen = (): void => {
-    if (!listenLevel) return;
+    if (!listenTarget) return;
     let current = listenRef.current;
     if (!current) {
-      const handle = tryCreateRunner({ kind: 'level', levelId: listenLevel.id });
+      const handle = tryCreateRunner(listenTarget);
       if (!handle.runner) {
         setListenFailure(handle.failure);
         return;
@@ -213,12 +228,12 @@ function ReportView(props: { outcome: TakeOutcome }): JSX.Element {
     // check-up the same way (finishCheckup: the last task's take usually has already), so its screen opens on the results.
     if (action.kind === 'finish-workout') finishWorkout();
     if (action.kind === 'checkup-results') finishCheckup();
-    // "Back to level" / "Finish workout" / "See your results" when that very screen sits right beneath the report (the
-    // take was started from it): go back to it. Replacing the report with it would stack a second copy, and the next
-    // Back would seem to do nothing. Every other action replaces the report (a new entry: the audition's "See your
-    // placement" relies on that).
+    // "Back to level" / "Back to the lesson" / "Finish workout" / "See your results" when that very screen sits right
+    // beneath the report (the take was started from it): go back to it. Replacing the report with it would stack a second
+    // copy, and the next Back would seem to do nothing. Every other action replaces the report (a new entry: the
+    // audition's "See your placement" relies on that).
     const beneath = previousRoute.peek();
-    const returns = action.kind === 'level' || action.kind === 'finish-workout' || action.kind === 'checkup-results';
+    const returns = action.kind === 'level' || action.kind === 'lesson' || action.kind === 'finish-workout' || action.kind === 'checkup-results';
     if (returns && beneath && sameRoute(beneath, action.route)) {
       back();
       return;
@@ -235,20 +250,24 @@ function ReportView(props: { outcome: TakeOutcome }): JSX.Element {
 
   return (
     <div class="pl-screen pl-report" data-testid="report-screen">
-      <AppBar title="Take report" onBack={() => back()} />
+      <AppBar title={practiceTry ? 'Practice' : 'Take report'} onBack={() => back()} />
 
       <div class="pl-scroll">
         <main class="pl-page" ref={mainRef}>
-          <VerdictLine
-            verdict={verdict.kind}
-            word={verdict.word}
-            caption={captionOf(outcome)}
-            ladderLine={climbed ? `Next take at ${outcome.nextBpm} bpm` : null}
-            reasonLine={reasonLine}
-          />
+          {drill ? (
+            <DrillVerdict summary={drill} />
+          ) : (
+            <VerdictLine
+              verdict={verdict.kind}
+              word={verdict.word}
+              caption={captionOf(outcome)}
+              ladderLine={climbed ? `Next take at ${outcome.nextBpm} bpm` : null}
+              reasonLine={reasonLine}
+            />
+          )}
 
-          {/* No score ring for the Range finder (it measures) or a check-up task (a check-up, not a test). */}
-          {isRangeFinder(outcome) || checkupTask ? null : (
+          {/* No score ring for the Range finder (it measures), a check-up task (a check-up, not a test) or a practice try. */}
+          {isRangeFinder(outcome) || checkupTask || practiceTry ? null : (
             <ScoreReveal
               score={evaluation.score}
               tally={outcome.attempt.mastery}
@@ -261,8 +280,9 @@ function ReportView(props: { outcome: TakeOutcome }): JSX.Element {
           {outcome.saveError ? <Banner kind="warn" message={outcome.saveError} /> : null}
           {savedRange ? <RangeCard range={savedRange} notation={notation} /> : null}
           {verdict.celebrate ? <UnlockedStrip events={outcome.unlocked} ownLevelId={prepared.level?.id ?? null} /> : null}
-          {/* A saved range already says what the Range finder measured; its tile is for a take that fell short. */}
-          {verdict.kind !== 'not-judged' && !savedRange ? <MetricTiles tiles={outcome.tiles} /> : null}
+          {/* A saved range already says what the Range finder measured; its tile is for a take that fell short. A practice
+              try has no tiles: training, not testing. */}
+          {verdict.kind !== 'not-judged' && !savedRange && !practiceTry ? <MetricTiles tiles={outcome.tiles} /> : null}
 
           <div ref={replayRef} class="pl-report__replay">
             <TraceReplay
@@ -281,7 +301,7 @@ function ReportView(props: { outcome: TakeOutcome }): JSX.Element {
             coaching={coaching}
             selectedSpot={spot}
             onSelectSpot={selectSpot}
-            listen={listenLevel ? { slow: hasSlowDemo(def), playing: listener?.phase.value === 'listening', onClick: handleListen } : null}
+            listen={listenTarget ? { slow: hasSlowDemo(def), playing: listener?.phase.value === 'listening', onClick: handleListen } : null}
             onMove={onMove}
           />
           {listenError ? <Banner kind="error" message={listenError} /> : null}

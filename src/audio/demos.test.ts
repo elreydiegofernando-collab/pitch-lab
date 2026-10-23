@@ -814,6 +814,34 @@ describe('buildDemo: glides, slides, scoops, sirens, falls', () => {
     expect(ctx.oscs[0].type).toBe('sine');
   });
 
+  it('plays a lesson’s Listen slide as one slide, as it is to be sung: hold, glide, hold, never its ends as two notes (review R9)', () => {
+    const def = makeDef({ kind: 'siren', demo: { timbre: 'sine', vibrato: null } });
+    demo(
+      def,
+      realized({
+        reference: [note(55, 0, 1), note(55, 1, 3, 57), note(57, 3, 4)],
+        notes: [note(55, 5, 6), note(55, 6, 8, 57), note(57, 8, 9)],
+        cues: [cue(0, CUE.listen), cue(5, CUE.sing)],
+      }),
+    );
+    const glides = synth.of('playGlide').map((c) => c.spec as GlideSpec);
+    expect(glides[0]).toMatchObject({ fromMidi: 55, toMidi: 57, startAt: START, holdBefore: 1, glideDuration: 2, holdAfter: 1 });
+    expect(glides[1]).toMatchObject({ fromMidi: 55, toMidi: 57, startAt: START + 5 });
+    const plainNotes = synth.of('playSequence').flatMap((c) => c.notes ?? []);
+    expect(plainNotes.filter((n) => n.start < 4)).toEqual([]);
+  });
+
+  it('plays a Listen siren, up and back down, as one voice following its path (review R9)', () => {
+    const def = makeDef({ kind: 'siren', demo: { timbre: 'sine', vibrato: null } });
+    demo(def, realized({ reference: [note(51, 0, 1), note(51, 1, 3, 58), note(58, 3, 5, 51)], notes: [note(51, 6, 7)], cues: [cue(0, CUE.listen), cue(6, CUE.sing)] }));
+    expect(synth.of('playGlide')).toHaveLength(0);
+    expect(ctx.oscs).toHaveLength(1);
+    const f = ctx.oscs[0].frequency.events;
+    expect(valueAt(f, START + 0.5)).toBeCloseTo(midiToHz(51), 9);
+    expect(valueAt(f, START + 3)).toBeCloseTo(midiToHz(58), 9);
+    expect(valueAt(f, START + 5)).toBeCloseTo(midiToHz(51), 9);
+  });
+
   it('a glide, a hold and another glide on the same pitch path are one voice too (octave siren with a held top)', () => {
     const def = makeDef({ kind: 'siren', demo: { timbre: 'sine', vibrato: null } });
     demo(def, realized({ notes: [note(60, 0, 3, 72), note(72, 3, 4), note(72, 4, 7, 60)] }));

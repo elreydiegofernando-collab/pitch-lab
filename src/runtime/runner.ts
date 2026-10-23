@@ -21,13 +21,18 @@
  * any task can be sung again while the check-up runs. Every take is tagged with the check-up's id, and the engine grants
  * a tagged test's levels only when it was the audition's next test as it was sung (progress/engine.ts): a check-up never
  * grants more than the audition could.
+ *
+ * A lesson's practice try (RunTarget 'drill', src/lessons) sings its step's drill exercise in the singer's range, open
+ * exactly when the lesson's level is. It is written as kind 'practice' with no level, so it never passes or opens one
+ * (only the check, the level's own take, does), and it never saves a range. It is analyzed and coached like any take;
+ * PreparedRun.drill holds the step's good tries (src/lessons/progress.ts), counting the take once it is written.
  */
 import { batch, signal, untracked, type ReadonlySignal } from '@preact/signals';
 import { buildDemo } from '../audio/demos';
 import { getEngine } from '../audio/engine';
 import { musicalClickGain } from '../audio/synth';
 import type { AudioEngine, EngineError } from '../audio/engine-types';
-import type { MetronomeHandle, ReferenceSynth, ScheduledHandle } from '../audio/synth-types';
+import type { MetronomeHandle, ReferenceSynth, ScheduledHandle, Timbre } from '../audio/synth-types';
 import { TAKE_PRE_ROLL_SEC, TakeRecorder, encodeTake, roundTripSeconds, toInputTime, type TakeResult } from '../audio/take-recorder';
 import { CHECKUP_TASKS } from '../checkup/types';
 import { clamp01 } from '../core/math';
@@ -60,6 +65,8 @@ import {
   type TakeConditions,
   type WorldDef,
 } from '../exercises';
+import { lessonFor } from '../lessons';
+import { CHECK_CLOSED_HINT, isCheckOpen, lessonProgress } from '../lessons/progress';
 import {
   auditionRequirementHint,
   buildAttempt,
@@ -73,6 +80,8 @@ import {
   requirementHint,
   withRoutines,
   worldRequirementHint,
+  type AttemptFields,
+  type AttemptInput,
   type AttemptSource,
   type ProgressSnapshot,
 } from '../progress';
@@ -83,7 +92,7 @@ import { DEFAULT_SETTINGS } from '../state/settings-types';
 import { isQuotaError, newId } from '../storage';
 import type { AttemptRecord, TakeRecord } from '../storage/schema';
 import { activeCheckup, recordCheckupTake } from './checkup';
-import { auditionTests, unlockEvents } from './flow';
+import { auditionTests, isGoodDrillTry, unlockEvents } from './flow';
 import { RANGE_FINDER_NO_RECORDS, TAKE_AUDIO_NOT_KEPT } from './messages';
 import { polishLine } from './polish';
 import type { ExerciseRunner, PreparedRun, RunError, RunPhase, RunTarget, TakeOutcome } from './types';
@@ -204,6 +213,78 @@ export function takeReferenceTones(realized: Pick<RealizedExercise, 'notes' | 'r
   return out;
 }
 
+/** One sound of a take's reference tones: a held note, or a slide with the held notes either side of it (one attack). */
+export type ReferenceVoice =
+  | { kind: 'note'; tone: TargetNote }
+  | { kind: 'glide'; fromMidi: number; toMidi: number; start: number; holdBefore: number; glideDuration: number; holdAfter: number };
+
+const touches = (a: TargetNote, b: TargetNote): boolean => Math.abs(b.start - a.end) < 1e-6 && Math.abs((a.toMidi ?? a.midi) - b.midi) < 1e-9;
+const slides = (t: TargetNote): boolean => t.toMidi !== undefined && t.toMidi !== t.midi;
+
+/**
+ * The reference tones as the sounds to play. A lesson's echo plays a slide (or a siren) as it is to be sung: a held
+ * note, the slide, the landing, as Listen steps that touch and continue each other's pitch. Played one by one, each would
+ * start again; so a run of touching tones around a slide becomes one sliding sound (playGlide), its holds either side
+ * included, and a siren (up, then down) two, one per slide. Every other tone is its own note. Pure.
+ */
+export function referenceVoices(tones: readonly TargetNote[]): ReferenceVoice[] {
+  const sorted = [...tones].sort((a, b) => a.start - b.start);
+  const out: ReferenceVoice[] = [];
+  let i = 0;
+  while (i < sorted.length) {
+    let j = i + 1;
+    while (j < sorted.length && touches(sorted[j - 1], sorted[j])) j++;
+    const run = sorted.slice(i, j);
+    i = j;
+    if (!run.some(slides)) {
+      for (const tone of run) out.push({ kind: 'note', tone: { ...tone } });
+      continue;
+    }
+    // One sound per slide: the holds before the first slide lead into it, and the holds after each slide (up to the next
+    // slide) ring on after it.
+    let from = run[0].start;
+    const glides = run.filter(slides);
+    glides.forEach((g, k) => {
+      const next = glides[k + 1];
+      const until = next ? next.start : run[run.length - 1].end;
+      out.push({ kind: 'glide', fromMidi: g.midi, toMidi: g.toMidi as number, start: from, holdBefore: g.start - from, glideDuration: g.end - g.start, holdAfter: until - g.end });
+      from = until;
+    });
+  }
+  return out;
+}
+
+/** Play one reference sound of a take (`downbeat` = take time 0 on the AudioContext clock): referenceVoices' notes and slides. */
+export function playReferenceVoice(
+  synth: Pick<ReferenceSynth, 'playNote' | 'playGlide'>,
+  voice: ReferenceVoice,
+  downbeat: number,
+  opts: { timbre: Timbre; gain: number },
+): ScheduledHandle {
+  if (voice.kind === 'note') return playReferenceTone(synth, voice.tone, downbeat, opts);
+  const { fromMidi, toMidi, holdBefore, glideDuration, holdAfter } = voice;
+  return synth.playGlide({ fromMidi, toMidi, startAt: downbeat + voice.start, holdBefore, glideDuration, holdAfter, ...opts });
+}
+
+/**
+ * Play one reference tone of a take (`downbeat` = take time 0 on the AudioContext clock): a held note, or a Listen
+ * slide (a tone with `toMidi`, the slide a lesson's echo plays before the singer slides) as one glide that arrives by the
+ * tone's end, so the singer hears exactly the chunk they are about to sing.
+ */
+export function playReferenceTone(
+  synth: Pick<ReferenceSynth, 'playNote' | 'playGlide'>,
+  tone: TargetNote,
+  downbeat: number,
+  opts: { timbre: Timbre; gain: number },
+): ScheduledHandle {
+  const startAt = downbeat + tone.start;
+  const duration = tone.end - tone.start;
+  if (tone.toMidi !== undefined && tone.toMidi !== tone.midi) {
+    return synth.playGlide({ fromMidi: tone.midi, toMidi: tone.toMidi, startAt, holdBefore: 0, glideDuration: duration, holdAfter: 0, ...opts });
+  }
+  return synth.playNote({ midi: tone.midi, startAt, duration, ...opts });
+}
+
 // ---------------------------------------------------------------- plain-language errors
 
 function micMessage(err: EngineError | null): string {
@@ -250,21 +331,29 @@ function takeSaveMessage(err: unknown): string {
 
 // ---------------------------------------------------------------- prepare
 
+/**
+ * What a take is written as: an AttemptSource, except that a lesson's practice try is judged good or not (its step's
+ * rule, on the row as it is written) only once it is sung: finish() completes it.
+ */
+type TakeSource = Exclude<AttemptSource, { type: 'drill' }> | { type: 'drill' };
+
 interface Resolved {
   def: ExerciseDef;
   level: LevelDef | null;
   world: WorldDef | null;
-  source: AttemptSource;
+  source: TakeSource;
   bpm: number;
   audition: PreparedRun['audition'];
   workout: PreparedRun['workout'];
   /** Check-up only (else absent): the task, and the id every take of it carries. */
   checkup?: NonNullable<PreparedRun['checkup']>;
+  /** Lesson practice only (else absent): the step, and its good tries so far. */
+  drill?: NonNullable<PreparedRun['drill']>;
 }
 
 interface Prepared {
   run: PreparedRun;
-  source: AttemptSource;
+  source: TakeSource;
   profileId: string;
   /** The check-up the take belongs to, captured when it was prepared; null for any other take. */
   checkupId: string | null;
@@ -290,6 +379,8 @@ function resolveTarget(target: RunTarget, snap: ProgressSnapshot, log: readonly 
       const def = level && getExercise(level.exerciseId);
       if (!level || !def) return UNKNOWN;
       if (!isLevelOpenable(level.id, snap)) return locked(levelRequirementHint(level.id, snap, WORLDS));
+      // A lesson's check opens once its practice is done (lessons/progress.ts isCheckOpen): practice, then the check.
+      if (!isCheckOpen(level.id, log, snap)) return locked(CHECK_CLOSED_HINT);
       const world = getWorld(level.worldId) ?? null;
       return { def, level, world, source: { type: 'level', level }, bpm: levelTempo(def, level.id, snap, log), audition: null, workout: null };
     }
@@ -339,6 +430,16 @@ function resolveTarget(target: RunTarget, snap: ProgressSnapshot, log: readonly 
         const found = item.levelId === null ? undefined : getLevel(item.levelId);
         if (!found || found.exerciseId !== def.id) return UNKNOWN;
         if (!isLevelOpenable(found.id, snap)) return locked(levelRequirementHint(found.id, snap, WORLDS));
+        // The current lesson's check is not open yet: the workout trains its next practice step instead (a workout never
+        // lets the check be sung before the practice).
+        const lesson = lessonFor(found.id);
+        if (lesson && !isCheckOpen(found.id, log, snap)) {
+          const step = Math.min(lessonProgress(lesson, log, snap).currentStep, lesson.practice.length - 1);
+          const drill = resolveDrill(found.id, step, snap, log);
+          if (!('def' in drill)) return drill;
+          const workoutInfo = { item, itemIndex: target.itemIndex, itemCount: session.workout.items.length, take: session.results[target.itemIndex].attemptIds.length + 1 };
+          return { ...drill, workout: workoutInfo };
+        }
         level = found;
         source = { type: 'workout-level', level: found };
       } else {
@@ -357,7 +458,39 @@ function resolveTarget(target: RunTarget, snap: ProgressSnapshot, log: readonly 
     }
     case 'checkup':
       return resolveCheckupTask(target.taskIndex, snap, log);
+    case 'drill':
+      return resolveDrill(target.levelId, target.step, snap, log);
   }
+}
+
+const UNKNOWN_DRILL: RunError = { code: 'unknown', message: 'This practice step is not available. Go back to the lesson and choose it again.' };
+
+/**
+ * The good tries of a lesson's practice step (src/lessons/progress.ts) in `log`, with the step's place in the lesson;
+ * null when the lesson or the step is unknown.
+ */
+function drillProgress(levelId: string, step: number, log: readonly AttemptRecord[], snap: ProgressSnapshot): PreparedRun['drill'] {
+  const lesson = lessonFor(levelId);
+  const all = lesson ? lessonProgress(lesson, log, snap) : undefined;
+  const progress = all && Number.isInteger(step) && step >= 0 ? all.steps[step] : undefined;
+  if (!lesson || !all || !progress) return null;
+  return { levelId, step, stepCount: lesson.practice.length, good: progress.good, needed: progress.needed, ready: all.ready, openStep: all.currentStep };
+}
+
+/**
+ * One practice try of a lesson: its step's drill exercise (a catalog exercise), open exactly when the lesson's level is
+ * (practice never opens a level). Unknown before locked, as the route guard judges it. Written with no level (TakeSource
+ * 'drill'), so it never passes one and never saves a range; sung at its own tempo (or its ladder's rung), in the range.
+ */
+function resolveDrill(levelId: string, step: number, snap: ProgressSnapshot, log: readonly AttemptRecord[]): Resolved | RunError {
+  const practice = Number.isInteger(step) && step >= 0 ? lessonFor(levelId)?.practice[step] : undefined;
+  const level = getLevel(levelId);
+  const def = practice ? getExercise(practice.exerciseId) : undefined;
+  const drill = drillProgress(levelId, step, log, snap);
+  // A retired exercise is never sung again (validate.ts keeps it out of every lesson; this fails closed all the same).
+  if (!level || !def || def.retired !== undefined || !drill) return UNKNOWN_DRILL;
+  if (!isLevelOpenable(level.id, snap)) return locked(levelRequirementHint(level.id, snap, WORLDS));
+  return { def, level: null, world: getWorld(level.worldId) ?? null, source: { type: 'drill' }, bpm: ladderTempo(def, log), audition: null, workout: null, drill };
 }
 
 const UNKNOWN_TASK: RunError = { code: 'unknown', message: 'This check-up task is not available. Go back to the check-up and carry on from there.' };
@@ -410,13 +543,40 @@ function prepare(target: RunTarget): Prepared | RunError {
       realized,
       bpm: realized.bpm,
       ladder: def.tempoLadder && def.tempoLadder.length > 0 ? { rungs, index: rungs.indexOf(realized.bpm) } : null,
-      passLines: passRequirements(def),
+      // A practice try has no pass or fail: nothing to pass is shown before it.
+      passLines: resolved.drill ? [] : passRequirements(def),
       usingDefaultRange: !effectiveRange(profile.range, profile.voiceType).saved,
       audition: resolved.audition,
       workout: resolved.workout,
       checkup: resolved.checkup ?? null,
+      drill: resolved.drill ?? null,
     },
   };
+}
+
+/**
+ * The attempt fields of a take (progress/attempt.ts buildAttempt). A lesson's practice try is filed as kind 'practice'
+ * with no level (the engine counts no row without a level towards a level, so it never passes or opens one), and its
+ * `passed` is its step's verdict: the good-try rule (lessons/progress.ts isGoodTry) on the row as it is written, the
+ * same rule the lesson's progress and the report read, so the coaching's misses in a row follow the step, never the
+ * drill's own stricter pass rule.
+ */
+function attemptFields(input: Omit<AttemptInput, 'source'> & { source: TakeSource }, drill: PreparedRun['drill']): AttemptFields {
+  const { source } = input;
+  if (source.type !== 'drill') return buildAttempt({ ...input, source });
+  const { realized, def, metrics } = input;
+  const row = { exerciseId: def.id, tempoBpm: realized.bpm, durationSec: realized.countInSec + realized.totalSec, metrics };
+  const good = drill ? isGoodDrillTry(drill.levelId, drill.step, row) : false;
+  return buildAttempt({ ...input, source: { type: 'drill', good } });
+}
+
+/**
+ * A clean practice try's line on the coaching card: never a tally or a pass (practice has neither), and not the step's
+ * good tries either (the lesson's report shows those). `counted` says whether the try was a good one: a clean try the
+ * step's rule did not count (a stricter rule than the tips) is never called clean.
+ */
+function drillPolishLine(counted: boolean): string {
+  return counted ? 'Clean try: nothing to fix.' : 'Nearly there: sing it once more.';
 }
 
 /** A clean check-up take's last line: the check-up moves on whatever the take did, so it promises no tally or retry. */
@@ -486,7 +646,7 @@ class Runner implements ExerciseRunner {
   readonly error: ReadonlySignal<RunError | null> = this.errorSig;
 
   /** What the take is written as, for whom, and for which check-up (if any); null when preparing failed. */
-  private readonly attemptFor: { source: AttemptSource; profileId: string; checkupId: string | null } | null = null;
+  private readonly attemptFor: { source: TakeSource; profileId: string; checkupId: string | null } | null = null;
   private synth: ReferenceSynth | null = null;
   private demo: { handle: ScheduledHandle; ctx: BaseAudioContext } | null = null;
   private take: TakeState | null = null;
@@ -751,10 +911,8 @@ class Runner implements ExerciseRunner {
     for (let k = 0; k < beats; k++) synth.click(countInStart + k * spb, k === 0, clickGain);
     if (p.def.metronome) take.metronome = synth.startMetronome(r.bpm, { startAt: downbeat, gain: clickGain });
     const headphones = device.route === 'wired' || device.route === 'bluetooth';
-    for (const tone of takeReferenceTones(r, headphones)) {
-      take.tones.push(
-        synth.playNote({ midi: tone.midi, startAt: downbeat + tone.start, duration: tone.end - tone.start, timbre: s.referenceTimbre, gain: s.referenceVolume }),
-      );
+    for (const voice of referenceVoices(takeReferenceTones(r, headphones))) {
+      take.tones.push(playReferenceVoice(synth, voice, downbeat, { timbre: s.referenceTimbre, gain: s.referenceVolume }));
     }
     batch(() => {
       this.originSig.value = downbeat + roundTrip;
@@ -864,17 +1022,20 @@ class Runner implements ExerciseRunner {
     // below does not.
     const silent = analysis.tipContext.noVoice === true;
     const sungFor = evaluation.unsung ? Math.min(sungSec, Math.max(0, evaluation.unsung.lastReachedEnd ?? sungSec)) : sungSec;
-    const fields = buildAttempt({
-      profileId: owner.profileId,
-      def,
-      source: owner.source,
-      // The tempo actually sung, and the time actually sung.
-      realized: { tonicMidi: realized.tonicMidi, bpm: realized.bpm, countInSec: silent ? 0 : realized.countInSec, totalSec: silent ? 0 : sungFor, fit: realized.fit },
-      evaluation,
-      metrics: analysis.metrics,
-      takeId,
-      checkupId: owner.checkupId,
-    });
+    const fields = attemptFields(
+      {
+        profileId: owner.profileId,
+        def,
+        source: owner.source,
+        // The tempo actually sung, and the time actually sung.
+        realized: { tonicMidi: realized.tonicMidi, bpm: realized.bpm, countInSec: silent ? 0 : realized.countInSec, totalSec: silent ? 0 : sungFor, fit: realized.fit },
+        evaluation,
+        metrics: analysis.metrics,
+        takeId,
+        checkupId: owner.checkupId,
+      },
+      p.drill,
+    );
 
     // The commit point: a take abandoned before here writes nothing.
     if (token !== this.token || this.disposed) return;
@@ -888,6 +1049,9 @@ class Runner implements ExerciseRunner {
 
     // The attempt is durable: everything below completes even if the screen was left meanwhile.
     const { attempt, before, after } = recorded;
+    // A practice try: its step's good tries counting this one, read from the log that now holds it (before any other
+    // operation of the session can run).
+    const prepared: PreparedRun = p.drill ? { ...p, drill: drillProgress(p.drill.levelId, p.drill.step, logWith(attempt), after) ?? p.drill } : p;
     const problems: string[] = [];
     let savedTake: TakeRecord | null = null;
     const storage = appStorage.value;
@@ -917,11 +1081,15 @@ class Runner implements ExerciseRunner {
     }
     const nextBpm = p.ladder ? nextTempo(def, realized.bpm, analysis.metrics, conditions) : null;
     // A clean take's line says what is next for THIS take (a rung, a closed test, a routine, every tally lit, the next
-    // check-up task).
-    if (tip.id === POLISH_TIP.id) tip = { ...tip, text: this.target.kind === 'checkup' ? checkupPolishLine(p) : polishLine(p, attempt, nextBpm) };
+    // check-up task, the practice step's good tries).
+    if (tip.id === POLISH_TIP.id) {
+      const d = prepared.drill;
+      const text = this.target.kind === 'checkup' ? checkupPolishLine(p) : d ? drillPolishLine(attempt.passed) : polishLine(p, attempt, nextBpm);
+      tip = { ...tip, text };
+    }
     const outcome: TakeOutcome = {
       id: attempt.id,
-      prepared: p,
+      prepared,
       take,
       analysis,
       evaluation,
@@ -943,11 +1111,19 @@ class Runner implements ExerciseRunner {
     // again first when it measured nothing (flow.ts), and the last task's take ends the check-up only once it measured.
     if (this.target.kind === 'checkup') recordCheckupTake(this.target.taskIndex, outcome);
     batch(() => {
+      // A practice try sung again from here counts from where this one left its step.
+      if (prepared !== p) this.preparedSig.value = prepared;
       this.outcomeSig.value = outcome;
       this.originSig.value = null;
       this.phaseSig.value = 'done';
     });
   }
+}
+
+/** The session's log with `attempt` in it (recordAttempt has just loaded it; added should a reload have missed it). */
+function logWith(attempt: AttemptRecord): readonly AttemptRecord[] {
+  const log = attemptLog.value.filter((a) => a.profileId === attempt.profileId);
+  return log.some((a) => a.id === attempt.id) ? log : [...log, attempt];
 }
 
 /** Create the runner for one Sing screen visit. Prepares at once (phase 'idle', or 'error' with RunError 'locked'/'unknown'). */

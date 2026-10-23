@@ -36,7 +36,7 @@ import { getExercise, getLevel } from '../exercises/catalog';
 import { SONG_PASS_SCORE, isFullSpeed, nextStepAfter, sameSpan, songPractice, songTakes, type PracticeStep } from '../song/practice';
 import type { Song, SongNote } from '../song/types';
 import type { AttemptRecord } from '../storage/schema';
-import { FOCUS_PRACTISE_DEPTH, REST_MISSES, REST_TAKES, REST_WINDOW_MS, checkupFocusLevels, depthFor } from './coach';
+import { FOCUS_PRACTISE_DEPTH, REST_MISSES, checkupFocusLevels, depthFor, restDue } from './coach';
 import { ladderFor } from './content/index';
 import * as P from './plain';
 import type { SongTipId } from './song-tips';
@@ -1006,17 +1006,6 @@ export function nextStepLine(step: PracticeStep | null | undefined): string {
   }
 }
 
-/** Takes of anything in the REST_WINDOW_MS up to `now`. */
-function recentTakes(log: readonly AttemptRecord[], now: number): number {
-  let n = 0;
-  for (const a of log) {
-    if (a.deletedAt !== null) continue;
-    const at = Date.parse(a.createdAt);
-    if (Number.isFinite(at) && at <= now + 1000 && now - at < REST_WINDOW_MS) n++;
-  }
-  return n;
-}
-
 /** An earlier level the ladder names, offered only when the log shows it passed (never the Range finder). */
 function practiseLevelMove(levelId: string | undefined, log: readonly AttemptRecord[]): CoachMove | null {
   if (levelId === undefined) return null;
@@ -1086,7 +1075,7 @@ export function coachSongTake(take: SongTake, log: readonly AttemptRecord[], opt
     if (depth >= 3) moves.push({ kind: 'send-to-claude' });
   }
   const now = opts?.now ?? Date.parse(attempt.createdAt);
-  if (misses >= REST_MISSES || (Number.isFinite(now) && recentTakes(upTo, now) >= REST_TAKES)) moves.push({ kind: 'rest' });
+  if (misses >= REST_MISSES || (Number.isFinite(now) && restDue(upTo, now))) moves.push({ kind: 'rest' });
 
   let tip: string;
   if (passed) {

@@ -143,10 +143,10 @@ describe('a first check-up, from Home to its results, on the real engine', () =>
     expect(byTestId(c, 'checkup-card')!.dataset.kind).toBe('continue');
     expect(textOf(byTestId(c, 'checkup-card'))).toContain('Task 3 of 5 is next.');
 
-    // The slide breaks (the voice cracks all the way up); the last two tasks go well.
-    sing(2, 0.1, T1 + 120_000);
+    // The two notes and the connected line go well; the slide, sung last, breaks (the voice cracks all the way up).
+    sing(2, 1, T1 + 120_000);
     sing(3, 1, T1 + 180_000);
-    sing(4, 1, T1 + 240_000);
+    sing(4, 0.1, T1 + 240_000);
     saveRange(range.createdAt);
 
     c = await show(<Checkup />);
@@ -158,9 +158,9 @@ describe('a first check-up, from Home to its results, on the real engine', () =>
       'range',
       'pitch',
       'steadiness',
-      'slides',
       'starts',
       'connected',
+      'slides',
     ]);
     expect(byTestId(c, 'checkup-skill-slides')!.dataset.rating).toBe('focus');
     expect(textOf(byTestId(c, 'checkup-skill-slides')!.querySelector('.ck-rating'))).toBe('Focus here');
@@ -168,9 +168,10 @@ describe('a first check-up, from Home to its results, on the real engine', () =>
     const focus = [...c.querySelectorAll('[data-testid="checkup-focus"] .ck-focus__item')].map((li) => li.getAttribute('data-skill'));
     expect(focus).toContain('slides');
     expect(focus.length).toBeLessThanOrEqual(2);
-    // Where to start and what opened come from the placement tests: the first one granted Pitch match to Sustain II.
-    expect(textOf(byTestId(c, 'checkup-opened-levels'))).toBe('Pitch match – Sustain II');
-    expect(textOf(byTestId(c, 'checkup-start-level')!.querySelector('.ck-start__title'))).toBe('Sirens & glides');
+    // Where to start and what opened come from the placement tests, passed in order up to the slide: Match one note to
+    // Five notes in a row.
+    expect(textOf(byTestId(c, 'checkup-opened-levels'))).toBe('Match one note – Five notes in a row');
+    expect(textOf(byTestId(c, 'checkup-start-level')!.querySelector('.ck-start__title'))).toBe('Small slides');
     // Nothing to compare with yet.
     expect(byTestId(c, 'checkup-compare')).toBeNull();
     expect(jargonIn(textOf(c))).toEqual([]);
@@ -178,16 +179,16 @@ describe('a first check-up, from Home to its results, on the real engine', () =>
 
     // Practise the focus: the level the singer is on, and it is open.
     const practise = byTestId<HTMLButtonElement>(c, 'checkup-practise-slides')!;
-    expect(textOf(practise)).toBe('Practise Sirens & glides');
+    expect(textOf(practise)).toBe('Practise Small slides');
     practise.click();
-    expect(route.value).toEqual(routeOf('level', { levelId: 'foundations.05' }));
+    expect(route.value).toEqual(routeOf('level', { levelId: 'foundations.12' }));
   });
 
   it('shows the results of the last sitting on Home as a quiet row, and in the dashboard, until a re-check is due', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     try {
       vi.setSystemTime(new Date(T1 + 3 * DAY_MS)); // three days after the check-up
-      await runWholeCheckup(T1, [1, 1, 0.1, 1, 1]);
+      await runWholeCheckup(T1, [1, 1, 1, 1, 0.1]);
       activeCheckup.value = null; // a relaunch: the session is gone, the log has it
       let c = await show(<Home />);
       const card = byTestId(c, 'checkup-card')!;
@@ -213,7 +214,7 @@ async function runWholeCheckup(start: number, xs: readonly number[]): Promise<vo
 describe('a second check-up on the real engine', () => {
   it('sets it against the first with the engine\'s headline and lines, and shows the older one on its own results', async () => {
     // The first check-up, a month ago: the slide broke. The singer then relaunched the app.
-    await runWholeCheckup(T1, [1, 1, 0.1, 1, 1]);
+    await runWholeCheckup(T1, [1, 1, 1, 1, 0.1]);
     activeCheckup.value = null;
 
     // The second: the slide is smooth now.
@@ -235,7 +236,7 @@ describe('a second check-up on the real engine', () => {
   });
 
   it('opens the older check-up\'s own results from the dashboard, set against nothing, and says its range in words', async () => {
-    await runWholeCheckup(T1, [1, 1, 0.1, 1, 1]);
+    await runWholeCheckup(T1, [1, 1, 1, 1, 0.1]);
     activeCheckup.value = null;
     await runWholeCheckup(T2, [1, 1, 1, 1, 1]);
     activeCheckup.value = null;

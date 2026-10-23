@@ -410,19 +410,19 @@ function settle(ctx: Ctx, missing: boolean): Found {
     const sat = accSung(ctx).map((a) => a.result.biasCents);
     const where = sat.length > 0 && Math.abs(median(sat)) >= 18 ? `; most sat ${P.offWords(median(sat))}` : '';
     return {
-      what: n > 0 ? `Most notes never settled in tune: ${never.length} of the ${n} stayed off the pitch${where}.` : 'Most notes never settled in tune.',
-      spots: never.map((o) => spot(o.note.start, `${ref(ctx, o.note)}, never settled in tune`)),
+      what: n > 0 ? `Most notes never landed in tune: ${never.length} of the ${n} stayed off the pitch${where}.` : 'Most notes never landed in tune.',
+      spots: never.map((o) => spot(o.note.start, `${ref(ctx, o.note)}, never landed in tune`)),
     };
   }
   const slow = (o: OnsetNote) => (o.result.settleMs === null ? Infinity : o.result.settleMs);
   const ranked = worstFirst(all, slow, (o) => slow(o) >= 100);
-  const label = (o: OnsetNote) => (o.result.settleMs === null ? 'never settled' : `took ${P.durationWords(o.result.settleMs / 1000)}`);
+  const label = (o: OnsetNote) => (o.result.settleMs === null ? 'never found the pitch' : `took ${P.durationWords(o.result.settleMs / 1000)}`);
   const v = ctx.metrics[metric];
   if (!finite(v)) return unmeasured(metric);
   const w = ranked[0];
-  const worst = w ? `; ${ref(ctx, w.note)} ${w.result.settleMs === null ? 'never settled' : `took ${P.durationWords(w.result.settleMs / 1000)}`}` : '';
+  const worst = w ? `; ${ref(ctx, w.note)} ${w.result.settleMs === null ? 'never found the pitch' : `took ${P.durationWords(w.result.settleMs / 1000)}`}` : '';
   return {
-    what: `Your notes typically took ${P.durationWords(v / 1000)} to settle on the pitch${req(ctx, metric)}${worst}.`,
+    what: `Your notes typically took ${P.durationWords(v / 1000)} to find the pitch${req(ctx, metric)}${worst}.`,
     spots: ranked.map((o) => spot(o.note.start, `${ref(ctx, o.note)}, ${label(o)}`)),
   };
 }
@@ -434,7 +434,7 @@ function overshoot(ctx: Ctx): Found {
   const w = ranked[0];
   return {
     what: w
-      ? `Your notes went past the pitch before settling${req(ctx, metric)}; the furthest was ${ref(ctx, w.note)}, ${P.pitchDistance(w.result.overshootCents)} past it.`
+      ? `Your notes went past the pitch before landing on it${req(ctx, metric)}; the furthest was ${ref(ctx, w.note)}, ${P.pitchDistance(w.result.overshootCents)} past it.`
       : `Your notes hardly went past the pitch${req(ctx, metric)}.`,
     spots: ranked.map((o) => spot(o.note.start, `${ref(ctx, o.note)}, ${P.pitchDistance(o.result.overshootCents)} past`)),
   };
@@ -446,10 +446,10 @@ function crisp(ctx: Ctx): Found {
   const reason = (o: OnsetNote): string => {
     const r = o.result;
     if (r.onsetT === null) return 'not heard';
-    if (r.settleMs === null) return 'never settled';
+    if (r.settleMs === null) return 'never found the pitch';
     if (r.scoopCents > CONFIG.onset.crispMaxScoopCents) return 'slid up from below';
     if (r.overshootCents > CONFIG.onset.crispMaxOvershootCents) return 'went past the pitch';
-    if (r.settleMs > target) return 'slow to settle';
+    if (r.settleMs > target) return 'slow to find the pitch';
     if (r.onsetType === 'breathy') return 'a breathy start';
     return 'not quite clean';
   };
@@ -471,7 +471,7 @@ function crisp(ctx: Ctx): Found {
 /** "slid up from below" as the end of a sentence about a note ("note 3 (G3) slid up from below"). */
 function verbOf(reason: string): string {
   if (reason === 'not heard') return 'was not heard';
-  if (reason === 'slow to settle') return 'was slow to settle';
+  if (reason === 'slow to find the pitch') return 'was slow to find the pitch';
   if (reason === 'a breathy start') return 'had a breathy start';
   if (reason === 'not quite clean') return 'was not quite clean';
   return reason;
@@ -855,7 +855,7 @@ function transitions(ctx: Ctx): Found {
     seq.result.transitions.map((tr) => ({ ...tr, a: seq.notes[tr.fromIndex], b: seq.notes[tr.toIndex] })),
   );
   const reason = (tr: (typeof all)[number]): string => {
-    if (tr.durationMs === null) return 'never settled';
+    if (tr.durationMs === null) return 'never landed';
     if (tr.overshootCents > overshootLimit) return 'went past the note';
     return `took ${P.durationWords(tr.durationMs / 1000)}`;
   };

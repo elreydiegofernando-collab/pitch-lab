@@ -41,7 +41,7 @@ export type MetricDirection = 'higher' | 'lower' | 'target';
 
 export interface MetricInfo {
   direction: MetricDirection;
-  /** Short tile/requirement label. */
+  /** Short tile/requirement label, in plain words. */
   label: string;
   /** Display unit after scaling ('' = a count). */
   unit: string;
@@ -55,28 +55,34 @@ export interface MetricInfo {
 const rate = (label: string, direction: MetricDirection = 'higher'): MetricInfo => ({ direction, label, unit: '%', scale: 100, min: 0, max: 1 });
 const cents = (label: string, max = 1200): MetricInfo => ({ direction: 'lower', label, unit: '¢', scale: 1, min: 0, max });
 
+/**
+ * The labels are plain words (owner, 2026-10-23: "you're using a lot of technical terms in the app that I don't know"):
+ * they name what the singer did, not how the analyzer measured it (the coach's own labels are coaching/measures.ts).
+ * Keys, units, scale and bounds are the analyst's and stay as they are: formatMetric still writes "250 ms" and "18¢",
+ * for the coaching file and the dashboard; the take report writes the plain reading (teach/plain-metrics.ts).
+ */
 export const METRIC_INFO: Readonly<Record<MetricKey, MetricInfo>> = {
   'accuracy.inTolerancePct': { direction: 'higher', label: 'In tune', unit: '%', scale: 1, min: 0, max: 100 },
   'accuracy.medianAbsCents': cents('Typical miss'),
-  'accuracy.sdCents': cents('Pitch spread'),
-  'accuracy.absBiasCents': cents('Off-centre'),
+  'accuracy.sdCents': cents('How steady'),
+  'accuracy.absBiasCents': cents('Off the middle by'),
   'accuracy.absDriftCentsPerSec': { direction: 'lower', label: 'Drift', unit: '¢/s', scale: 1, min: 0, max: 200 },
-  'onset.settleMs': { direction: 'lower', label: 'Settle', unit: 'ms', scale: 1, min: 0, max: 5000 },
+  'onset.settleMs': { direction: 'lower', label: 'Time to find the note', unit: 'ms', scale: 1, min: 0, max: 5000 },
   'onset.scoopCents': cents('Scoop'),
-  'onset.overshootCents': cents('Overshoot'),
-  'onset.crispRate': rate('Crisp onsets'),
+  'onset.overshootCents': cents('Going past the note'),
+  'onset.crispRate': rate('Clean starts'),
   'vibrato.present': rate('Vibrato heard'),
-  'vibrato.rateHz': { direction: 'target', label: 'Vibrato rate', unit: 'Hz', scale: 1, min: 0, max: 20 },
+  'vibrato.rateHz': { direction: 'target', label: 'Vibrato speed', unit: 'Hz', scale: 1, min: 0, max: 20 },
   'vibrato.extentCents': { direction: 'target', label: 'Vibrato width', unit: '¢', scale: 1, min: 0, max: 600 },
   'vibrato.regularity': rate('Vibrato evenness'),
-  'vibrato.inZone': rate('In the zone'),
-  'vibrato.absCenteringCents': cents('Vibrato centre'),
+  'vibrato.inZone': rate('In the vibrato zone'),
+  'vibrato.absCenteringCents': cents('Vibrato off the note by'),
   'vibrato.switchCleanRate': rate('Clean switches'),
-  'vibrato.bloomOnCue': rate('Bloom on cue'),
-  'pulse.rateErrorHz': { direction: 'lower', label: 'Pulse rate off', unit: 'Hz', scale: 1, min: 0, max: 50 },
+  'vibrato.bloomOnCue': rate('Vibrato on cue'),
+  'pulse.rateErrorHz': { direction: 'lower', label: 'Pulse speed off by', unit: 'Hz', scale: 1, min: 0, max: 50 },
   'pulse.regularity': rate('Pulse evenness'),
   'glide.smoothness': rate('Smoothness'),
-  'glide.endAbsCents': cents('Arrival'),
+  'glide.endAbsCents': cents('Slide ending off by'),
   'glide.cracks': { direction: 'lower', label: 'Breaks', unit: '', scale: 1, min: 0, max: 100 },
   'transition.cleanRate': rate('Clean changes'),
   'inflection.score': rate('Shape match'),
@@ -84,9 +90,9 @@ export const METRIC_INFO: Readonly<Record<MetricKey, MetricInfo>> = {
   'run.score': rate('Run score'),
   'run.definedRate': rate('Defined notes'),
   'run.missedRate': rate('Missed notes', 'lower'),
-  'dynamics.rangeDb': { direction: 'higher', label: 'Loudness range', unit: 'dB', scale: 1, min: 0, max: 80 },
-  'dynamics.absSlopeCentsPerDb': { direction: 'lower', label: 'Pitch per dB', unit: '¢/dB', scale: 1, min: 0, max: 50 },
-  'dynamics.symmetry': rate('Swell symmetry'),
+  'dynamics.rangeDb': { direction: 'higher', label: 'Soft to loud', unit: 'dB', scale: 1, min: 0, max: 80 },
+  'dynamics.absSlopeCentsPerDb': { direction: 'lower', label: 'Pitch as the loudness changed', unit: '¢/dB', scale: 1, min: 0, max: 50 },
+  'dynamics.symmetry': rate('Even swell'),
   'range.spanSemitones': { direction: 'higher', label: 'Low to high', unit: 'half steps', scale: 1, min: 0, max: 48 },
   'song.phraseScore': rate('Phrase score'),
   'song.inTolerancePct': { direction: 'higher', label: 'In tune', unit: '%', scale: 1, min: 0, max: 100 },

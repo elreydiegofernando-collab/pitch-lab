@@ -1,4 +1,8 @@
-/** Setup: a 5-step stepper for headphones/route, microphone, an audio-routing check, latency calibration, and tips. */
+/**
+ * Setup: a 5-step stepper for headphones, microphone, a sound check, a timing check (the latency calibration) and tips.
+ * In plain words (owner, 2026-10-23: "you're using a lot of technical terms in the app that I don't know"): no "route",
+ * "latency", "loopback" or milliseconds; the delay the timing check finds is said as a length of time in words.
+ */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import {
@@ -13,6 +17,7 @@ import {
   Volume2,
 } from 'lucide-preact';
 import { back } from '../../router';
+import { count, durationWords, sentence } from '../../coaching/plain';
 import { getEngine } from '../../audio/engine';
 import { isIOS, isLikelyBluetoothLabel, isStandalone, isWindows } from '../../audio/platform';
 import { startCalibration } from '../../audio/latency';
@@ -36,20 +41,21 @@ import { Segmented } from '../components/Segmented';
 import { useReleaseMicOnLeave } from '../practice/use-mic-release';
 
 const A3_MIDI = parseNote('A3');
-const STEP_NAMES = ['Headphones & route', 'Microphone', 'Audio check', 'Latency calibration', 'Tips'] as const;
+const STEP_NAMES = ['Headphones', 'Microphone', 'Audio check', 'Timing check', 'Tips'] as const;
 const ROUTE_OPTIONS = [
   { value: 'wired' as const, label: 'Wired', icon: Headphones },
   { value: 'bluetooth' as const, label: 'Bluetooth', icon: Bluetooth },
   { value: 'speaker' as const, label: 'Speaker', icon: Speaker },
 ];
+/** The calibration methods by what the singer does (the stored value is still 'loopback' for the one that holds the phone close). */
 const METHOD_OPTIONS = [
-  { value: 'loopback' as const, label: 'Loopback' },
+  { value: 'loopback' as const, label: 'Hold close' },
   { value: 'sing' as const, label: 'Sing' },
   { value: 'tap' as const, label: 'Tap' },
 ];
 const METHOD_HINTS: Record<CalibrationMethod, string> = {
-  loopback: 'Recommended: hold the phone speaker (or one earbud) right at the mic and stay quiet otherwise.',
-  sing: 'Sing a quick "ta" right on each click.',
+  loopback: 'Recommended: hold the phone’s speaker (or one earbud) right up to the microphone and stay quiet.',
+  sing: 'Sing a quick “ta” right on each click.',
   tap: 'Tap the pad below on each click. Quick, but less accurate than the other two methods.',
 };
 
@@ -65,14 +71,14 @@ function StepHeadphones(): JSX.Element {
         onChange={(v: OutputRoute) => updateDeviceSettings({ route: v })}
       />
       {route === 'bluetooth' ? (
-        <Banner kind="warn" message="Bluetooth and AirPods add about 120-300 ms of delay, and their mic is narrowband.">
+        <Banner kind="warn" message="Bluetooth and AirPods add a short delay, and their microphone is not good for singing.">
           <p class="pl-body-s pl-muted">
-            Pitch Lab will still ask you to use your phone or laptop's built-in mic — see the next step.
+            Pitch Lab will still ask you to use your phone’s or laptop’s own microphone: the next step picks it.
           </p>
         </Banner>
       ) : null}
       {isWindows() ? (
-        <Banner kind="info" message="Windows: turn off mic enhancements for accurate pitch.">
+        <Banner kind="info" message="On Windows, turn off microphone effects so the app hears your real voice.">
           <p class="pl-body-s pl-muted">
             Settings &rsaquo; System &rsaquo; Sound &rsaquo; your mic &rsaquo; Audio enhancements: Off.
             <br />
@@ -113,14 +119,14 @@ function StepMicrophone(): JSX.Element {
 
   return (
     <div class="pl-stack">
-      <p class="pl-body">Pick the mic Pitch Lab should listen to.</p>
+      <p class="pl-body">Choose the microphone Pitch Lab should listen to.</p>
       {engineState.value === 'idle' ? (
         <Button variant="primary" icon={Mic} loading={micBusy} onClick={handleGrantMic}>
           Allow microphone access
         </Button>
       ) : null}
       {inputs.length === 0 ? (
-        <EmptyState icon={Mic} title="No inputs yet" message="Grant microphone access to see your devices." />
+        <EmptyState icon={Mic} title="No microphones yet" message="Allow microphone access to see yours." />
       ) : (
         <div class="pl-list">
           {inputs.map((d) => (
@@ -128,7 +134,7 @@ function StepMicrophone(): JSX.Element {
               key={d.deviceId}
               icon={Mic}
               title={d.label || 'Microphone'}
-              subtitle={isLikelyBluetoothLabel(d.label) ? 'Bluetooth — narrowband, avoid for singing' : undefined}
+              subtitle={isLikelyBluetoothLabel(d.label) ? 'Bluetooth: not good for singing' : undefined}
               selected={d.deviceId === deviceSettings.value.inputDeviceId}
               onClick={() => selectInput(d.deviceId)}
             />
@@ -153,7 +159,7 @@ function StepAudioCheck(): JSX.Element {
     try {
       getSynth().playNote({ midi: A3_MIDI, duration: 2, timbre: settings.value.referenceTimbre, gain: settings.value.referenceVolume });
     } catch {
-      setToneError('Audio could not start. Tap Play test tone again; if it keeps failing, use Reset audio.');
+      setToneError('Sound could not start. Tap Play a test sound again; if it keeps failing, use Reset audio.');
     }
   }
 
@@ -176,7 +182,7 @@ function StepAudioCheck(): JSX.Element {
       (code) => {
         pending.current = null;
         setToneBusy(false);
-        setToneError(micProblem(code, 'Play test tone'));
+        setToneError(micProblem(code, 'Play a test sound'));
       },
     );
   }
@@ -204,16 +210,16 @@ function StepAudioCheck(): JSX.Element {
   return (
     <div class="pl-stack">
       <p class="pl-body">
-        Play a short tone and tell us where you actually heard it. This catches iOS routing audio to the
-        earpiece or ducking its volume, which only happens while the mic is on.
+        Play a short sound and tell us where you heard it. While the microphone is on, an iPhone sometimes sends the sound
+        to the tiny earpiece, or turns it way down. This check catches that.
       </p>
       {engineState.value !== 'running' ? (
         <p class="pl-body-s pl-muted" data-testid="tone-mic-note">
-          Play test tone turns the microphone on first.
+          Play a test sound turns the microphone on first.
         </p>
       ) : null}
       <Button variant="secondary" icon={Volume2} loading={toneBusy} onClick={handlePlayTestTone}>
-        Play test tone (2s)
+        Play a test sound
       </Button>
       {toneError ? <Banner kind="error" message={toneError} /> : null}
       <span class="pl-label">Where did you hear it?</span>
@@ -229,13 +235,13 @@ function StepAudioCheck(): JSX.Element {
         </Button>
       </div>
       {problem ? (
-        <Banner kind="warn" message="Audio got routed or ducked unexpectedly — a known iOS/WebKit quirk.">
+        <Banner kind="warn" message="The sound went to the wrong place or got very quiet. That is a known iPhone quirk, and Reset audio usually fixes it.">
           <Button variant="secondary" icon={RotateCcw} loading={resetBusy} onClick={handleResetAudio}>
             Reset audio
           </Button>
         </Banner>
       ) : check ? (
-        <Banner kind="info" message="Good — audio is routing normally." />
+        <Banner kind="info" message="Good: the sound is going where it should." />
       ) : null}
     </div>
   );
@@ -321,7 +327,7 @@ function StepLatency(): JSX.Element {
       synth = getSynth();
     } catch {
       setRunning(false);
-      setMicError('Audio could not start. Tap Run again; if it keeps failing, use Reset audio in the Audio check step.');
+      setMicError('Sound could not start. Tap Run again; if it keeps failing, use Reset audio in the Audio check step.');
       return;
     }
     const next = startCalibration(chosen, { engine, synth });
@@ -384,13 +390,13 @@ function StepLatency(): JSX.Element {
   return (
     <div class="pl-stack">
       {engineError.value?.code === 'route-changed' ? (
-        <Banner kind="info" message="Your audio route changed. Recalibrating latency for the new route is a good idea." />
+        <Banner kind="info" message="Your headphones or speaker changed. It is worth running the timing check again." />
       ) : null}
       <p class="pl-body">
-        This measures the round trip from a scheduled sound to its arrival on the mic, so song mode can line
-        your voice up with the music.
+        Your phone takes a moment to play a sound and a moment to hear it. This measures that tiny delay, so songs
+        can line up with your voice.
       </p>
-      <Segmented aria-label="Calibration method" options={METHOD_OPTIONS} value={method} onChange={setMethod} />
+      <Segmented aria-label="Timing check method" options={METHOD_OPTIONS} value={method} onChange={setMethod} />
       <p class="pl-body-s pl-muted">{METHOD_HINTS[method]}</p>
       {method !== 'tap' && engineState.value !== 'running' ? (
         <p class="pl-body-s pl-muted" data-testid="calibration-mic-note">
@@ -404,8 +410,8 @@ function StepLatency(): JSX.Element {
       {micError ? <Banner kind="error" message={micError} /> : null}
 
       {progress ? (
-        <p class="pl-body-s pl-muted pl-tabular">
-          {progress.clicksPlayed}/{progress.clicksTotal} clicks &middot; {progress.eventsDetected} detected
+        <p class="pl-body-s pl-muted pl-tabular" data-testid="timing-progress">
+          Click {progress.clicksPlayed} of {progress.clicksTotal} &middot; heard {progress.eventsDetected}
         </p>
       ) : null}
 
@@ -423,9 +429,11 @@ function StepLatency(): JSX.Element {
       {result ? (
         <div class="pl-card">
           <span class="pl-label">Result</span>
-          <span class="pl-readout-l pl-tabular">{Math.round(result.offsetMs)} ms</span>
-          <span class="pl-body-s pl-muted pl-tabular">
-            &plusmn;{Math.round(result.jitterMs)} ms jitter &middot; {result.matched} matched
+          <span class="pl-display-m" data-testid="timing-delay">
+            {sentence(durationWords(result.offsetMs / 1000))}
+          </span>
+          <span class="pl-body-s pl-muted">
+            That is how long your phone takes to play a sound and hear it. Heard {count(result.matched, 'click')}.
           </span>
           <div class="pl-row-flex">
             <span class="pl-body-s" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: result.ok ? 'var(--on)' : 'var(--off)' }}>
@@ -457,7 +465,7 @@ function StepTips(): JSX.Element {
       {isIOS() && !isStandalone() ? (
         <Banner kind="info" message="Add Pitch Lab to your Home Screen (Share › Add to Home Screen) for full-screen, offline use." />
       ) : null}
-      <Banner kind="info" message="The Ring/Silent switch won't mute Pitch Lab — audio is routed for playback and recording." />
+      <Banner kind="info" message="The Ring/Silent switch won’t mute Pitch Lab, so you will always hear the notes." />
     </div>
   );
 }

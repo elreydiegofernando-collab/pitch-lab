@@ -1,9 +1,11 @@
 /**
- * Level: one level before singing (docs/DESIGN.md §13.3). The goal in a sentence, the pass lines, the tolerance and tempo
- * chips, the best score with its tally lights, then Listen / Sing / More in the thumb zone. A Boss Recital gets a stage
- * header and lists the sections of its one continuous take. A passed level offers "Sing again" for the next tally light
- * and, once Personal records open, "Chase a record"; until then that is shown locked, never hidden. When the latest take
- * of the level missed, "Last time" brings its coaching here, before the next try; More always offers "Send to Claude".
+ * Level: one level before singing (docs/DESIGN.md §13.3). A level with a lesson (src/lessons: Learn, Practise, Check)
+ * opens as the lesson screen (src/ui/lesson/LessonScreen.tsx). A level without one (the later worlds, until they are
+ * converted) keeps the classic screen below: the goal in a sentence, the pass lines, the tolerance and tempo chips, the
+ * best score with its tally lights, then Listen / Sing / More in the thumb zone. A Boss Recital gets a stage header and
+ * lists the sections of its one continuous take. A passed level offers "Sing again" for the next tally light and, once
+ * Personal records open, "Chase a record"; until then that is shown locked, never hidden. When the latest take of the
+ * level missed, "Last time" brings its coaching here, before the next try; More always offers "Send to Claude".
  * Everything here is gated by src/progress: a level that is not open shows its requirement and no way in.
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
@@ -16,6 +18,7 @@ import type { CoachMove } from '../../coaching/types';
 import { METRIC_INFO, WORLDS, formatMetric, getExercise, getLevel, getWorld, passRequirements } from '../../exercises';
 import type { MetricKey } from '../../analysis/types';
 import type { ExerciseDef, LevelDef, WorldDef } from '../../exercises/types';
+import { lessonFor } from '../../lessons';
 import { LEVEL_REFS, isLevelOpenable, isRecordAttemptAllowed, levelRequirementHint, recordsForExercise, requirementHint } from '../../progress';
 import { paramsForTarget } from '../../runtime/targets';
 import type { ExerciseRunner } from '../../runtime/types';
@@ -34,6 +37,7 @@ import { Unavailable } from '../practice/Unavailable';
 import { bossChain, levelNumber, percent, tempoLabel, toleranceLabel } from '../practice/copy';
 import { rangeLabel } from '../practice/RangeCard';
 import { tryCreateRunner } from '../practice/runner-handle';
+import { LessonScreen } from '../lesson/LessonScreen';
 import { settings } from '../../state/settings';
 
 /** "the Foundations Boss Recital" or "Sustain II": how a level is named in a requirement line. */
@@ -46,7 +50,8 @@ export function Level(): JSX.Element {
   const level = r.name === 'level' ? getLevel(r.params.levelId) : undefined;
   const def = level ? getExercise(level.exerciseId) : undefined;
   if (!level || !def) return <Unavailable title="Level" message="This level isn't in the catalog. Go back to the map and choose another." />;
-  return <LevelView level={level} def={def} />;
+  const lesson = lessonFor(level.id);
+  return lesson ? <LessonScreen key={level.id} level={level} def={def} lesson={lesson} /> : <LevelView key={level.id} level={level} def={def} />;
 }
 
 function LevelView(props: { level: LevelDef; def: ExerciseDef }): JSX.Element {

@@ -5,6 +5,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Metrics } from '../analysis/types';
+import { SKILL_LEVELS } from '../checkup/skills';
 import { CHECKUP_TASKS } from '../checkup/types';
 import { WORLDS, evaluate, getExercise, realize } from '../exercises';
 import { computeSnapshot, withRoutines, type WeaknessScore } from '../progress';
@@ -77,32 +78,39 @@ describe('raiseFocusLevels', () => {
 });
 
 describe('planWorkout with a check-up focus', () => {
-  it('“your voice cracks on slides”: Sirens & glides becomes the review', () => {
+  /** The siren task (sung last) and the connected line, by the skills they rate. */
+  const SIREN = CHECKUP_TASKS.findIndex((t) => t.skills.some((s) => s.skill === 'slides'));
+  const LINE = CHECKUP_TASKS.findIndex((t) => t.skills.some((s) => s.skill === 'connected'));
+  const slideLevels: readonly string[] = SKILL_LEVELS.slides;
+
+  it('“your voice cracks on slides”: a slides lesson (Small slides or Sirens) becomes the review', () => {
     const before = passThrough(WORLDS, 'foundations.boss');
     const usual = review(before);
     expect(usual).not.toBeNull();
-    expect(usual!.levelId).not.toBe('foundations.05');
+    expect(slideLevels).not.toContain(usual!.levelId);
 
-    const cracks = checkupRows('c1', { 2: { 'glide.cracks': 3 } });
-    expect(review([...before, ...cracks])).toMatchObject({ stage: 'review', levelId: 'foundations.05', reason: 'weakest' });
+    const cracks = checkupRows('c1', { [SIREN]: { 'glide.cracks': 3 } });
+    const focused = review([...before, ...cracks]);
+    expect(focused).toMatchObject({ stage: 'review', reason: 'weakest' });
+    expect(slideLevels).toContain(focused!.levelId);
   });
 
   it('follows the latest check-up: a re-check with clean slides lets the review go back to its usual pick', () => {
     const before = passThrough(WORLDS, 'foundations.boss');
-    const log = [...before, ...checkupRows('c1', { 2: { 'glide.cracks': 3 } })];
-    expect(review(log)?.levelId).toBe('foundations.05');
+    const log = [...before, ...checkupRows('c1', { [SIREN]: { 'glide.cracks': 3 } })];
+    expect(slideLevels).toContain(review(log)?.levelId);
     const rechecked = [...log, ...checkupRows('c2')];
-    expect(review(rechecked)?.levelId).not.toBe('foundations.05');
-    // An unfinished check-up after it changes nothing.
-    expect(review([...log, ...checkupRows('c3', { 2: { 'glide.cracks': 0 } }).slice(0, 3)])?.levelId).toBe('foundations.05');
+    expect(slideLevels).not.toContain(review(rechecked)?.levelId);
+    // An unfinished check-up after it (the siren, sung last, not reached) changes nothing.
+    expect(slideLevels).toContain(review([...log, ...checkupRows('c3', { [SIREN]: { 'glide.cracks': 0 } }).slice(0, 3)])?.levelId);
   });
 
   it('never plans a level that is not open: a focus on a locked skill leaves the plan as it was', () => {
     const early = passThrough(WORLDS, 'foundations.03');
-    const focusConnected = checkupRows('c1', { 1: { 'accuracy.inTolerancePct': 0 }, 4: { 'transition.cleanRate': 0 } });
+    const focusConnected = checkupRows('c1', { 1: { 'accuracy.inTolerancePct': 0 }, [LINE]: { 'transition.cleanRate': 0 } });
     useLog([...early, ...focusConnected]);
     const plan = planWorkout(20);
     for (const item of plan.items) if (item.levelId) expect(['current', 'passed'], item.levelId).toContain(snapshot.value.levels[item.levelId].status);
-    expect(plan.items.some((i) => i.levelId === 'foundations.09')).toBe(false);
+    for (const id of SKILL_LEVELS.connected) expect(plan.items.some((i) => i.levelId === id), id).toBe(false);
   });
 });

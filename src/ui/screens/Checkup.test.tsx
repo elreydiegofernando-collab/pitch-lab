@@ -42,7 +42,8 @@ beforeEach(() => {
   installRouteGuard(() => ({ ok: true }));
   activeCheckup.value = null;
   attemptLog.value = [];
-  snapshot.value = snapshotOf('foundations.04');
+  // Where a typical first check-up leaves a singer: every lesson up to Five notes in a row passed, Small slides next.
+  snapshot.value = snapshotOf('foundations.09');
   vi.mocked(checkupsOf).mockReset();
   vi.mocked(checkupsOf).mockReturnValue([]);
   vi.mocked(compareCheckups).mockClear();
@@ -223,7 +224,7 @@ describe('Checkup: the results', () => {
 
   it('rates every skill as a word and a glyph with its sentence, in the battery order, and never as a grade', async () => {
     const c = await show();
-    expect(skillRows(c)).toEqual(['range', 'pitch', 'steadiness', 'slides', 'starts', 'connected']);
+    expect(skillRows(c)).toEqual(['range', 'pitch', 'steadiness', 'starts', 'connected', 'slides']);
     const row = (skill: string): HTMLElement => byTestId(c, `checkup-skill-${skill}`)!;
     const parts = (skill: string): string[] => [row(skill).querySelector('.ck-skill__name'), row(skill).querySelector('.ck-rating'), row(skill).querySelector('.ck-skill__what')].map((el) => textOf(el));
     expect(parts('range')).toEqual(['Range', 'Solid', 'You can sing about an octave and a half comfortably.']);
@@ -242,10 +243,10 @@ describe('Checkup: the results', () => {
     expect(textOf(slides.querySelector('.ck-focus__title'))).toBe('Slides');
     expect(textOf(slides)).toContain(FOCUS_PRACTISE.slides);
     const practise = byTestId<HTMLButtonElement>(c, 'checkup-practise-slides')!;
-    expect(textOf(practise)).toBe('Practise Sirens & glides');
+    expect(textOf(practise)).toBe('Practise Small slides');
     expect(practise.classList.contains('pl-btn--secondary')).toBe(true);
     practise.click();
-    expect(route.value).toEqual(routeOf('level', { levelId: 'foundations.05' }));
+    expect(route.value).toEqual(routeOf('level', { levelId: 'foundations.12' }));
   });
 
   it('shows a focus level that is not open yet as a static Locked line, never a button', async () => {
@@ -253,7 +254,7 @@ describe('Checkup: the results', () => {
     const c = await show();
     const slides = byTestId(c, 'checkup-focus-slides')!;
     expect(slides.querySelector('button')).toBeNull();
-    expect(textOf(slides.querySelector('.pl-locked'))).toContain(levelRequirementHint('foundations.05', snapshot.value, WORLDS)!);
+    expect(textOf(slides.querySelector('.pl-locked'))).toContain(levelRequirementHint('foundations.12', snapshot.value, WORLDS)!);
     expect(textOf(slides.querySelector('.pl-locked'))).toContain('Locked.');
   });
 
@@ -261,11 +262,11 @@ describe('Checkup: the results', () => {
     snapshot.value = snapshotOf('foundations.03');
     vi.mocked(checkupsOf).mockReturnValue([summaryOf('run-1', { focus: ['steadiness'] })]);
     const c = await show();
-    expect(byTestId(c, 'checkup-focus-steadiness')!.dataset.level).toBe('foundations.04');
+    expect(byTestId(c, 'checkup-focus-steadiness')!.dataset.level).toBe('foundations.13');
     const practise = byTestId<HTMLButtonElement>(c, 'checkup-practise-steadiness')!;
-    expect(textOf(practise)).toBe('Practise Sustain II');
+    expect(textOf(practise)).toBe('Practise Hold it steady');
     practise.click();
-    expect(route.value).toEqual(routeOf('level', { levelId: 'foundations.04' }));
+    expect(route.value).toEqual(routeOf('level', { levelId: 'foundations.13' }));
   });
 
   it('names up to two skills to focus on, most important first', async () => {
@@ -295,15 +296,16 @@ describe('Checkup: the results', () => {
   it('says where you start, and continues there', async () => {
     const c = await show();
     const start = byTestId(c, 'checkup-start-level')!;
-    expect(textOf(start.querySelector('.ck-start__title'))).toBe('Sirens & glides');
-    expect(textOf(start)).toContain('Level 05 of 10 in Foundations. Everything before it is open.');
+    expect(textOf(start.querySelector('.ck-start__title'))).toBe('Small slides');
+    // Named as the map names it: a lesson, by its place in the order.
+    expect(textOf(start)).toContain('Lesson 10 of 13 in Foundations. Everything before it is open.');
     const go = byTestId<HTMLButtonElement>(c, 'checkup-continue')!;
     expect(textOf(go)).toBe('Continue');
     expect(go.getAttribute('aria-label')).toBe('Continue to where you start');
     expect(go.classList.contains('pl-btn--primary')).toBe(true);
     go.click();
     // Home sits beneath the level, so Back from the level lands on Home, not on the results.
-    expect(route.value).toEqual(routeOf('level', { levelId: 'foundations.05' }));
+    expect(route.value).toEqual(routeOf('level', { levelId: 'foundations.12' }));
     expect(back()).toBe(true);
     expect(route.value).toEqual(routeOf('home'));
     expect(canGoBack.value).toBe(false);
@@ -315,14 +317,14 @@ describe('Checkup: the results', () => {
     const c = await show();
     const start = byTestId(c, 'checkup-start-level')!;
     expect(textOf(start.querySelector('.ck-start__title'))).toBe('Range finder');
-    expect(textOf(start)).toContain('Level 01 of 10 in Foundations.');
+    expect(textOf(start)).toContain('Lesson 1 of 13 in Foundations.');
     expect(textOf(start)).not.toContain('Everything before it is open');
     expect(textOf(byTestId(c, 'checkup-continue'))).toBe('Continue');
   });
 
   it('names the Boss Recital by its world when that is where you start', async () => {
     vi.mocked(checkupsOf).mockReturnValue([summaryOf('run-1', { startLevelId: 'foundations.boss' })]);
-    snapshot.value = snapshotOf('foundations.09');
+    snapshot.value = snapshotOf('foundations.06');
     const c = await show();
     expect(textOf(byTestId(c, 'checkup-start-level')!.querySelector('.ck-start__title'))).toBe('Foundations Boss Recital');
   });
@@ -345,8 +347,8 @@ describe('Checkup: the results', () => {
 
   it('lists what opened as a range of levels', async () => {
     const c = await show();
-    expect(textOf(byTestId(c, 'checkup-opened-levels'))).toBe('Pitch match – Sustain II');
-    expect(textOf(byTestId(c, 'checkup-opened'))).toContain('3 levels you showed you can already sing');
+    expect(textOf(byTestId(c, 'checkup-opened-levels'))).toBe('Match one note – Five notes in a row');
+    expect(textOf(byTestId(c, 'checkup-opened'))).toContain('8 levels you showed you can already sing');
     expect(byTestId(c, 'checkup-nothing-opened')).toBeNull();
   });
 
