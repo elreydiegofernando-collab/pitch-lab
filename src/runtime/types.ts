@@ -43,7 +43,12 @@ export type RunTarget =
    * Range finder is logged as a practice take of its level, the placement tests as audition takes (the engine grants
    * their levels in order, as for the audition), every one tagged with the check-up's id.
    */
-  | { kind: 'checkup'; taskIndex: number };
+  | { kind: 'checkup'; taskIndex: number }
+  /**
+   * One practice try of a lesson (src/lessons): the drill at `step` of the lesson of `levelId`. Logged as kind 'practice'
+   * with levelId null, so it never passes a level; open whenever the lesson's level is openable.
+   */
+  | { kind: 'drill'; levelId: string; step: number };
 
 // ---------------------------------------------------------------- the runner
 
@@ -86,6 +91,8 @@ export interface PreparedRun {
   workout: { item: WorkoutItem; itemIndex: number; itemCount: number; take: number } | null;
   /** Check-up only: the task being sung (0-based), how many there are, and the check-up's id. */
   checkup?: { taskIndex: number; taskCount: number; checkupId: string } | null;
+  /** Lesson practice only: the step (0-based), how many steps, and the good tries so far and needed on this step. */
+  drill?: { levelId: string; step: number; stepCount: number; good: number; needed: number } | null;
 }
 
 export type UnlockEvent =
@@ -201,6 +208,10 @@ export interface AfterTakeAction {
     | 'finish-workout' //   the workout summary
     | 'next-task' //        the check-up's next task
     | 'checkup-results' //  the check-up's results (after its last task)
+    | 'next-try' //         the same practice step again
+    | 'next-step' //        the lesson's next practice step (this one is done)
+    | 'take-check' //       the lesson's check (every practice step is done)
+    | 'lesson' //           back to the lesson page
     | 'level' //            back to the level screen
     | 'map';
   /** Button label: "Retry", "Next level", "Next test", "See your placement", "Next take", "Next item", "Finish workout", "Back to level", "World map". */

@@ -19,6 +19,8 @@ export function paramsForTarget(target: RunTarget): RouteParams['sing'] {
       return { target: 'workout', itemIndex: String(target.itemIndex) };
     case 'checkup':
       return { target: 'checkup', itemIndex: String(target.taskIndex) };
+    case 'drill':
+      return { target: 'drill', levelId: target.levelId, itemIndex: String(target.step) };
   }
 }
 
@@ -35,6 +37,11 @@ export function targetFromParams(params: Readonly<RouteParams['sing']>): RunTarg
       const raw = params.itemIndex;
       if (raw === undefined || !/^\d{1,4}$/.test(raw)) return null;
       return params.target === 'workout' ? { kind: 'workout', itemIndex: Number(raw) } : { kind: 'checkup', taskIndex: Number(raw) };
+    }
+    case 'drill': {
+      const raw = params.itemIndex;
+      if (!params.levelId || raw === undefined || !/^\d{1,3}$/.test(raw)) return null;
+      return { kind: 'drill', levelId: params.levelId, step: Number(raw) };
     }
     default:
       return null;
@@ -53,5 +60,7 @@ export function targetKey(target: RunTarget): string {
       return `workout:${target.itemIndex}`;
     case 'checkup':
       return `checkup:${target.taskIndex}`;
+    case 'drill':
+      return `drill:${target.levelId}:${target.step}`;
   }
 }

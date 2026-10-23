@@ -25,6 +25,7 @@ import { ALWAYS_OPEN, routeOf, type GuardVerdict, type Route } from '../router';
 import { RANGE_FINDER_NO_RECORDS } from './messages';
 import type { GuardContext } from './types';
 import { targetFromParams } from './targets';
+import { lessonFor } from '../lessons';
 
 const OK: GuardVerdict = { ok: true };
 
@@ -99,6 +100,12 @@ function singVerdict(route: Extract<Route, { name: 'sing' }>, ctx: GuardContext)
       const n = ctx.checkupTasks ?? null;
       if (n !== null && target.taskIndex >= 0 && target.taskIndex < n) return OK;
       return refuse(routeOf('checkup'), 'Start the check-up first.');
+    }
+    case 'drill': {
+      // A lesson's practice is open exactly when its level is: practice never passes a level, and never opens one.
+      const lesson = lessonFor(target.levelId);
+      if (!lesson || target.step < 0 || target.step >= lesson.practice.length) return refuse(mapAtLevel(ctx.worlds, target.levelId), 'Not available.');
+      return levelVerdict(target.levelId, ctx);
     }
   }
 }

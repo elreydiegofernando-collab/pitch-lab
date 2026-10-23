@@ -47,7 +47,7 @@ export type RouteName =
   | 'song-progress';
 
 /** What a take is sung for (src/runtime/types.ts RunTarget, flattened to strings for the route). */
-export type SingTargetKind = 'level' | 'record' | 'audition' | 'workout' | 'checkup';
+export type SingTargetKind = 'level' | 'record' | 'audition' | 'workout' | 'checkup' | 'drill';
 
 /** The params each route reads. Values are strings; the router never parses them. */
 export interface RouteParams {
@@ -66,6 +66,7 @@ export interface RouteParams {
    * level/record: levelId. audition: worldId (the runner sings that world's NEXT test).
    * workout: itemIndex (into the active workout's items, as a decimal string).
    * checkup: itemIndex (the task of the active check-up, as a decimal string).
+   * drill: levelId and itemIndex (the lesson's practice step, as a decimal string).
    */
   sing: { target: SingTargetKind; levelId?: string; worldId?: string; itemIndex?: string };
   /** Shows the runner's last outcome (src/runtime/runner.ts lastOutcome). */
